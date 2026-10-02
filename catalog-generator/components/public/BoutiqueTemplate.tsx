@@ -3,6 +3,7 @@ import PublicCategoryFilter from "@/components/public/PublicCategoryFilter";
 import PublicProductPagination from "@/components/public/PublicProductPagination";
 import { PublicCatalogTemplateProps } from "@/components/public/PublicCatalogTemplateProps";
 import PublicProductToolbar from "@/components/public/PublicProductToolbar";
+import PublicCatalogContact from "@/components/public/PublicCatalogContact";
 
 export default function BoutiqueTemplate({ catalog, products, totalProducts, searchQuery, sortOrder, onSearchChange, onSortChange, page, pageCount, onPageChange, quantities, categories, selectedCategory, onSelectCategory, onAdd, cartCount, cartTotal }: PublicCatalogTemplateProps) {
   return (
@@ -27,6 +28,7 @@ export default function BoutiqueTemplate({ catalog, products, totalProducts, sea
         {products.length === 0 ? <p className="border-b border-[#e4d5c4] py-16 text-center text-sm text-[#766258]">{searchQuery ? `No encontramos productos para “${searchQuery}”. Prueba otra búsqueda.` : "La colección se está preparando."}</p> : <div className="grid gap-4 pt-4 sm:grid-cols-2">{products.map((product) => <PublicProductCard key={product.id} catalogPublicId={catalog.publicId} product={product} quantity={quantities[product.id] ?? 0} layout="boutique" onAdd={onAdd} />)}</div>}
         <PublicProductPagination page={page} pageCount={pageCount} totalProducts={totalProducts} onPageChange={onPageChange} />
       </section>
+      <PublicCatalogContact catalog={catalog} />
     </div>
   );
 }

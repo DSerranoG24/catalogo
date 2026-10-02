@@ -15,6 +15,14 @@ export type Catalog = {
   slug: string;
   description: string | null;
   whatsappPhone: string | null;
+  phone: string | null;
+  address: string | null;
+  businessHours: string | null;
+  instagramUrl: string | null;
+  facebookUrl: string | null;
+  tiktokUrl: string | null;
+  email: string | null;
+  mapUrl: string | null;
   template: "EDITORIAL" | "GRID" | "BOUTIQUE";
   active: boolean;
 };
@@ -83,7 +91,20 @@ export type PublicProduct = {
 
 export type PublicCatalog = Pick<
   Catalog,
-  "publicId" | "name" | "slug" | "description" | "whatsappPhone" | "template"
+  | "publicId"
+  | "name"
+  | "slug"
+  | "description"
+  | "whatsappPhone"
+  | "phone"
+  | "address"
+  | "businessHours"
+  | "instagramUrl"
+  | "facebookUrl"
+  | "tiktokUrl"
+  | "email"
+  | "mapUrl"
+  | "template"
 > & {
   categories: Category[];
   products: PublicProduct[];

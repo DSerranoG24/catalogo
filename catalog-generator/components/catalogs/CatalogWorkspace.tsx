@@ -289,7 +289,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
       </div>}
       {activeTab === "orders" && <div className="mt-8"><OrdersPanel catalogId={catalogId} /></div>}
       {activeTab === "reviews" && <div className="mt-8"><ReviewModerationPanel catalogId={catalogId} /></div>}
-      {activeTab === "settings" && <div className="mt-8"><CatalogSettings catalog={catalog} onUpdated={(patch) => setCatalog((current) => current ? { ...current, ...patch } : current)} /></div>}
+      {activeTab === "settings" && <div className="mt-8"><CatalogSettings key={catalog.id} catalog={catalog} onUpdated={(patch) => setCatalog((current) => current ? { ...current, ...patch } : current)} /></div>}
     </main>
   );
 }

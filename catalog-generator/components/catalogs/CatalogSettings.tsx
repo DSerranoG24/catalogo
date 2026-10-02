@@ -17,7 +17,19 @@ export default function CatalogSettings({
   catalog: Catalog;
   onUpdated: (patch: Partial<Catalog>) => void;
 }) {
-  const [phone, setPhone] = useState(catalog.whatsappPhone ?? "");
+  const [profile, setProfile] = useState({
+    name: catalog.name,
+    description: catalog.description ?? "",
+    whatsappPhone: catalog.whatsappPhone ?? "",
+    phone: catalog.phone ?? "",
+    address: catalog.address ?? "",
+    businessHours: catalog.businessHours ?? "",
+    instagramUrl: catalog.instagramUrl ?? "",
+    facebookUrl: catalog.facebookUrl ?? "",
+    tiktokUrl: catalog.tiktokUrl ?? "",
+    email: catalog.email ?? "",
+    mapUrl: catalog.mapUrl ?? "",
+  });
   const [template, setTemplate] = useState<Template>(catalog.template);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -25,6 +37,11 @@ export default function CatalogSettings({
   const publicUrl = typeof window === "undefined"
     ? ""
     : `${window.location.origin}/c/${catalog.publicId}`;
+  const inputClass = "mt-2 w-full rounded-md border border-[#d6dfd7] px-3.5 py-3 outline-none focus:border-[#17665c] focus:ring-2 focus:ring-[#17665c]/15";
+
+  function updateProfileField(field: keyof typeof profile, value: string) {
+    setProfile((current) => ({ ...current, [field]: value }));
+  }
 
   async function saveSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -32,11 +49,24 @@ export default function CatalogSettings({
     setError("");
     setMessage("");
     try {
+      const updatedProfile = {
+        name: profile.name.trim(),
+        description: profile.description.trim() || null,
+        whatsappPhone: profile.whatsappPhone.trim() || null,
+        phone: profile.phone.trim() || null,
+        address: profile.address.trim() || null,
+        businessHours: profile.businessHours.trim() || null,
+        instagramUrl: profile.instagramUrl.trim() || null,
+        facebookUrl: profile.facebookUrl.trim() || null,
+        tiktokUrl: profile.tiktokUrl.trim() || null,
+        email: profile.email.trim() || null,
+        mapUrl: profile.mapUrl.trim() || null,
+      };
       await apiRequest(`/catalogs/${catalog.id}`, {
         method: "PUT",
-        body: JSON.stringify({ whatsappPhone: phone.trim() || null, template }),
+        body: JSON.stringify({ ...updatedProfile, template }),
       });
-      onUpdated({ whatsappPhone: phone.trim() || null, template });
+      onUpdated({ ...updatedProfile, template });
       setMessage("Cambios guardados.");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "No se pudieron guardar los cambios.");
@@ -88,20 +118,59 @@ export default function CatalogSettings({
           ))}
         </div>
 
-        <label className="block text-sm font-medium text-[#37443d]">
-          WhatsApp del vendedor
-          <input
-            type="tel"
-            autoComplete="tel"
-            inputMode="tel"
-            pattern="\+[1-9][0-9]{7,14}"
-            value={phone}
-            onChange={(event) => setPhone(event.target.value)}
-            placeholder="+573001234567"
-            className="mt-2 w-full rounded-md border border-[#d6dfd7] px-3.5 py-3 outline-none focus:border-[#17665c] focus:ring-2 focus:ring-[#17665c]/15"
-          />
-          <span className="mt-1.5 block text-xs font-normal text-[#849087]">Formato internacional: + seguido del código de país y el número.</span>
-        </label>
+        <section className="space-y-4 border-t border-[#e2e8e1] pt-6">
+          <div>
+            <h3 className="text-sm font-semibold text-[#202b27]">Información del negocio</h3>
+            <p className="mt-1 text-xs text-[#68756e]">Los campos vacíos no aparecerán en el catálogo público.</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block text-sm font-medium text-[#37443d]">
+              Nombre comercial
+              <input required maxLength={100} value={profile.name} onChange={(event) => updateProfileField("name", event.target.value)} className={inputClass} />
+            </label>
+            <label className="block text-sm font-medium text-[#37443d]">
+              Teléfono
+              <input type="tel" autoComplete="tel" inputMode="tel" maxLength={30} value={profile.phone} onChange={(event) => updateProfileField("phone", event.target.value)} placeholder="+57 300 123 4567" className={inputClass} />
+            </label>
+            <label className="block text-sm font-medium text-[#37443d] sm:col-span-2">
+              Descripción del negocio
+              <textarea rows={3} maxLength={500} value={profile.description} onChange={(event) => updateProfileField("description", event.target.value)} className={inputClass} />
+            </label>
+            <label className="block text-sm font-medium text-[#37443d]">
+              WhatsApp
+              <input type="tel" autoComplete="tel" inputMode="tel" pattern="\+[1-9][0-9]{7,14}" value={profile.whatsappPhone} onChange={(event) => updateProfileField("whatsappPhone", event.target.value)} placeholder="+573001234567" className={inputClass} />
+              <span className="mt-1.5 block text-xs font-normal text-[#849087]">Formato internacional: +, código de país y número.</span>
+            </label>
+            <label className="block text-sm font-medium text-[#37443d]">
+              Correo de contacto
+              <input type="email" autoComplete="email" maxLength={254} value={profile.email} onChange={(event) => updateProfileField("email", event.target.value)} placeholder="hola@mitienda.com" className={inputClass} />
+            </label>
+            <label className="block text-sm font-medium text-[#37443d] sm:col-span-2">
+              Dirección
+              <input maxLength={250} value={profile.address} onChange={(event) => updateProfileField("address", event.target.value)} className={inputClass} />
+            </label>
+            <label className="block text-sm font-medium text-[#37443d] sm:col-span-2">
+              Horario de atención
+              <textarea rows={2} maxLength={500} value={profile.businessHours} onChange={(event) => updateProfileField("businessHours", event.target.value)} placeholder="Lunes a viernes, 9:00 a 18:00" className={inputClass} />
+            </label>
+            <label className="block text-sm font-medium text-[#37443d]">
+              Instagram
+              <input type="url" maxLength={2048} value={profile.instagramUrl} onChange={(event) => updateProfileField("instagramUrl", event.target.value)} placeholder="https://instagram.com/mitienda" className={inputClass} />
+            </label>
+            <label className="block text-sm font-medium text-[#37443d]">
+              Facebook
+              <input type="url" maxLength={2048} value={profile.facebookUrl} onChange={(event) => updateProfileField("facebookUrl", event.target.value)} placeholder="https://facebook.com/mitienda" className={inputClass} />
+            </label>
+            <label className="block text-sm font-medium text-[#37443d]">
+              TikTok
+              <input type="url" maxLength={2048} value={profile.tiktokUrl} onChange={(event) => updateProfileField("tiktokUrl", event.target.value)} placeholder="https://tiktok.com/@mitienda" className={inputClass} />
+            </label>
+            <label className="block text-sm font-medium text-[#37443d]">
+              Enlace de ubicación
+              <input type="url" maxLength={2048} value={profile.mapUrl} onChange={(event) => updateProfileField("mapUrl", event.target.value)} placeholder="https://maps.google.com/..." className={inputClass} />
+            </label>
+          </div>
+        </section>
 
         {error && <p role="alert" className="rounded-md bg-[#fff1ec] px-3 py-2 text-sm text-[#a5432a]">{error}</p>}
         {message && <p role="status" className="text-sm text-[#17665c]">{message}</p>}

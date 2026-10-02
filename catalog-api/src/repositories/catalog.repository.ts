@@ -4,8 +4,16 @@ export async function createCatalog(data: {
   userId: string;
   name: string;
   slug: string;
-  description?: string;
+  description?: string | null;
   whatsappPhone?: string;
+  phone?: string;
+  address?: string;
+  businessHours?: string;
+  instagramUrl?: string;
+  facebookUrl?: string;
+  tiktokUrl?: string;
+  email?: string;
+  mapUrl?: string;
   template?: "EDITORIAL" | "GRID" | "BOUTIQUE";
 }) {
   return prisma.catalog.create({
@@ -42,9 +50,17 @@ export async function updateCatalog(
   data: {
     name?: string;
     slug?: string;
-    description?: string;
+    description?: string | null;
     active?: boolean;
     whatsappPhone?: string | null;
+    phone?: string | null;
+    address?: string | null;
+    businessHours?: string | null;
+    instagramUrl?: string | null;
+    facebookUrl?: string | null;
+    tiktokUrl?: string | null;
+    email?: string | null;
+    mapUrl?: string | null;
     template?: "EDITORIAL" | "GRID" | "BOUTIQUE";
   }
 ) {
@@ -78,6 +94,14 @@ export async function findPublicCatalog(publicId: string) {
       slug: true,
       description: true,
       whatsappPhone: true,
+      phone: true,
+      address: true,
+      businessHours: true,
+      instagramUrl: true,
+      facebookUrl: true,
+      tiktokUrl: true,
+      email: true,
+      mapUrl: true,
       template: true,
       categories: {
         where: { active: true },

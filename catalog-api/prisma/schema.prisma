@@ -41,17 +41,25 @@ model User {
 }
 
 model Catalog {
-  id          String   @id @default(uuid())
-  userId      String
-  name        String
-  slug        String
-  description String?
-  publicId    String          @unique @default(uuid())
+  id            String          @id @default(uuid())
+  userId        String
+  name          String
+  slug          String
+  description   String?
+  publicId      String          @unique @default(uuid())
   whatsappPhone String?
-  template    CatalogTemplate @default(EDITORIAL)
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  phone         String?
+  address       String?
+  businessHours String?
+  instagramUrl  String?
+  facebookUrl   String?
+  tiktokUrl     String?
+  email         String?
+  mapUrl        String?
+  template      CatalogTemplate @default(EDITORIAL)
+  active        Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   categories Category[]
@@ -83,27 +91,27 @@ model Category {
 }
 
 model Product {
-  id          String   @id @default(uuid())
-  catalogId   String
-  categoryId  String?
-  name        String
-  slug        String
-  description String?
-  brand       String?
-  model       String?
-  sku         String?
-  price       Int
-  salePrice   Int?
+  id           String    @id @default(uuid())
+  catalogId    String
+  categoryId   String?
+  name         String
+  slug         String
+  description  String?
+  brand        String?
+  model        String?
+  sku          String?
+  price        Int
+  salePrice    Int?
   saleStartsAt DateTime?
-  saleEndsAt  DateTime?
-  stock       Int      @default(0)
-  active      Boolean  @default(true)
-  specs       Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  saleEndsAt   DateTime?
+  stock        Int       @default(0)
+  active       Boolean   @default(true)
+  specs        Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  catalog    Catalog        @relation(fields: [catalogId], references: [id], onDelete: Cascade)
-  category   Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  catalog    Catalog         @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  category   Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   images     ProductImage[]
   reviews    ProductReview[]
   orderItems OrderItem[]
@@ -146,18 +154,18 @@ model ProductImage {
 }
 
 model Order {
-  id              String      @id @default(uuid())
-  catalogId       String
-  customerName    String
-  customerPhone   String
-  customerEmail   String?
-  customerAddress String?
-  notes           String?
+  id                String      @id @default(uuid())
+  catalogId         String
+  customerName      String
+  customerPhone     String
+  customerEmail     String?
+  customerAddress   String?
+  notes             String?
   customerConsentAt DateTime?
-  status          OrderStatus @default(PENDING)
-  total           Int
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  status            OrderStatus @default(PENDING)
+  total             Int
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
   catalog Catalog     @relation(fields: [catalogId], references: [id], onDelete: Cascade)
   items   OrderItem[]

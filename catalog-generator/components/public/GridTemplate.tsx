@@ -3,6 +3,7 @@ import PublicCategoryFilter from "@/components/public/PublicCategoryFilter";
 import PublicProductPagination from "@/components/public/PublicProductPagination";
 import { PublicCatalogTemplateProps } from "@/components/public/PublicCatalogTemplateProps";
 import PublicProductToolbar from "@/components/public/PublicProductToolbar";
+import PublicCatalogContact from "@/components/public/PublicCatalogContact";
 
 export default function GridTemplate({ catalog, products, totalProducts, searchQuery, sortOrder, onSearchChange, onSortChange, page, pageCount, onPageChange, quantities, categories, selectedCategory, onSelectCategory, onAdd, cartCount, cartTotal }: PublicCatalogTemplateProps) {
   return (
@@ -31,6 +32,7 @@ export default function GridTemplate({ catalog, products, totalProducts, searchQ
         {products.length === 0 ? <p className="border-b border-[#d7ded8] py-16 text-center text-sm text-[#68756e]">{searchQuery ? `No encontramos productos para “${searchQuery}”. Prueba otra búsqueda.` : "No hay artículos disponibles todavía."}</p> : <div className="grid grid-cols-2 gap-3 pt-4 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">{products.map((product) => <PublicProductCard key={product.id} catalogPublicId={catalog.publicId} product={product} quantity={quantities[product.id] ?? 0} layout="grid" onAdd={onAdd} />)}</div>}
         <PublicProductPagination page={page} pageCount={pageCount} totalProducts={totalProducts} onPageChange={onPageChange} />
       </section>
+      <PublicCatalogContact catalog={catalog} />
     </div>
   );
 }

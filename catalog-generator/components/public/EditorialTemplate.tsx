@@ -3,6 +3,7 @@ import PublicCategoryFilter from "@/components/public/PublicCategoryFilter";
 import PublicProductPagination from "@/components/public/PublicProductPagination";
 import { PublicCatalogTemplateProps } from "@/components/public/PublicCatalogTemplateProps";
 import PublicProductToolbar from "@/components/public/PublicProductToolbar";
+import PublicCatalogContact from "@/components/public/PublicCatalogContact";
 
 export default function EditorialTemplate({ catalog, products, totalProducts, searchQuery, sortOrder, onSearchChange, onSortChange, page, pageCount, onPageChange, quantities, categories, selectedCategory, onSelectCategory, onAdd, cartCount, cartTotal }: PublicCatalogTemplateProps) {
   return (
@@ -36,6 +37,7 @@ export default function EditorialTemplate({ catalog, products, totalProducts, se
         {products.length === 0 ? <p className="border-b border-[#d6d8ca] py-16 text-center text-sm text-[#68756e]">{searchQuery ? `No encontramos productos para “${searchQuery}”. Prueba otra búsqueda.` : "Pronto habrá novedades en esta colección."}</p> : <div className="grid gap-5 pt-5 sm:grid-cols-2 lg:grid-cols-3">{products.map((product, index) => <PublicProductCard key={product.id} catalogPublicId={catalog.publicId} product={product} quantity={quantities[product.id] ?? 0} layout="editorial" featured={index === 0 && products.length > 2} onAdd={onAdd} />)}</div>}
         <PublicProductPagination page={page} pageCount={pageCount} totalProducts={totalProducts} onPageChange={onPageChange} />
       </section>
+      <PublicCatalogContact catalog={catalog} />
     </div>
   );
 }
