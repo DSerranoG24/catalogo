@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: catalog-api
+    runtime: node
+    rootDir: catalog-api
+    buildCommand: npm ci && npx prisma generate && npm run build
+    startCommand: npm run prisma:migrate:deploy && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false

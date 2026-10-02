@@ -5,6 +5,7 @@ dist/
 .env.*
 .env.local
 !.env.example
+!.env.production.example
 
 coverage/
 

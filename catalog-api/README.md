@@ -11,6 +11,8 @@ API Express, Prisma y PostgreSQL para cuentas, catálogos, productos, imágenes 
 
 Para un despliegue con migraciones revisadas, ejecuta `npm run prisma:migrate:deploy` desde el proceso de release, después de respaldar la base y confirmar `DATABASE_URL`.
 
+Para Render, el repositorio incluye `render.yaml`: al crear un Blueprint conectado a este repositorio, Render configura `catalog-api`, sus comandos de build/inicio y la comprobación `/api/health`. El Blueprint solicitará las variables privadas; cópialas de `.env.production.example` y sustituye los marcadores. `PORT` lo asigna Render automáticamente. El comando de inicio aplica las migraciones pendientes con `prisma migrate deploy` antes de abrir la API; confirma que `DATABASE_URL` apunta a la base de Supabase correcta. Configura `CORS_ORIGINS` con el dominio HTTPS final de Vercel. No subas archivos `.env` reales ni secretos a GitHub.
+
 ## Google Sign-In
 
 Crea un OAuth Client ID de tipo Web en Google Cloud Console. Configura los orígenes autorizados con la dirección del front-end y coloca el mismo Client ID en `GOOGLE_CLIENT_ID` de la API y `NEXT_PUBLIC_GOOGLE_CLIENT_ID` del front-end. El ID es público; la API verifica firma, audiencia y correo verificado. Nunca pongas secretos de cliente OAuth en el front-end.

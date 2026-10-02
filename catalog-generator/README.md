@@ -9,6 +9,10 @@ Panel de vendedores y páginas públicas de catálogo con pedidos por WhatsApp.
 3. En esta carpeta ejecuta `npm install` y `npm run dev` para desarrollo (`http://localhost:3001`). Para producción local, ejecuta `npm run build` y `npm start` (`http://localhost:3002`).
 4. Las rutas privadas usan el proxy same-origin; el JWT queda en cookie `HttpOnly`, nunca en `localStorage`.
 
+### Variables para Vercel
+
+`.env.production.example` es la lista de variables que debes agregar en **Project Settings > Environment Variables** de Vercel, con ámbito **Production**. Como el dominio del back aún no existe, crea primero el proyecto de Vercel y copia el dominio HTTPS asignado; úsalo en `CORS_ORIGINS` de Render. Después de crear el servicio en Render, reemplaza `your-api-domain.example` en las dos URL por el dominio HTTPS que Render asigne y redepliega el front. `NEXT_PUBLIC_*` es público y queda incorporado al build; nunca pongas credenciales ni claves Supabase allí. No subas `.env.local` ni archivos `.env` reales.
+
 En producción configura `CATALOG_API_URL` como URL HTTPS de servidor y `NEXT_PUBLIC_CATALOG_API_URL` como URL HTTPS pública de la API. `CORS_ORIGINS` en la API debe incluir el origen exacto del front-end. Los valores `NEXT_PUBLIC_*` son públicos y quedan incorporados al build; no coloques credenciales ni claves Supabase allí.
 
 ## Módulos
