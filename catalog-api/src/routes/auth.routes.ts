@@ -7,16 +7,16 @@ import {
 } from "../controllers/auth.controller";
 
 const router = Router();
-const authLimiter = rateLimit({
+const createAuthLimiter = () => rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
   standardHeaders: "draft-8",
   legacyHeaders: false,
-  message: { success: false, message: "Demasiados intentos. Intenta más tarde." },
+  message: { success: false, error: "RATE_LIMITED", message: "Demasiados intentos. Intenta más tarde." },
 });
 
-router.post("/register", authLimiter, registerController);
-router.post("/login", authLimiter, loginController);
-router.post("/google", authLimiter, googleAuthController);
+router.post("/register", createAuthLimiter(), registerController);
+router.post("/login", createAuthLimiter(), loginController);
+router.post("/google", createAuthLimiter(), googleAuthController);
 
 export default router;

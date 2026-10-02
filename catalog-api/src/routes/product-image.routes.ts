@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authenticate } from "../middlewares/auth.middleware";
-import { upload } from "../middlewares/upload.middleware";
+import { upload, validateImageContent } from "../middlewares/upload.middleware";
 
 import {
   uploadProductImageController,
@@ -16,6 +16,7 @@ router.use(authenticate);
 router.post(
   "/product/:id",
   upload.single("image"),
+  validateImageContent,
   uploadProductImageController
 );
 

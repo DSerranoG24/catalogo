@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authenticate } from "../middlewares/auth.middleware";
-import { upload } from "../middlewares/upload.middleware";
+import { upload, validateImageContent } from "../middlewares/upload.middleware";
 import {
   createCategoryController,
   getCategoriesController,
@@ -17,7 +17,7 @@ router.use(authenticate);
 
 router.post("/catalog/:catalogId", createCategoryController);
 router.get("/catalog/:catalogId", getCategoriesController);
-router.post("/:id/image", upload.single("image"), uploadCategoryImageController);
+router.post("/:id/image", upload.single("image"), validateImageContent, uploadCategoryImageController);
 router.delete("/:id/image", deleteCategoryImageController);
 
 router.get("/:id", getCategoryController);

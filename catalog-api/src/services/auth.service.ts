@@ -68,7 +68,15 @@ export async function loginWithGoogle(idToken: string) {
 
   const ticket = await googleClient.verifyIdToken({ idToken, audience: clientId });
   const payload = ticket.getPayload();
-  if (!payload?.sub || !payload.email || payload.email_verified !== true) {
+  const validIssuer = payload?.iss === "accounts.google.com" || payload?.iss === "https://accounts.google.com";
+  const tokenIsCurrent = typeof payload?.exp === "number" && payload.exp > Math.floor(Date.now() / 1000);
+  if (
+    !payload?.sub ||
+    !payload.email ||
+    payload.email_verified !== true ||
+    !validIssuer ||
+    !tokenIsCurrent
+  ) {
     throw new Error("INVALID_GOOGLE_CREDENTIAL");
   }
 
