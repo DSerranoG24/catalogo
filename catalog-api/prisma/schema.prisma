@@ -1,0 +1,185 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CatalogTemplate {
+  EDITORIAL
+  GRID
+  BOUTIQUE
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String?
+  googleId     String?  @unique
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  catalogs Catalog[]
+
+  @@map("users")
+}
+
+model Catalog {
+  id          String   @id @default(uuid())
+  userId      String
+  name        String
+  slug        String
+  description String?
+  publicId    String          @unique @default(uuid())
+  whatsappPhone String?
+  template    CatalogTemplate @default(EDITORIAL)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categories Category[]
+  products   Product[]
+  orders     Order[]
+
+  @@unique([userId, slug])
+  @@index([userId])
+  @@map("catalogs")
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  catalogId String
+  name      String
+  slug      String
+  imageUrl  String?
+  position  Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  catalog  Catalog   @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@unique([catalogId, slug])
+  @@index([catalogId])
+  @@map("categories")
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  catalogId   String
+  categoryId  String?
+  name        String
+  slug        String
+  description String?
+  brand       String?
+  model       String?
+  sku         String?
+  price       Int
+  salePrice   Int?
+  saleStartsAt DateTime?
+  saleEndsAt  DateTime?
+  stock       Int      @default(0)
+  active      Boolean  @default(true)
+  specs       Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  catalog    Catalog        @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  category   Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  images     ProductImage[]
+  reviews    ProductReview[]
+  orderItems OrderItem[]
+
+  @@unique([catalogId, slug])
+  @@unique([catalogId, sku])
+  @@index([catalogId])
+  @@index([categoryId])
+  @@map("products")
+}
+
+model ProductReview {
+  id          String       @id @default(uuid())
+  productId   String
+  displayName String?
+  rating      Int
+  comment     String
+  status      ReviewStatus @default(PENDING)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, status, createdAt])
+  @@map("product_reviews")
+}
+
+model ProductImage {
+  id        String   @id @default(uuid())
+  productId String
+  url       String
+  alt       String?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+model Order {
+  id              String      @id @default(uuid())
+  catalogId       String
+  customerName    String
+  customerPhone   String
+  customerEmail   String?
+  customerAddress String?
+  notes           String?
+  customerConsentAt DateTime?
+  status          OrderStatus @default(PENDING)
+  total           Int
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  catalog Catalog     @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  items   OrderItem[]
+
+  @@index([catalogId])
+  @@index([status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id          String  @id @default(uuid())
+  orderId     String
+  productId   String?
+  productName String
+  quantity    Int
+  unitPrice   Int
+  subtotal    Int
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}

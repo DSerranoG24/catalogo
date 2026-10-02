@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --background: #f2f5ef;
+  --foreground: #202b27;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+}
+
+body {
+  min-height: 100%;
+  background-color: var(--background);
+  background-image:
+    linear-gradient(115deg, rgba(217, 232, 215, 0.42), transparent 38%),
+    repeating-linear-gradient(90deg, rgba(36, 75, 58, 0.025) 0 1px, transparent 1px 34px);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), sans-serif;
+}
