@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, startTransition, useEffect, useState } from "react";
 import { publicApiRequest, PublicCatalog, PublicProduct } from "@/lib/api";
+import FloatingWhatsAppButton from "@/components/public/FloatingWhatsAppButton";
 
 type OrderReceipt = {
   id: string;
@@ -145,7 +146,7 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
           <span aria-hidden="true">←</span> Seguir comprando
         </Link>
         <header className="mt-4 flex flex-wrap items-end justify-between gap-4 border-y border-[#d7d9cf] py-5 sm:py-7">
-          <div><p className="text-xs font-semibold uppercase text-[#ad553b]">Tu selección · {catalog.name}</p><h1 className="mt-2 font-serif text-4xl leading-tight sm:text-5xl">Carrito</h1></div>
+          <div className="flex items-center gap-3">{catalog.logoUrl && <img src={catalog.logoUrl} alt="" className="size-12 rounded-full bg-white object-contain" />}<div><p className="text-xs font-semibold uppercase text-[#ad553b]">Tu selección · {catalog.name}</p><h1 className="mt-2 font-serif text-4xl leading-tight sm:text-5xl">Carrito</h1></div></div>
           <p className="text-sm text-[#68756e]">{cartCount} {cartCount === 1 ? "unidad" : "unidades"}</p>
         </header>
 
@@ -220,6 +221,7 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
           </div>
         )}
       </div>
+      <FloatingWhatsAppButton catalog={catalog} />
     </main>
   );
 }

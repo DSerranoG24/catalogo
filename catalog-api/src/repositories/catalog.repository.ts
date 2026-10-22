@@ -5,6 +5,7 @@ export async function createCatalog(data: {
   name: string;
   slug: string;
   description?: string | null;
+  whatsappMessage?: string | null;
   whatsappPhone?: string;
   phone?: string;
   address?: string;
@@ -14,7 +15,7 @@ export async function createCatalog(data: {
   tiktokUrl?: string;
   email?: string;
   mapUrl?: string;
-  template?: "EDITORIAL" | "GRID" | "BOUTIQUE";
+  template?: "EDITORIAL" | "GRID" | "BOUTIQUE" | "TECH" | "FASHION" | "BEAUTY";
 }) {
   return prisma.catalog.create({
     data,
@@ -51,6 +52,8 @@ export async function updateCatalog(
     name?: string;
     slug?: string;
     description?: string | null;
+    whatsappMessage?: string | null;
+    logoUrl?: string | null;
     active?: boolean;
     whatsappPhone?: string | null;
     phone?: string | null;
@@ -61,7 +64,7 @@ export async function updateCatalog(
     tiktokUrl?: string | null;
     email?: string | null;
     mapUrl?: string | null;
-    template?: "EDITORIAL" | "GRID" | "BOUTIQUE";
+    template?: "EDITORIAL" | "GRID" | "BOUTIQUE" | "TECH" | "FASHION" | "BEAUTY";
   }
 ) {
   return prisma.catalog.updateMany({
@@ -93,7 +96,9 @@ export async function findPublicCatalog(publicId: string) {
       name: true,
       slug: true,
       description: true,
+      logoUrl: true,
       whatsappPhone: true,
+      whatsappMessage: true,
       phone: true,
       address: true,
       businessHours: true,

@@ -6,6 +6,10 @@ import EditorialTemplate from "@/components/public/EditorialTemplate";
 import GridTemplate from "@/components/public/GridTemplate";
 import BoutiqueTemplate from "@/components/public/BoutiqueTemplate";
 import { ProductSortOrder } from "@/components/public/PublicProductToolbar";
+import FloatingWhatsAppButton from "@/components/public/FloatingWhatsAppButton";
+import TechnologyTemplate from "@/components/public/TechnologyTemplate";
+import FashionTemplate from "@/components/public/FashionTemplate";
+import BeautyTemplate from "@/components/public/BeautyTemplate";
 
 export default function PublicCatalogPage({ publicId }: { publicId: string }) {
   const [catalog, setCatalog] = useState<PublicCatalog | null>(null);
@@ -142,16 +146,22 @@ export default function PublicCatalogPage({ publicId }: { publicId: string }) {
     cartCount,
     cartTotal,
   };
-  const Template = catalog.template === "GRID"
-    ? GridTemplate
-    : catalog.template === "BOUTIQUE"
-      ? BoutiqueTemplate
-      : EditorialTemplate;
+  const template = catalog.template === "GRID" ? "TECH"
+    : catalog.template === "BOUTIQUE" ? "BEAUTY"
+      : catalog.template === "EDITORIAL" ? "FASHION"
+        : catalog.template;
+  const Template = template === "TECH" ? TechnologyTemplate
+    : template === "BEAUTY" ? BeautyTemplate
+      : template === "FASHION" ? FashionTemplate
+        : template === "GRID" ? GridTemplate
+          : template === "BOUTIQUE" ? BoutiqueTemplate
+            : EditorialTemplate;
 
   return (
     <main className="min-h-screen pb-12">
       <Template {...templateProps} />
       <footer className="border-t border-[#dce4dc] px-5 py-5 text-center text-xs text-[#849087]">Catálogo compartido por su vendedor</footer>
+      <FloatingWhatsAppButton catalog={catalog} />
     </main>
   );
 }

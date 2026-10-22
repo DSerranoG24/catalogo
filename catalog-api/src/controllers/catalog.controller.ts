@@ -1,4 +1,7 @@
 import { Response } from "express";
+import { Prisma } from "@prisma/client";
+import { ZodError } from "zod";
+import { signCatalogLogo, uploadCatalogLogoService, deleteCatalogLogoService } from "../services/catalog.service";
 import { AuthenticatedRequest } from "../types/auth.types";
 import {
   createCatalogSchema,
@@ -47,7 +50,7 @@ export async function getCatalogsController(
 
     return res.json({
       success: true,
-      catalogs,
+      catalogs: await Promise.all(catalogs.map(signCatalogLogo)),
     });
   } catch (error) {
     console.error(error);
@@ -78,7 +81,7 @@ export async function getCatalogController(
 
     return res.json({
       success: true,
-      catalog,
+      catalog: await signCatalogLogo(catalog),
     });
   } catch (error) {
     console.error(error);
@@ -87,6 +90,29 @@ export async function getCatalogController(
       success: false,
       message: "No se pudo obtener el catálogo",
     });
+  }
+}
+
+export async function uploadCatalogLogoController(req: AuthenticatedRequest, res: Response) {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: "Selecciona una imagen para el logo." });
+    const logoUrl = await uploadCatalogLogoService(req.params.id as string, req.user!.id, { buffer: req.file.buffer, mimetype: req.file.mimetype });
+    return res.status(201).json({ success: true, logoUrl });
+  } catch (error) {
+    if (error instanceof Error && error.message === "CATALOG_NOT_FOUND") return res.status(404).json({ success: false, message: "Catálogo no encontrado" });
+    console.error(error);
+    return res.status(500).json({ success: false, message: "No se pudo subir el logo." });
+  }
+}
+
+export async function deleteCatalogLogoController(req: AuthenticatedRequest, res: Response) {
+  try {
+    await deleteCatalogLogoService(req.params.id as string, req.user!.id);
+    return res.json({ success: true });
+  } catch (error) {
+    if (error instanceof Error && error.message === "CATALOG_NOT_FOUND") return res.status(404).json({ success: false, message: "Catálogo no encontrado" });
+    console.error(error);
+    return res.status(500).json({ success: false, message: "No se pudo eliminar el logo." });
   }
 }
 
@@ -115,11 +141,21 @@ export async function updateCatalogController(
       message: "Catálogo actualizado",
     });
   } catch (error) {
-    console.error(error);
+    if (error instanceof ZodError) {
+      return res.status(400).json({
+        success: false,
+        message: "Revisa los datos del catálogo.",
+        issues: error.issues.map(({ path, message }) => ({ field: path.join("."), message })),
+      });
+    }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return res.status(409).json({ success: false, message: "Ya existe un catálogo con ese nombre o dirección." });
+    }
+    console.error("No se pudo actualizar el catálogo:", error);
 
-    return res.status(400).json({
+    return res.status(500).json({
       success: false,
-      message: "No se pudo actualizar el catálogo",
+      message: "No se pudo actualizar el catálogo. Inténtalo de nuevo.",
     });
   }
 }

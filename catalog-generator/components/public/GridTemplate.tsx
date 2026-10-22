@@ -12,7 +12,7 @@ export default function GridTemplate({ catalog, products, totalProducts, searchQ
         <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-11">
           <div className="flex items-start justify-between gap-5">
             <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase text-[#315c53]">Catálogo / {catalog.slug}</p>
+              <p className="flex items-center gap-2 text-[10px] font-bold uppercase text-[#315c53]">{catalog.logoUrl && <img src={catalog.logoUrl} alt="" className="size-9 rounded-full bg-white object-contain" />}Catálogo / {catalog.slug}</p>
               <h1 className="mt-3 break-words text-4xl font-black leading-[0.98] sm:text-6xl">{catalog.name}</h1>
               {catalog.description && <p className="mt-4 max-w-2xl text-sm leading-6 text-[#3d5145]">{catalog.description}</p>}
             </div>

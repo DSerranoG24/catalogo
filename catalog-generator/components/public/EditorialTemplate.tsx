@@ -11,7 +11,7 @@ export default function EditorialTemplate({ catalog, products, totalProducts, se
       <header className="border-b border-[#d6d8ca]">
         <div className="mx-auto max-w-7xl px-5 pb-5 pt-6 sm:px-8 sm:pt-8">
           <div className="flex items-center justify-between border-y border-[#d6d8ca] py-3 text-[10px] font-semibold uppercase text-[#68756e]">
-            <span>{catalog.name}</span><span className="text-[#ad553b]">Selección independiente</span>
+            <span className="flex items-center gap-2">{catalog.logoUrl && <img src={catalog.logoUrl} alt="" className="size-8 rounded-full bg-white object-contain" />}<span>{catalog.name}</span></span><span className="text-[#ad553b]">Selección independiente</span>
           </div>
           <div className="grid gap-8 py-10 sm:py-14 lg:grid-cols-[minmax(0,1fr)_16rem] lg:items-end">
             <div>

@@ -6,6 +6,7 @@ import { FormEvent, startTransition, useEffect, useState } from "react";
 import { Star } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { publicApiRequest, PublicCatalog, PublicProduct, PublicProductReview } from "@/lib/api";
+import FloatingWhatsAppButton from "@/components/public/FloatingWhatsAppButton";
 
 type PublicReviewFeed = {
   averageRating: number | null;
@@ -153,25 +154,27 @@ export default function PublicProductDetailPage({
 
   const image = product.images[selectedImage];
   const isOnSale = product.regularPrice !== null && product.discountPercent !== null;
-  const isBoutique = catalog.template === "BOUTIQUE";
-  const isGrid = catalog.template === "GRID";
-  const surface = isBoutique ? "bg-[#fbf2e8]" : isGrid ? "bg-[#eef3f0]" : "bg-[#f4f3eb]";
-  const accent = isBoutique ? "text-[#bd4d36]" : isGrid ? "text-[#315c53]" : "text-[#ad553b]";
-  const action = isBoutique ? "bg-[#bd4d36] hover:bg-[#a83f2c]" : isGrid ? "bg-[#315c53] hover:bg-[#24483f]" : "bg-[#263b31] hover:bg-[#192b22]";
+  const isTech = catalog.template === "TECH" || catalog.template === "GRID";
+  const isBeauty = catalog.template === "BEAUTY" || catalog.template === "BOUTIQUE";
+  const isFashion = catalog.template === "FASHION" || catalog.template === "EDITORIAL";
+  const surface = isTech ? "bg-[#081421]" : isBeauty ? "bg-[#fff8f6]" : isFashion ? "bg-[#f7f2ec]" : "bg-[#f4f3eb]";
+  const foreground = isTech ? "text-[#e5f2ff]" : isBeauty ? "text-[#552e48]" : "text-[#322c29]";
+  const accent = isTech ? "text-[#56e0c0]" : isBeauty ? "text-[#b55271]" : isFashion ? "text-[#9a554b]" : "text-[#ad553b]";
+  const action = isTech ? "bg-[#56e0c0] text-[#071421] hover:bg-[#8af3d8]" : isBeauty ? "bg-[#b55271] hover:bg-[#98425f]" : isFashion ? "bg-[#322c29] hover:bg-[#4c3f39]" : "bg-[#263b31] hover:bg-[#192b22]";
 
   return (
-    <main className={`min-h-screen ${surface} text-[#25352e]`}>
+    <main className={`min-h-screen ${surface} ${foreground}`}>
       <div className="mx-auto max-w-7xl px-5 pb-16 pt-6 sm:px-8 sm:pt-9">
-        <Link href={`/c/${encodeURIComponent(publicId)}#productos`} className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-[#41574b] transition hover:text-[#bd4d36]">
+        <Link href={`/c/${encodeURIComponent(publicId)}#productos`} className={`inline-flex min-h-10 items-center gap-2 text-sm font-semibold transition ${isTech ? "text-[#a9bccd] hover:text-[#56e0c0]" : "text-[#41574b] hover:text-[#bd4d36]"}`}>
           <span aria-hidden="true">←</span> Volver a {catalog.name}
         </Link>
-        <div className="mt-5 border-y border-[#d7d9cf] py-2.5 text-[10px] font-semibold uppercase text-[#67766b]">
-          <span>{catalog.name}</span><span className="px-2 text-[#bd4d36]">/</span><span>{product.category?.name || "Producto"}</span>
+        <div className={`mt-5 border-y py-2.5 text-[10px] font-semibold uppercase ${isTech ? "border-[#26394a] text-[#a9bccd]" : "border-[#e5d9d0] text-[#766b64]"}`}>
+          <span className="inline-flex items-center gap-2">{catalog.logoUrl && <img src={catalog.logoUrl} alt="" className="size-8 rounded-full bg-white object-contain" />}<span>{catalog.name}</span></span><span className="px-2 text-[#bd4d36]">/</span><span>{product.category?.name || "Producto"}</span>
         </div>
 
         <section className="grid gap-8 pb-8 pt-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:gap-14 lg:pt-10">
           <div className="min-w-0">
-            <div className={`relative aspect-[4/3] overflow-hidden border border-black/5 ${isBoutique ? "bg-[#efe3d2]" : isGrid ? "bg-[#dce7e1]" : "bg-[#e8e9dc]"}`}>
+            <div className={`relative aspect-[4/3] overflow-hidden border border-black/5 ${isTech ? "bg-[#182c3c]" : isBeauty ? "bg-[#f5dfe6]" : isFashion ? "bg-[#e9ddd2]" : "bg-[#e8e9dc]"}`}>
               {image ? (
                 <Image src={image.url} alt={image.alt || product.name} fill unoptimized sizes="(max-width: 1024px) 100vw, 60vw" className="object-cover" priority />
               ) : (
@@ -195,19 +198,19 @@ export default function PublicProductDetailPage({
 
           <div className="flex min-w-0 flex-col py-1 lg:py-5">
             <p className={`text-xs font-semibold uppercase ${accent}`}>{product.brand || catalog.name}</p>
-            <h1 className="mt-3 text-balance font-serif text-4xl leading-[1.08] text-[#263b31] sm:text-5xl">{product.name}</h1>
-            {product.model && <p className="mt-3 text-sm text-[#68756e]">Modelo {product.model}</p>}
+            <h1 className={`mt-3 text-balance font-serif text-4xl leading-[1.08] sm:text-5xl ${isTech ? "font-sans font-semibold tracking-tight text-white" : "text-[#322c29]"}`}>{product.name}</h1>
+            {product.model && <p className={`mt-3 text-sm ${isTech ? "text-[#a9bccd]" : "text-[#68756e]"}`}>Modelo {product.model}</p>}
             <div className="mt-6 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <p className={`text-2xl font-bold tabular-nums ${isOnSale ? "text-[#c62828]" : "text-[#202b27]"}`}>${product.price.toLocaleString("es-CO")}</p>
+              <p className={`text-2xl font-bold tabular-nums ${isOnSale ? "text-[#c62828]" : isTech ? "text-white" : "text-[#202b27]"}`}>${product.price.toLocaleString("es-CO")}</p>
               {isOnSale && <>
                 <p className="text-base tabular-nums text-[#737d77] line-through">${product.regularPrice!.toLocaleString("es-CO")}</p>
                 <span className="bg-[#c62828] px-2 py-1 text-xs font-bold tabular-nums text-white">-{product.discountPercent}%</span>
               </>}
             </div>
             {isOnSale && product.saleEndsAt && <p className="mt-2 text-xs font-semibold text-[#b42318]">Oferta válida hasta {new Date(product.saleEndsAt).toLocaleString("es-CO", { dateStyle: "medium", timeStyle: "short" })}</p>}
-            <div className="my-6 border-y border-[#d7d9cf] py-5">
-              <h2 className="text-xs font-semibold uppercase text-[#67766b]">Detalles</h2>
-              <p className="mt-3 whitespace-pre-line text-sm leading-7 text-[#4f5d53]">{product.description || "Consulta con la tienda para conocer más detalles de este producto."}</p>
+            <div className={`my-6 border-y py-5 ${isTech ? "border-[#26394a]" : "border-[#e5d9d0]"}`}>
+              <h2 className={`text-xs font-semibold uppercase ${accent}`}>Detalles</h2>
+              <p className={`mt-3 whitespace-pre-line text-sm leading-7 ${isTech ? "text-[#a9bccd]" : "text-[#756b64]"}`}>{product.description || "Consulta con la tienda para conocer más detalles de este producto."}</p>
             </div>
             <div className="mt-auto space-y-3">
               <button type="button" onClick={addToOrder} className={`flex min-h-12 w-full items-center justify-center gap-2 px-5 text-sm font-semibold text-white transition ${action}`}>
@@ -220,13 +223,13 @@ export default function PublicProductDetailPage({
           </div>
         </section>
 
-        <section aria-labelledby="reviews-heading" className="border-t border-[#d7d9cf] py-8 sm:py-12">
+        <section aria-labelledby="reviews-heading" className={`border-t py-8 sm:py-12 ${isTech ? "border-[#26394a]" : "border-[#e5d9d0]"}`}>
           <div className="grid gap-8 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">
             <div>
               <p className={`text-xs font-semibold uppercase ${accent}`}>Experiencias de clientes</p>
-              <h2 id="reviews-heading" className="mt-2 font-serif text-3xl text-[#263b31]">Calificaciones y comentarios</h2>
+              <h2 id="reviews-heading" className={`mt-2 font-serif text-3xl ${isTech ? "text-white" : "text-[#322c29]"}`}>Calificaciones y comentarios</h2>
               <div className="mt-5 flex items-center gap-3">
-                <span className="text-4xl font-semibold tabular-nums text-[#263b31]">{reviewFeed.averageRating?.toFixed(1) ?? "—"}</span>
+                <span className={`text-4xl font-semibold tabular-nums ${isTech ? "text-white" : "text-[#263b31]"}`}>{reviewFeed.averageRating?.toFixed(1) ?? "—"}</span>
                 <div>
                   <div aria-label={reviewFeed.averageRating ? `${reviewFeed.averageRating.toFixed(1)} de 5 estrellas` : "Sin calificaciones"} className="flex text-[#c62828]">
                     {Array.from({ length: 5 }, (_, index) => <Star key={index} aria-hidden="true" size={17} fill={reviewFeed.averageRating && index < Math.round(reviewFeed.averageRating) ? "currentColor" : "none"} strokeWidth={1.8} />)}
@@ -273,6 +276,7 @@ export default function PublicProductDetailPage({
           </div>
         </section>
       </div>
+      <FloatingWhatsAppButton catalog={catalog} message={catalog.whatsappMessage?.trim() || `Hola, quisiera más información sobre ${product.name}.`} />
     </main>
   );
 }

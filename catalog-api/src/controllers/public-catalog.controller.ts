@@ -27,7 +27,7 @@ export async function getPublicCatalogController(req: Request, res: Response) {
       };
     }));
 
-    return res.json({ success: true, catalog: { ...catalog, categories, products } });
+    return res.json({ success: true, catalog: { ...catalog, logoUrl: catalog.logoUrl ? await createProductImageSignedUrl(catalog.logoUrl) : null, categories, products } });
   } catch {
     return res.status(500).json({ success: false, message: "No se pudo cargar el catálogo" });
   }

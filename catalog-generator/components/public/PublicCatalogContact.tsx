@@ -6,11 +6,6 @@ export default function PublicCatalogContact({ catalog }: { catalog: PublicCatal
       label: catalog.phone,
       href: `tel:${catalog.phone.replace(/[^+\d]/g, "")}`,
     },
-    catalog.whatsappPhone && {
-      label: "Escribir por WhatsApp",
-      href: `https://wa.me/${catalog.whatsappPhone.replace(/\D/g, "")}`,
-      external: true,
-    },
     catalog.email && {
       label: catalog.email,
       href: `mailto:${catalog.email}`,

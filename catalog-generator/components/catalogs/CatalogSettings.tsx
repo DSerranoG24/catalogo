@@ -1,14 +1,45 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { apiRequest, Catalog } from "@/lib/api";
 
 type Template = Catalog["template"];
-const templates: { id: Template; name: string; description: string; colors: string[] }[] = [
-  { id: "EDITORIAL", name: "Editorial", description: "Composición amplia, tipográfica y serena.", colors: ["#e9eee4", "#af7357", "#263b31"] },
-  { id: "GRID", name: "Galería", description: "Cuadrícula compacta, ideal para muchas referencias.", colors: ["#f1ede4", "#4e6c74", "#d7a64c"] },
-  { id: "BOUTIQUE", name: "Boutique", description: "Presentación cálida con énfasis en cada pieza.", colors: ["#f0e7dc", "#814d38", "#cad0bd"] },
+const templates: { id: Template; name: string; description: string; colors: string[]; category: string }[] = [
+  { id: "TECH", name: "Tecnología", description: "Estética oscura, detalles eléctricos y foco en especificaciones.", colors: ["#081421", "#56e0c0", "#e5f2ff"], category: "SMART / AUDIO / GAMING" },
+  { id: "FASHION", name: "Ropa", description: "Editorial de moda con tonos cálidos y fotografía protagonista.", colors: ["#f5eee7", "#9a554b", "#322c29"], category: "NUEVA TEMPORADA" },
+  { id: "BEAUTY", name: "Maquillaje", description: "Paleta suave y luminosa para destacar color y textura.", colors: ["#fff1ee", "#b55271", "#552e48"], category: "BEAUTY / SKIN / COLOR" },
 ];
+
+function initialTemplate(value: Template): Template {
+  if (value === "GRID") return "TECH";
+  if (value === "BOUTIQUE") return "BEAUTY";
+  if (value === "EDITORIAL") return "FASHION";
+  return value;
+}
+
+function TemplatePreview({ template, colors }: { template: Template; colors: string[] }) {
+  const tech = template === "TECH";
+  const beauty = template === "BEAUTY";
+  return (
+    <div className="overflow-hidden rounded-lg border border-black/10 bg-white shadow-sm" aria-hidden="true">
+      <div className="flex h-5 items-center gap-1.5 border-b border-black/5 bg-white px-2">
+        <i className="size-1.5 rounded-full bg-[#e6b7a8]" /><i className="size-1.5 rounded-full bg-[#e9d79c]" /><i className="size-1.5 rounded-full bg-[#b8d1bd]" />
+        <span className="ml-1 h-2 w-1/2 rounded-full bg-[#edf0eb]" />
+      </div>
+      <div className="px-3 pb-3 pt-2" style={{ backgroundColor: colors[0], color: colors[2] }}>
+        <div className="flex items-center justify-between border-y border-white/15 py-1 text-[5px] font-bold uppercase tracking-[0.12em]"><span>Tu marca</span><span>{tech ? "Tech store" : beauty ? "Beauty studio" : "Atelier"}</span></div>
+        <div className={`py-3 ${tech ? "" : "text-center"}`}>
+          <p className="text-[5px] font-bold uppercase tracking-[0.16em]" style={{ color: colors[1] }}>{tech ? "Tecnología para ti" : beauty ? "Ritual de belleza" : "Nueva temporada"}</p>
+          <div className={`mt-1 h-3 rounded-sm ${tech ? "w-3/4" : "mx-auto w-2/3"}`} style={{ backgroundColor: colors[2], opacity: 0.88 }} />
+          <div className={`mt-1 h-1.5 rounded-sm ${tech ? "w-1/2" : "mx-auto w-1/3"}`} style={{ backgroundColor: colors[2], opacity: 0.2 }} />
+        </div>
+        <div className={`grid gap-1.5 ${tech ? "grid-cols-4" : "grid-cols-3"}`}>
+          {Array.from({ length: tech ? 4 : 3 }, (_, index) => <div key={index} className="min-w-0"><div className={`aspect-[1.15] ${beauty ? "rounded-full" : "rounded-sm"}`} style={{ backgroundColor: index % 2 ? colors[1] : colors[2], opacity: index % 2 ? 0.72 : 0.16 }} /><div className="mt-1 h-1 w-3/4 rounded-full" style={{ backgroundColor: colors[2], opacity: 0.3 }} /><div className="mt-0.5 h-1 w-1/2 rounded-full" style={{ backgroundColor: colors[2], opacity: 0.18 }} /></div>)}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function CatalogSettings({
   catalog,
@@ -21,6 +52,7 @@ export default function CatalogSettings({
     name: catalog.name,
     description: catalog.description ?? "",
     whatsappPhone: catalog.whatsappPhone ?? "",
+    whatsappMessage: catalog.whatsappMessage ?? "",
     phone: catalog.phone ?? "",
     address: catalog.address ?? "",
     businessHours: catalog.businessHours ?? "",
@@ -30,7 +62,10 @@ export default function CatalogSettings({
     email: catalog.email ?? "",
     mapUrl: catalog.mapUrl ?? "",
   });
-  const [template, setTemplate] = useState<Template>(catalog.template);
+  const [template, setTemplate] = useState<Template>(initialTemplate(catalog.template));
+  const [logoUrl, setLogoUrl] = useState(catalog.logoUrl);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const logoInput = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -53,6 +88,7 @@ export default function CatalogSettings({
         name: profile.name.trim(),
         description: profile.description.trim() || null,
         whatsappPhone: profile.whatsappPhone.trim() || null,
+        whatsappMessage: profile.whatsappMessage.trim() || null,
         phone: profile.phone.trim() || null,
         address: profile.address.trim() || null,
         businessHours: profile.businessHours.trim() || null,
@@ -75,6 +111,45 @@ export default function CatalogSettings({
     }
   }
 
+  async function uploadLogo(file?: File) {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setError("El logo supera el límite de 5 MB.");
+      return;
+    }
+    setLogoBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const body = new FormData();
+      body.append("image", file);
+      const result = await apiRequest<{ logoUrl: string }>(`/catalogs/${catalog.id}/logo`, { method: "POST", body });
+      setLogoUrl(result.logoUrl);
+      onUpdated({ logoUrl: result.logoUrl });
+      setMessage("Logo actualizado.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "No se pudo subir el logo.");
+    } finally {
+      setLogoBusy(false);
+      if (logoInput.current) logoInput.current.value = "";
+    }
+  }
+
+  async function removeLogo() {
+    setLogoBusy(true);
+    setError("");
+    try {
+      await apiRequest(`/catalogs/${catalog.id}/logo`, { method: "DELETE" });
+      setLogoUrl(null);
+      onUpdated({ logoUrl: null });
+      setMessage("Logo eliminado.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "No se pudo eliminar el logo.");
+    } finally {
+      setLogoBusy(false);
+    }
+  }
+
   async function copyLink() {
     try {
       await navigator.clipboard.writeText(publicUrl);
@@ -86,15 +161,15 @@ export default function CatalogSettings({
   }
 
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.72fr)]">
       <form onSubmit={saveSettings} className="space-y-7 rounded-lg border border-[#dce4dc] bg-white p-5 sm:p-7">
         <div>
-          <p className="text-xs font-semibold uppercase text-[#c65c3d]">Presentación</p>
-          <h2 className="mt-1 text-lg font-semibold text-[#202b27]">Elige una plantilla</h2>
-          <p className="mt-1 text-sm text-[#68756e]">El cambio se aplica al enlace público de inmediato.</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#c65c3d]">Diseño de tu tienda</p>
+          <h2 className="mt-1 text-xl font-semibold text-[#202b27]">Elige cómo verán tu catálogo</h2>
+          <p className="mt-1 text-sm leading-6 text-[#68756e]">Selecciona una plantilla y guarda para actualizar tu página pública.</p>
         </div>
 
-        <div role="radiogroup" aria-label="Plantilla del catálogo" className="space-y-2">
+        <div role="radiogroup" aria-label="Plantilla del catálogo" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {templates.map((item) => (
             <button
               key={item.id}
@@ -102,31 +177,55 @@ export default function CatalogSettings({
               role="radio"
               aria-checked={template === item.id}
               onClick={() => setTemplate(item.id)}
-              className={`flex w-full items-center gap-4 rounded-md border p-3 text-left transition ${template === item.id ? "border-[#17665c] bg-[#f1f6f0] ring-1 ring-[#17665c]" : "border-[#e0e7df] hover:border-[#a8bcae]"}`}
+              className={`group w-full rounded-xl border p-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#17665c] focus-visible:ring-offset-2 ${template === item.id ? "border-[#17665c] bg-[#f3f7f2] ring-1 ring-[#17665c]" : "border-[#e0e7df] hover:border-[#a8bcae]"}`}
             >
-              <span className="flex h-12 w-16 shrink-0 overflow-hidden rounded-sm" aria-hidden="true">
-                {item.colors.map((color) => <span key={color} className="flex-1" style={{ backgroundColor: color }} />)}
+              <TemplatePreview template={item.id} colors={item.colors} />
+              <span className="flex items-start justify-between gap-2 px-1 pb-1 pt-3">
+                <span className="min-w-0">
+                <span className={`block text-sm font-semibold ${item.id === "TECH" ? "text-white" : "text-[#202b27]"}`}>{item.name}</span>
+                <span className={`mt-0.5 block text-xs leading-5 ${item.id === "TECH" ? "text-[#a9bccd]" : "text-[#68756e]"}`}>{item.description}</span>
+                <span className="mt-2 inline-flex rounded-full px-2 py-1 text-[8px] font-bold tracking-[0.1em]" style={{ backgroundColor: `${item.colors[1]}20`, color: item.id === "TECH" ? "#176d61" : item.colors[1] }}>{item.category}</span>
+                </span>
+              <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-full border ${template === item.id ? "border-[#17665c] bg-[#17665c] text-white" : "border-[#b7c2b8] text-transparent"}`}>
+                <svg viewBox="0 0 16 16" fill="none" className="size-3" aria-hidden="true"><path d="m3 8 3 3 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-[#202b27]">{item.name}</span>
-                <span className="mt-0.5 block text-xs leading-5 text-[#68756e]">{item.description}</span>
-              </span>
-              <span className={`grid size-4 shrink-0 place-items-center rounded-full border ${template === item.id ? "border-[#17665c]" : "border-[#b7c2b8]"}`}>
-                {template === item.id && <span className="size-2 rounded-full bg-[#17665c]" />}
               </span>
             </button>
           ))}
         </div>
+
+        {publicUrl && <a href={publicUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-md border border-[#d6dfd7] px-3.5 text-sm font-semibold text-[#17665c] transition hover:bg-[#f4f7f2]">Ver catálogo público <span aria-hidden="true">↗</span></a>}
 
         <section className="space-y-4 border-t border-[#e2e8e1] pt-6">
           <div>
             <h3 className="text-sm font-semibold text-[#202b27]">Información del negocio</h3>
             <p className="mt-1 text-xs text-[#68756e]">Los campos vacíos no aparecerán en el catálogo público.</p>
           </div>
+          <div className="rounded-lg border border-[#e2e8e1] bg-[#fafbf9] p-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-lg border border-[#d6dfd7] bg-white">
+                {logoUrl ? <img src={logoUrl} alt="Logo del negocio" className="size-full object-contain" /> : <span className="text-xs font-semibold text-[#849087]">Logo</span>}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-[#202b27]">Logo de la empresa</p>
+                <p className="mt-1 text-xs leading-5 text-[#68756e]">Se mostrará en la cabecera del catálogo. PNG, JPG o WebP, máximo 5 MB.</p>
+              </div>
+              <div className="flex gap-2">
+                <input ref={logoInput} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => void uploadLogo(event.target.files?.[0])} />
+                <button type="button" disabled={logoBusy} onClick={() => logoInput.current?.click()} className="min-h-10 rounded-md border border-[#cbd7ce] px-3 text-xs font-semibold text-[#17665c] hover:bg-white disabled:opacity-60">{logoBusy ? "Subiendo..." : logoUrl ? "Cambiar logo" : "Subir logo"}</button>
+                {logoUrl && <button type="button" disabled={logoBusy} onClick={() => void removeLogo()} className="min-h-10 rounded-md px-2 text-xs font-semibold text-[#a5432a] hover:bg-white disabled:opacity-60">Quitar</button>}
+              </div>
+            </div>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-medium text-[#37443d]">
               Nombre comercial
               <input required maxLength={100} value={profile.name} onChange={(event) => updateProfileField("name", event.target.value)} className={inputClass} />
+            </label>
+            <label className="block text-sm font-medium text-[#37443d] sm:col-span-2">
+              Asunto o mensaje personalizado de WhatsApp <span className="font-normal text-[#849087]">(opcional)</span>
+              <textarea rows={2} maxLength={500} value={profile.whatsappMessage} onChange={(event) => updateProfileField("whatsappMessage", event.target.value)} placeholder="Hola, quisiera más información sobre sus productos." className={inputClass} />
+              <span className="mt-1.5 block text-xs font-normal text-[#849087]">Se abrirá como mensaje sugerido; el cliente podrá editarlo antes de enviarlo.</span>
             </label>
             <label className="block text-sm font-medium text-[#37443d]">
               Teléfono
@@ -174,12 +273,12 @@ export default function CatalogSettings({
 
         {error && <p role="alert" className="rounded-md bg-[#fff1ec] px-3 py-2 text-sm text-[#a5432a]">{error}</p>}
         {message && <p role="status" className="text-sm text-[#17665c]">{message}</p>}
-        <button type="submit" disabled={saving} className="rounded-md bg-[#17665c] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#10554c] disabled:opacity-60">
-          {saving ? "Guardando..." : "Guardar presentación"}
+        <button type="submit" disabled={saving} className="rounded-md bg-[#17665c] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#10554c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#17665c] focus-visible:ring-offset-2 disabled:opacity-60">
+          {saving ? "Guardando..." : "Guardar cambios"}
         </button>
       </form>
 
-      <aside className="rounded-lg border border-[#dce4dc] bg-[#e8eee5] p-5 sm:p-6">
+      <aside className="rounded-xl border border-[#dce4dc] bg-[#e8eee5] p-5 sm:sticky sm:top-6 sm:p-6">
         <p className="text-xs font-semibold uppercase text-[#c65c3d]">Enlace personal</p>
         <h2 className="mt-1 text-lg font-semibold text-[#202b27]">Listo para compartir</h2>
         <p className="mt-2 text-sm leading-6 text-[#68756e]">Cualquier persona con este enlace puede ver los productos activos y preparar una orden.</p>

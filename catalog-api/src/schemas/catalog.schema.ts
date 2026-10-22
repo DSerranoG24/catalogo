@@ -24,6 +24,7 @@ export const createCatalogSchema = z.object({
       "El slug solo puede contener letras minúsculas, números y guiones"
     ),
   description: z.string().max(500).nullable().optional(),
+  whatsappMessage: z.string().trim().max(500).nullable().optional(),
   whatsappPhone: z.string().regex(/^\+[1-9]\d{7,14}$/).optional(),
   phone: phoneSchema.optional(),
   address: z.string().trim().max(250).optional(),
@@ -33,7 +34,7 @@ export const createCatalogSchema = z.object({
   tiktokUrl: httpUrlSchema.optional(),
   email: z.string().trim().email().max(254).optional(),
   mapUrl: httpUrlSchema.optional(),
-  template: z.enum(["EDITORIAL", "GRID", "BOUTIQUE"]).optional(),
+  template: z.enum(["EDITORIAL", "GRID", "BOUTIQUE", "TECH", "FASHION", "BEAUTY"]).optional(),
 });
 
 export const updateCatalogSchema = z.object({
@@ -48,6 +49,7 @@ export const updateCatalogSchema = z.object({
     )
     .optional(),
   description: z.string().max(500).nullable().optional(),
+  whatsappMessage: z.string().trim().max(500).nullable().optional(),
   active: z.boolean().optional(),
   whatsappPhone: z.string().regex(/^\+[1-9]\d{7,14}$/).nullable().optional(),
   phone: phoneSchema.nullable().optional(),
@@ -58,5 +60,5 @@ export const updateCatalogSchema = z.object({
   tiktokUrl: httpUrlSchema.nullable().optional(),
   email: z.string().trim().email().max(254).nullable().optional(),
   mapUrl: httpUrlSchema.nullable().optional(),
-  template: z.enum(["EDITORIAL", "GRID", "BOUTIQUE"]).optional(),
+  template: z.enum(["EDITORIAL", "GRID", "BOUTIQUE", "TECH", "FASHION", "BEAUTY"]).optional(),
 });

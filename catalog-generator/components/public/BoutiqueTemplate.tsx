@@ -9,7 +9,7 @@ export default function BoutiqueTemplate({ catalog, products, totalProducts, sea
   return (
     <div className="min-h-screen bg-[#fbf2e8] text-[#3c372f]">
       <header className="mx-auto max-w-7xl px-5 pb-7 pt-5 sm:px-8 sm:pb-10 sm:pt-7">
-        <div className="flex items-center justify-between border-y border-[#e4d5c4] py-3 text-[10px] font-bold uppercase text-[#bd4d36]"><span>Objeto / {catalog.slug}</span><span>{totalProducts.toString().padStart(2, "0")} piezas</span></div>
+        <div className="flex items-center justify-between border-y border-[#e4d5c4] py-3 text-[10px] font-bold uppercase text-[#bd4d36]"><span className="flex items-center gap-2">{catalog.logoUrl && <img src={catalog.logoUrl} alt="" className="size-9 rounded-full bg-white object-contain" />}Objeto / {catalog.slug}</span><span>{totalProducts.toString().padStart(2, "0")} piezas</span></div>
         <div className="grid gap-6 py-9 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,0.35fr)] sm:items-end sm:py-14">
           <div>
             <p className="text-xs font-semibold uppercase text-[#bd4d36]">Una colección especial</p>

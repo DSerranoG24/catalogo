@@ -24,6 +24,9 @@ enum CatalogTemplate {
   EDITORIAL
   GRID
   BOUTIQUE
+  TECH
+  FASHION
+  BEAUTY
 }
 
 model User {
@@ -46,8 +49,10 @@ model Catalog {
   name          String
   slug          String
   description   String?
+  logoUrl       String?
   publicId      String          @unique @default(uuid())
   whatsappPhone String?
+  whatsappMessage String?
   phone         String?
   address       String?
   businessHours String?

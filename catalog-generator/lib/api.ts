@@ -14,7 +14,9 @@ export type Catalog = {
   name: string;
   slug: string;
   description: string | null;
+  logoUrl: string | null;
   whatsappPhone: string | null;
+  whatsappMessage: string | null;
   phone: string | null;
   address: string | null;
   businessHours: string | null;
@@ -23,7 +25,7 @@ export type Catalog = {
   tiktokUrl: string | null;
   email: string | null;
   mapUrl: string | null;
-  template: "EDITORIAL" | "GRID" | "BOUTIQUE";
+  template: "EDITORIAL" | "GRID" | "BOUTIQUE" | "TECH" | "FASHION" | "BEAUTY";
   active: boolean;
 };
 
@@ -95,7 +97,9 @@ export type PublicCatalog = Pick<
   | "name"
   | "slug"
   | "description"
+  | "logoUrl"
   | "whatsappPhone"
+  | "whatsappMessage"
   | "phone"
   | "address"
   | "businessHours"
