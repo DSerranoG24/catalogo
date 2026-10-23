@@ -1,5 +1,31 @@
-import { ReviewStatus } from "@prisma/client";
+import { Prisma, ReviewStatus } from "@prisma/client";
 import { prisma } from "../config/prisma";
+
+type PendingProductReview = {
+  productId: string;
+  displayName?: string;
+  rating: number;
+  comment: string;
+};
+
+export function buildPendingProductReviewData(data: PendingProductReview): Prisma.ProductReviewUncheckedCreateInput {
+  return {
+    ...data,
+    displayName: data.displayName || null,
+    status: ReviewStatus.PENDING,
+  };
+}
+
+export function buildProductReviewModerationUpdate(
+  reviewId: string,
+  userId: string,
+  status: ReviewStatus,
+): Prisma.ProductReviewUpdateManyArgs {
+  return {
+    where: { id: reviewId, product: { catalog: { userId } } },
+    data: { status },
+  };
+}
 
 export async function findPublicProductReviews(publicId: string, productSlug: string) {
   const product = await prisma.product.findFirst({
@@ -25,18 +51,9 @@ export async function findPublicProductReviews(publicId: string, productSlug: st
   return { averageRating: summary._avg.rating, reviewCount: summary._count.id, reviews };
 }
 
-export async function createPendingProductReview(data: {
-  productId: string;
-  displayName?: string;
-  rating: number;
-  comment: string;
-}) {
+export async function createPendingProductReview(data: PendingProductReview) {
   return prisma.productReview.create({
-    data: {
-      ...data,
-      displayName: data.displayName || null,
-      status: ReviewStatus.PENDING,
-    },
+    data: buildPendingProductReviewData(data),
     select: { id: true, status: true, createdAt: true },
   });
 }
@@ -66,10 +83,7 @@ export async function findReviewsForCatalog(catalogId: string, userId: string, s
 }
 
 export async function moderateProductReview(reviewId: string, userId: string, status: ReviewStatus) {
-  return prisma.productReview.updateMany({
-    where: { id: reviewId, product: { catalog: { userId } } },
-    data: { status },
-  });
+  return prisma.productReview.updateMany(buildProductReviewModerationUpdate(reviewId, userId, status));
 }
 
 export async function deleteProductReview(reviewId: string, userId: string) {

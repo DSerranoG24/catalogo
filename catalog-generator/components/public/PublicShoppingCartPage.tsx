@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { CSSProperties, FormEvent, startTransition, useEffect, useState } from "react";
+import { CSSProperties, FormEvent, startTransition, useEffect, useRef, useState } from "react";
 import { publicApiRequest, PublicCatalog, PublicProduct, rememberPublicCatalogTemplate } from "@/lib/api";
 import FloatingWhatsAppButton from "@/components/public/FloatingWhatsAppButton";
 import PublicRouteLoading from "@/components/public/PublicRouteLoading";
@@ -36,6 +36,7 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const pendingOrderRef = useRef<{ key: string; payload: string } | null>(null);
   const cartStorageKey = `catalogo-cart-${publicId}`;
 
   useEffect(() => {
@@ -103,17 +104,22 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
     setReceipt(null);
     setWhatsAppUrl("");
     try {
+      const orderPayload = {
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim(),
+        customerEmail: customerEmail.trim() || undefined,
+        customerAddress: customerAddress.trim(),
+        consent: true,
+        notes: notes.trim() || undefined,
+        items: cartItems.map((product) => ({ productId: product.id, quantity: quantities[product.id] })),
+      };
+      const payloadSignature = JSON.stringify(orderPayload);
+      if (!pendingOrderRef.current || pendingOrderRef.current.payload !== payloadSignature) {
+        pendingOrderRef.current = { key: crypto.randomUUID(), payload: payloadSignature };
+      }
       const result = await publicApiRequest<{ order: OrderReceipt }>(`/public/catalogs/${encodeURIComponent(publicId)}/orders`, {
         method: "POST",
-        body: JSON.stringify({
-          customerName: customerName.trim(),
-          customerPhone: customerPhone.trim(),
-          customerEmail: customerEmail.trim() || undefined,
-          customerAddress: customerAddress.trim(),
-          consent: true,
-          notes: notes.trim() || undefined,
-          items: cartItems.map((product) => ({ productId: product.id, quantity: quantities[product.id] })),
-        }),
+        body: JSON.stringify({ ...orderPayload, idempotencyKey: pendingOrderRef.current.key }),
       });
       const order = result.order;
       const orderLines = order.items.map((item) => `- ${item.quantity} x ${item.productName}: $${item.subtotal.toLocaleString("es-CO")}`);
@@ -130,6 +136,7 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
       ].join("\n");
       const whatsappNumber = catalog.whatsappPhone.replace(/\D/g, "");
       setReceipt(order);
+      pendingOrderRef.current = null;
       setWhatsAppUrl(`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`);
       setQuantities({});
       sessionStorage.removeItem(cartStorageKey);
@@ -220,7 +227,7 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
               ) : (
                 <div role="status" className="rounded-2xl border border-[var(--cart-border)] bg-[var(--cart-card)] p-5">
                   <p className="text-sm font-semibold">Pedido registrado · {receipt?.id.slice(0, 8)}</p>
-                  <p className="mt-2 text-sm text-[var(--cart-muted)]">Tu lista ya está en camino al vendedor.</p>
+                  <p className="mt-2 text-sm text-[var(--cart-muted)]">Tu pedido quedó registrado. Continúa en WhatsApp para contactar al vendedor; el mensaje todavía no se ha enviado.</p>
                   {whatsAppUrl && <a href={whatsAppUrl} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-[var(--cart-accent)] px-5 text-sm font-semibold text-[var(--cart-accent-fg)]">Enviar por WhatsApp</a>}
                 </div>
               )}
@@ -245,7 +252,7 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
                     </div>
                     <button type="submit" disabled={submitting || !catalog.whatsappPhone} className="min-h-12 w-full rounded-xl bg-[var(--cart-accent)] px-4 text-sm font-semibold text-[var(--cart-accent-fg)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Preparando pedido..." : "Confirmar pedido"}</button>
                     {!catalog.whatsappPhone && <p className="text-xs leading-5 text-[var(--cart-danger)]">La tienda todavía no configuró WhatsApp para recibir pedidos.</p>}
-                    <p className="text-[11px] leading-5 text-[var(--cart-muted)]">No se solicitan pagos ni datos bancarios. El pedido queda pendiente de confirmación del vendedor.</p>
+                    <p className="text-[11px] leading-5 text-[var(--cart-muted)]">La disponibilidad y la entrega quedan por confirmar con el vendedor. No se solicitan pagos ni datos bancarios; el pedido queda pendiente de confirmación.</p>
                   </form>
                 </div>
               </section>

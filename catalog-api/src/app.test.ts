@@ -8,7 +8,7 @@ let server: Server;
 let baseUrl: string;
 
 before(async () => {
-  process.env.JWT_SECRET ||= "integration-test-secret";
+  process.env.JWT_SECRET = "test-only-integration-secret-with-32-bytes-minimum";
   process.env.SUPABASE_URL ||= "https://example.supabase.co";
   process.env.SUPABASE_SECRET_KEY ||= "integration-test-key";
 
@@ -55,4 +55,11 @@ test("malformed JSON receives a controlled client error", async () => {
 
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), { success: false, error: "INVALID_REQUEST_BODY" });
+});
+
+test("JWT secrets shorter than 32 bytes are rejected", async () => {
+  const { getJwtSecret } = await import("./utils/jwt.js");
+
+  assert.throws(() => getJwtSecret("too-short"), /32 bytes/);
+  assert.equal(getJwtSecret("a".repeat(32)), "a".repeat(32));
 });

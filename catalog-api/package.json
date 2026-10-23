@@ -2,11 +2,15 @@
   "name": "catalog-api",
   "version": "1.0.0",
   "description": "",
+  "engines": {
+    "node": "24.x"
+  },
   "main": "index.js",
   "scripts": {
     "dev": "prisma generate && tsx watch src/server.ts",
     "build": "tsc",
-    "test": "tsx --test src/app.test.ts src/schemas/catalog.schema.test.ts src/schemas/order.schema.test.ts src/services/product-pricing.test.ts src/schemas/product-review.test.ts src/utils/image-validation.test.ts",
+    "contracts:generate": "tsx src/scripts/generate-openapi.ts",
+    "test": "node scripts/test.cjs",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

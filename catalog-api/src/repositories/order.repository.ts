@@ -1,8 +1,14 @@
-import { OrderStatus } from "@prisma/client";
+import { OrderStatus, Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma";
-import { getCurrentProductPricing } from "../services/product-pricing";
-
-const MAX_INT = 2_147_483_647;
+import { recoverIdempotentOrder } from "./order-idempotency";
+import { calculatePublicOrder } from "../services/order-calculation";
+const publicOrderReceipt = {
+  id: true,
+  status: true,
+  total: true,
+  createdAt: true,
+  items: { select: { productName: true, quantity: true, unitPrice: true, subtotal: true } },
+} satisfies Prisma.OrderSelect;
 
 export async function createPublicOrder(
   publicId: string,
@@ -13,15 +19,25 @@ export async function createPublicOrder(
     customerAddress: string;
     consent: true;
     notes?: string;
+    idempotencyKey?: string;
     items: { productId: string; quantity: number }[];
   }
 ) {
-  return prisma.$transaction(async (transaction) => {
+  const idempotencyKey = data.idempotencyKey;
+  return recoverIdempotentOrder(idempotencyKey, () => prisma.$transaction(async (transaction) => {
     const catalog = await transaction.catalog.findFirst({
       where: { publicId, active: true },
       select: { id: true },
     });
     if (!catalog) throw new Error("CATALOG_NOT_FOUND");
+
+    if (idempotencyKey) {
+      const existing = await transaction.order.findUnique({
+        where: { catalogId_idempotencyKey: { catalogId: catalog.id, idempotencyKey } },
+        select: publicOrderReceipt,
+      });
+      if (existing) return existing;
+    }
 
     const pricingTime = new Date();
     const products = await transaction.product.findMany({
@@ -32,28 +48,12 @@ export async function createPublicOrder(
       },
       select: { id: true, name: true, price: true, salePrice: true, saleStartsAt: true, saleEndsAt: true },
     });
-    if (products.length !== data.items.length) throw new Error("PRODUCTS_UNAVAILABLE");
-
-    const productById = new Map(products.map((product) => [product.id, product]));
-    const items = data.items.map((item) => {
-      const product = productById.get(item.productId)!;
-      const price = getCurrentProductPricing(product, pricingTime).price;
-      const subtotal = price * item.quantity;
-      if (subtotal > MAX_INT) throw new Error("ORDER_TOTAL_INVALID");
-      return {
-        productId: product.id,
-        productName: product.name,
-        quantity: item.quantity,
-        unitPrice: price,
-        subtotal,
-      };
-    });
-    const total = items.reduce((sum, item) => sum + item.subtotal, 0);
-    if (total > MAX_INT) throw new Error("ORDER_TOTAL_INVALID");
+    const { items, total } = calculatePublicOrder(data.items, products, pricingTime);
 
     return transaction.order.create({
       data: {
         catalogId: catalog.id,
+        idempotencyKey,
         customerName: data.customerName,
         customerPhone: data.customerPhone,
         customerEmail: data.customerEmail || null,
@@ -63,14 +63,17 @@ export async function createPublicOrder(
         total,
         items: { create: items },
       },
-      select: {
-        id: true,
-        status: true,
-        total: true,
-        createdAt: true,
-        items: { select: { productName: true, quantity: true, unitPrice: true, subtotal: true } },
-      },
+      select: publicOrderReceipt,
     });
+  }), async () => {
+    if (!idempotencyKey) return null;
+    const catalog = await prisma.catalog.findFirst({ where: { publicId, active: true }, select: { id: true } });
+    if (!catalog) return null;
+    const existing = await prisma.order.findUnique({
+      where: { catalogId_idempotencyKey: { catalogId: catalog.id, idempotencyKey } },
+      select: publicOrderReceipt,
+    });
+    return existing;
   });
 }
 

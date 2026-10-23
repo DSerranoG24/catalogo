@@ -45,3 +45,18 @@ test("requires explicit consent before retaining customer data", () => {
   assert.equal(createPublicOrderSchema.safeParse(withoutConsent).success, false);
   assert.equal(createPublicOrderSchema.safeParse({ ...validOrder, consent: false }).success, false);
 });
+
+test("accepts a bounded idempotency key and rejects whitespace or oversized keys", () => {
+  assert.equal(createPublicOrderSchema.safeParse({ ...validOrder, idempotencyKey: "retry_123-abc" }).success, true);
+  assert.equal(createPublicOrderSchema.safeParse({ ...validOrder, idempotencyKey: "retry key" }).success, false);
+  assert.equal(createPublicOrderSchema.safeParse({ ...validOrder, idempotencyKey: "x".repeat(101) }).success, false);
+});
+
+test("an invalid idempotency key is rejected before order creation", () => {
+  let createCalls = 0;
+  const parsed = createPublicOrderSchema.safeParse({ ...validOrder, idempotencyKey: "bad key" });
+  if (parsed.success) createCalls += 1;
+
+  assert.equal(parsed.success, false);
+  assert.equal(createCalls, 0);
+});

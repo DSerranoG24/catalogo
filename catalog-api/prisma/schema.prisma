@@ -152,6 +152,7 @@ model ProductImage {
 model Order {
   id                String      @id @default(uuid())
   catalogId         String
+  idempotencyKey    String?
   customerName      String
   customerPhone     String
   customerEmail     String?
@@ -167,6 +168,7 @@ model Order {
   items   OrderItem[]
 
   @@index([catalogId])
+  @@unique([catalogId, idempotencyKey])
   @@index([status])
   @@map("orders")
 }

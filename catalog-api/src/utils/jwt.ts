@@ -1,9 +1,8 @@
 import jwt from "jsonwebtoken";
 
-function getJwtSecret(): string {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error("JWT_SECRET no está configurado");
+export function getJwtSecret(secret = process.env.JWT_SECRET): string {
+  if (!secret || Buffer.byteLength(secret, "utf8") < 32) {
+    throw new Error("JWT_SECRET debe estar configurado con al menos 32 bytes aleatorios");
   }
   return secret;
 }

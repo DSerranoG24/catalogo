@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, useEffect, useState } from "react";
+import { CSSProperties, useSyncExternalStore } from "react";
 import { Catalog } from "@/lib/api";
 
 type Template = Catalog["template"];
@@ -21,19 +21,32 @@ function Skeleton({ className = "" }: { className?: string }) {
   return <div aria-hidden="true" className={`animate-pulse rounded-xl bg-[var(--loading-surface)] ${className}`} />;
 }
 
-export default function PublicRouteLoading({ kind }: { kind: LoadingKind }) {
-  const [template, setTemplate] = useState<Template | null>(null);
+function subscribeToTemplate() {
+  return () => {};
+}
 
-  useEffect(() => {
+function isTemplate(value: string): value is Template {
+  return Object.hasOwn(palettes, value);
+}
+
+function getTemplateSnapshot(): Template | null {
+  try {
     const publicId = decodeURIComponent(window.location.pathname.split("/")[2] ?? "");
-    if (!publicId) return;
-    try {
-      const saved = window.sessionStorage.getItem(`catalogo-template-${publicId}`);
-      if (saved && saved in palettes) setTemplate(saved as Template);
-    } catch {
-      // Keep the neutral fallback when session storage is disabled.
-    }
-  }, []);
+    if (!publicId) return null;
+
+    const saved = window.sessionStorage.getItem(`catalogo-template-${publicId}`);
+    return saved && isTemplate(saved) ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+function getServerTemplateSnapshot(): null {
+  return null;
+}
+
+export default function PublicRouteLoading({ kind }: { kind: LoadingKind }) {
+  const template = useSyncExternalStore(subscribeToTemplate, getTemplateSnapshot, getServerTemplateSnapshot);
 
   const palette = (template && palettes[template]) || palettes.DEFAULT;
   const style = {

@@ -1,0 +1,20 @@
+warning: in the working copy of 'catalog-api/README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'catalog-api/package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'catalog-api/prisma/schema.prisma', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'catalog-generator/README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'catalog-generator/components/public/PublicRouteLoading.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'catalog-generator/package.json', LF will be replaced by CRLF the next time Git touches it
+ catalog-api/README.md                              | 16 [32m++++++[m
+ catalog-api/package.json                           |  6 [32m++[m[31m-[m
+ catalog-api/prisma/schema.prisma                   |  2 [32m+[m
+ catalog-api/src/app.test.ts                        | 11 [32m+++[m[31m-[m
+ catalog-api/src/repositories/order.repository.ts   | 63 [32m+++++++++++[m[31m-----------[m
+ .../src/repositories/product-review.repository.ts  | 48 [32m+++++++++++[m[31m------[m
+ catalog-api/src/schemas/order.schema.test.ts       | 15 [32m++++++[m
+ catalog-api/src/schemas/order.schema.ts            |  1 [32m+[m
+ catalog-api/src/utils/jwt.ts                       |  9 [32m++[m[31m--[m
+ catalog-generator/README.md                        |  7 [32m++[m[31m-[m
+ .../components/public/PublicRouteLoading.tsx       | 37 [32m++++++++[m[31m-----[m
+ .../components/public/PublicShoppingCartPage.tsx   | 31 [32m++++++[m[31m-----[m
+ catalog-generator/package.json                     |  3 [32m++[m
+ 13 files changed, 169 insertions(+), 80 deletions(-)

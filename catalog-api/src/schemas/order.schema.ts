@@ -2,6 +2,7 @@ import { OrderStatus } from "@prisma/client";
 import { z } from "zod";
 
 export const createPublicOrderSchema = z.object({
+  idempotencyKey: z.string().min(1).max(100).regex(/^[A-Za-z0-9_-]+$/).optional(),
   customerName: z.string().trim().min(1).max(100),
   customerPhone: z.string().trim().min(7).max(24).regex(/^[+0-9() .-]+$/),
   customerEmail: z.string().trim().email().max(254).optional().or(z.literal("")),
