@@ -73,40 +73,40 @@ export default function ReviewModerationPanel({ catalogId }: { catalogId: string
   }
 
   return (
-    <section className="mx-auto w-full max-w-4xl">
-      <header className="border-b border-[#dce4dc] pb-4">
-        <p className="text-xs font-semibold uppercase text-[#c65c3d]">Opiniones de clientes</p>
-        <h2 className="mt-1 text-xl font-semibold text-[#202b27]">Reseñas</h2>
+    <section className="mx-auto w-full max-w-5xl">
+      <header className="rounded-3xl border border-[#e2e8e0] bg-white p-5 shadow-[0_16px_44px_-38px_rgba(36,63,47,0.35)] sm:p-6">
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#a46d52]">Opiniones de clientes</p>
+        <h2 className="mt-1 text-xl font-semibold tracking-tight text-[#202b27]">Reseñas</h2>
         <p className="mt-1 text-sm text-[#68756e]">Revisa las reseñas antes de publicarlas en tu catálogo.</p>
       </header>
 
-      <nav aria-label="Filtrar reseñas" className="mt-5 flex gap-2 overflow-x-auto border-b border-[#dce4dc]">
-        {filters.map((item) => <button key={item.id} type="button" aria-pressed={filter === item.id} onClick={() => setFilter(item.id)} className={`min-h-11 shrink-0 border-b-2 px-3 text-sm font-semibold transition ${filter === item.id ? "border-[#17665c] text-[#17665c]" : "border-transparent text-[#68756e] hover:text-[#202b27]"}`}>{item.label}</button>)}
+      <nav aria-label="Filtrar reseñas" className="mt-4 flex gap-1 overflow-x-auto rounded-2xl border border-[#e2e8e0] bg-white/75 p-1.5">
+        {filters.map((item) => <button key={item.id} type="button" aria-pressed={filter === item.id} onClick={() => setFilter(item.id)} className={`min-h-10 shrink-0 rounded-xl px-4 text-xs font-semibold transition sm:text-sm ${filter === item.id ? "bg-[#245c4c] text-white shadow-sm" : "text-[#68756e] hover:bg-[#f0f4ee] hover:text-[#202b27]"}`}>{item.label}</button>)}
       </nav>
 
       {error && <p role="alert" className="mt-4 border border-[#f0c8b9] bg-[#fff4ef] px-4 py-3 text-sm text-[#a5432a]">{error}</p>}
       {notice && <p role="status" className="mt-4 border border-[#c8ddca] bg-[#eff6ee] px-4 py-3 text-sm text-[#24594d]">{notice}</p>}
-      {loading ? <p className="py-10 text-sm text-[#68756e]">Cargando reseñas...</p> : reviews.length === 0 ? (
-        <div className="border-b border-[#dce4dc] py-12 text-center">
+      {loading ? <ul aria-label="Cargando reseñas" className="mt-4 space-y-3 animate-pulse">{[0, 1, 2].map((item) => <li key={item} className="rounded-2xl border border-[#e2e8e0] bg-white p-5"><div className="h-3 w-28 rounded-full bg-[#e8eee5]" /><div className="mt-3 h-4 w-40 rounded-full bg-[#edf1ec]" /><div className="mt-4 h-3 w-full rounded-full bg-[#f0f3ee]" /><div className="mt-2 h-3 w-3/4 rounded-full bg-[#f0f3ee]" /></li>)}</ul> : reviews.length === 0 ? (
+        <div className="mt-4 rounded-3xl border border-dashed border-[#d2ded2] bg-white/70 py-14 text-center">
           <h3 className="font-semibold text-[#202b27]">No hay reseñas {filter === "PENDING" ? "pendientes" : filter === "APPROVED" ? "publicadas" : "rechazadas"}</h3>
           <p className="mt-1 text-sm text-[#68756e]">Las nuevas opiniones aparecerán aquí para revisión.</p>
         </div>
       ) : (
-        <ul className="divide-y divide-[#dce4dc]">
+        <ul className="mt-4 space-y-3">
           {reviews.map((review) => (
-            <li key={review.id} className="py-5">
+            <li key={review.id} className="rounded-2xl border border-[#e2e8e0] bg-white p-5 shadow-[0_14px_36px_-34px_rgba(36,63,47,0.5)] sm:p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-[10px] font-semibold uppercase text-[#68756e]">{review.product.name}</p>
                   <p className="mt-1 text-sm font-semibold text-[#202b27]">{review.displayName || "Cliente"}</p>
                   <time dateTime={review.createdAt} className="mt-1 block text-xs text-[#849087]">{new Date(review.createdAt).toLocaleDateString("es-CO", { dateStyle: "medium" })}</time>
                 </div>
-                <div aria-label={`${review.rating} de 5 estrellas`} className="flex text-[#c62828]">{Array.from({ length: 5 }, (_, index) => <Star key={index} aria-hidden="true" size={16} fill={index < review.rating ? "currentColor" : "none"} />)}</div>
+                <div aria-label={`${review.rating} de 5 estrellas`} className="flex rounded-full bg-[#fff8e8] px-2.5 py-1.5 text-[#c28a35]">{Array.from({ length: 5 }, (_, index) => <Star key={index} aria-hidden="true" size={14} fill={index < review.rating ? "currentColor" : "none"} />)}</div>
               </div>
               <p className="mt-3 whitespace-pre-line text-sm leading-6 text-[#526157]">{review.comment}</p>
               <div className="mt-4 flex flex-wrap gap-2">
-                {review.status !== "APPROVED" && <button type="button" disabled={busyId === review.id} onClick={() => void setReviewStatus(review, "APPROVED")} className="inline-flex min-h-9 items-center gap-2 bg-[#17665c] px-3 text-xs font-semibold text-white disabled:opacity-50"><Check aria-hidden="true" size={15} /> Aprobar</button>}
-                {review.status !== "REJECTED" && <button type="button" disabled={busyId === review.id} onClick={() => void setReviewStatus(review, "REJECTED")} className="inline-flex min-h-9 items-center gap-2 border border-[#d7c4bf] px-3 text-xs font-semibold text-[#9f2828] disabled:opacity-50"><X aria-hidden="true" size={15} /> Rechazar</button>}
+                {review.status !== "APPROVED" && <button type="button" disabled={busyId === review.id} onClick={() => void setReviewStatus(review, "APPROVED")} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#245c4c] px-4 text-xs font-semibold text-white transition hover:bg-[#173f36] disabled:opacity-50"><Check aria-hidden="true" size={15} /> Aprobar</button>}
+                {review.status !== "REJECTED" && <button type="button" disabled={busyId === review.id} onClick={() => void setReviewStatus(review, "REJECTED")} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#e1d1cc] px-4 text-xs font-semibold text-[#9f4b3a] transition hover:bg-[#fff6f2] disabled:opacity-50"><X aria-hidden="true" size={15} /> Rechazar</button>}
                 <button type="button" disabled={busyId === review.id} onClick={() => void deleteReview(review)} aria-label={`Eliminar reseña de ${review.product.name}`} className="grid size-9 place-items-center text-[#68756e] hover:bg-[#fff1ec] hover:text-[#a5432a] disabled:opacity-50"><Trash2 aria-hidden="true" size={16} /></button>
               </div>
             </li>

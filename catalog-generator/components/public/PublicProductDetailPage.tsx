@@ -5,8 +5,9 @@ import Link from "next/link";
 import { FormEvent, startTransition, useEffect, useState } from "react";
 import { Star } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { publicApiRequest, PublicCatalog, PublicProduct, PublicProductReview } from "@/lib/api";
+import { publicApiRequest, PublicCatalog, PublicProduct, PublicProductReview, rememberPublicCatalogTemplate } from "@/lib/api";
 import FloatingWhatsAppButton from "@/components/public/FloatingWhatsAppButton";
+import PublicRouteLoading from "@/components/public/PublicRouteLoading";
 
 type PublicReviewFeed = {
   averageRating: number | null;
@@ -46,6 +47,7 @@ export default function PublicProductDetailPage({
       .then(({ catalog: loadedCatalog }) => {
         if (!active) return;
         setCatalog(loadedCatalog);
+        rememberPublicCatalogTemplate(loadedCatalog.publicId, loadedCatalog.template);
         setProduct(loadedCatalog.products.find((item) => item.slug === productSlug) ?? null);
       })
       .catch((requestError) => {
@@ -136,7 +138,7 @@ export default function PublicProductDetailPage({
   }
 
   if (loading) {
-    return <main className="grid min-h-screen place-items-center bg-[#f4f3eb] px-5 text-sm text-[#526257]">Cargando producto...</main>;
+    return <PublicRouteLoading kind="product" />;
   }
 
   if (!catalog || !product) {
@@ -161,6 +163,11 @@ export default function PublicProductDetailPage({
   const foreground = isTech ? "text-[#e5f2ff]" : isBeauty ? "text-[#552e48]" : "text-[#322c29]";
   const accent = isTech ? "text-[#56e0c0]" : isBeauty ? "text-[#b55271]" : isFashion ? "text-[#9a554b]" : "text-[#ad553b]";
   const action = isTech ? "bg-[#56e0c0] text-[#071421] hover:bg-[#8af3d8]" : isBeauty ? "bg-[#b55271] hover:bg-[#98425f]" : isFashion ? "bg-[#322c29] hover:bg-[#4c3f39]" : "bg-[#263b31] hover:bg-[#192b22]";
+  const reviewSurface = isTech ? "border-[#26394a] bg-[#0e1d2b]" : isBeauty ? "border-[#efd5dd] bg-white" : "border-[#e5d9d0] bg-[#fffaf6]";
+  const reviewText = isTech ? "text-[#e5f2ff]" : isBeauty ? "text-[#552e48]" : "text-[#322c29]";
+  const reviewMuted = isTech ? "text-[#a9bccd]" : isBeauty ? "text-[#896879]" : "text-[#766b64]";
+  const reviewInput = isTech ? "border-[#26394a] bg-[#091725] text-[#e5f2ff] placeholder:text-[#7f94a8] focus:border-[#56e0c0]" : isBeauty ? "border-[#efd5dd] bg-[#fffaf9] text-[#552e48] placeholder:text-[#b495a4] focus:border-[#b55271]" : "border-[#dfd2c5] bg-white text-[#322c29] placeholder:text-[#a89a90] focus:border-[#9a554b]";
+  const reviewStar = isTech ? "text-[#56e0c0] focus-visible:outline-[#56e0c0]" : isBeauty ? "text-[#b55271] focus-visible:outline-[#b55271]" : "text-[#c28a35] focus-visible:outline-[#c28a35]";
 
   return (
     <main className={`min-h-screen ${surface} ${foreground}`}>
@@ -223,53 +230,53 @@ export default function PublicProductDetailPage({
           </div>
         </section>
 
-        <section aria-labelledby="reviews-heading" className={`border-t py-8 sm:py-12 ${isTech ? "border-[#26394a]" : "border-[#e5d9d0]"}`}>
+        <section aria-labelledby="reviews-heading" className={`border-t py-8 sm:py-12 ${isTech ? "border-[#26394a]" : isBeauty ? "border-[#efd5dd]" : "border-[#e5d9d0]"}`}>
           <div className="grid gap-8 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">
             <div>
               <p className={`text-xs font-semibold uppercase ${accent}`}>Experiencias de clientes</p>
-              <h2 id="reviews-heading" className={`mt-2 font-serif text-3xl ${isTech ? "text-white" : "text-[#322c29]"}`}>Calificaciones y comentarios</h2>
+              <h2 id="reviews-heading" className={`mt-2 font-serif text-3xl ${foreground}`}>Calificaciones y comentarios</h2>
               <div className="mt-5 flex items-center gap-3">
-                <span className={`text-4xl font-semibold tabular-nums ${isTech ? "text-white" : "text-[#263b31]"}`}>{reviewFeed.averageRating?.toFixed(1) ?? "—"}</span>
+                <span className={`text-4xl font-semibold tabular-nums ${foreground}`}>{reviewFeed.averageRating?.toFixed(1) ?? "—"}</span>
                 <div>
-                  <div aria-label={reviewFeed.averageRating ? `${reviewFeed.averageRating.toFixed(1)} de 5 estrellas` : "Sin calificaciones"} className="flex text-[#c62828]">
+                  <div aria-label={reviewFeed.averageRating ? `${reviewFeed.averageRating.toFixed(1)} de 5 estrellas` : "Sin calificaciones"} className={`flex ${reviewStar}`}>
                     {Array.from({ length: 5 }, (_, index) => <Star key={index} aria-hidden="true" size={17} fill={reviewFeed.averageRating && index < Math.round(reviewFeed.averageRating) ? "currentColor" : "none"} strokeWidth={1.8} />)}
                   </div>
-                  <p className="mt-1 text-xs text-[#68756e]">{reviewFeed.reviewCount} {reviewFeed.reviewCount === 1 ? "reseña publicada" : "reseñas publicadas"}</p>
+                  <p className={`mt-1 text-xs ${reviewMuted}`}>{reviewFeed.reviewCount} {reviewFeed.reviewCount === 1 ? "reseña publicada" : "reseñas publicadas"}</p>
                 </div>
               </div>
-              <form onSubmit={submitReview} className="mt-7 space-y-4 border border-[#d7d9cf] bg-white p-4 sm:p-5">
-                <h3 className="text-sm font-semibold text-[#263b31]">Deja tu opinión</h3>
+              <form onSubmit={submitReview} className={`mt-7 space-y-4 rounded-2xl border p-4 shadow-sm sm:p-5 ${reviewSurface}`}>
+                <h3 className={`text-sm font-semibold ${reviewText}`}>Deja tu opinión</h3>
                 <fieldset>
-                  <legend className="text-xs font-medium text-[#526157]">Tu calificación</legend>
+                  <legend className={`text-xs font-medium ${reviewMuted}`}>Tu calificación</legend>
                   <div role="radiogroup" aria-label="Tu calificación" className="mt-2 flex gap-1">
                     {Array.from({ length: 5 }, (_, index) => {
                       const rating = index + 1;
-                      return <button key={rating} type="button" role="radio" aria-checked={reviewRating === rating} aria-label={`${rating} ${rating === 1 ? "estrella" : "estrellas"}`} onClick={() => setReviewRating(rating)} className="grid size-9 place-items-center text-[#c62828] focus-visible:outline-2 focus-visible:outline-[#c62828]"><Star aria-hidden="true" size={21} fill={rating <= reviewRating ? "currentColor" : "none"} strokeWidth={1.8} /></button>;
+                      return <button key={rating} type="button" role="radio" aria-checked={reviewRating === rating} aria-label={`${rating} ${rating === 1 ? "estrella" : "estrellas"}`} onClick={() => setReviewRating(rating)} className={`grid size-9 place-items-center focus-visible:outline-2 ${reviewStar}`}><Star aria-hidden="true" size={21} fill={rating <= reviewRating ? "currentColor" : "none"} strokeWidth={1.8} /></button>;
                     })}
                   </div>
                 </fieldset>
-                <label className="block text-xs font-medium text-[#526157]">Nombre público (opcional)<input maxLength={60} value={reviewName} onChange={(event) => setReviewName(event.target.value)} placeholder="Cómo quieres aparecer" className="mt-1.5 min-h-10 w-full border border-[#cbd4cb] px-3 text-sm outline-none focus:border-[#315c53]" /></label>
-                <label className="block text-xs font-medium text-[#526157]">Comentario<textarea required minLength={10} maxLength={1200} rows={4} value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} placeholder="¿Qué te pareció el producto?" className="mt-1.5 w-full resize-y border border-[#cbd4cb] px-3 py-2 text-sm outline-none focus:border-[#315c53]" /></label>
-                <p className="text-[11px] leading-5 text-[#7b8580]">La reseña se publicará cuando la tienda la apruebe. No se muestra como compra verificada.</p>
+                <label className={`block text-xs font-medium ${reviewMuted}`}>Nombre público (opcional)<input maxLength={60} value={reviewName} onChange={(event) => setReviewName(event.target.value)} placeholder="Cómo quieres aparecer" className={`mt-1.5 min-h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-current/10 ${reviewInput}`} /></label>
+                <label className={`block text-xs font-medium ${reviewMuted}`}>Comentario<textarea required minLength={10} maxLength={1200} rows={4} value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} placeholder="¿Qué te pareció el producto?" className={`mt-1.5 w-full resize-y rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/10 ${reviewInput}`} /></label>
+                <p className={`text-[11px] leading-5 ${reviewMuted}`}>La reseña se publicará cuando la tienda la apruebe. No se muestra como compra verificada.</p>
                 {reviewError && <p role="alert" className="bg-[#fff1ec] px-3 py-2 text-xs text-[#a5432a]">{reviewError}</p>}
                 {reviewNotice && <p role="status" className="bg-[#edf5ed] px-3 py-2 text-xs text-[#24594d]">{reviewNotice}</p>}
-                <button type="submit" disabled={reviewSubmitting} className="min-h-10 bg-[#263b31] px-4 text-xs font-semibold text-white transition hover:bg-[#192b22] disabled:cursor-wait disabled:opacity-60">{reviewSubmitting ? "Enviando..." : "Enviar reseña"}</button>
+                <button type="submit" disabled={reviewSubmitting} className={`min-h-11 rounded-xl px-4 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${action}`}>{reviewSubmitting ? "Enviando..." : "Enviar reseña"}</button>
               </form>
             </div>
 
-            <div className="divide-y divide-[#d7d9cf] border-y border-[#d7d9cf]">
+            <div className={`divide-y rounded-2xl border px-5 ${isTech ? "divide-[#26394a] border-[#26394a]" : isBeauty ? "divide-[#efd5dd] border-[#efd5dd]" : "divide-[#e5d9d0] border-[#e5d9d0]"}`}>
               {reviewError && reviewFeed.reviewCount === 0 ? <p className="py-6 text-sm text-[#68756e]">{reviewError}</p> : reviewFeed.reviews.length === 0 ? (
                 <p className="py-6 text-sm text-[#68756e]">Todavía no hay reseñas publicadas para este producto.</p>
               ) : reviewFeed.reviews.map((review) => (
                 <article key={review.id} className="py-5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-[#263b31]">{review.displayName || "Cliente"}</p>
-                    <time dateTime={review.createdAt} className="text-xs text-[#7b8580]">{new Date(review.createdAt).toLocaleDateString("es-CO", { dateStyle: "medium" })}</time>
+                    <p className={`text-sm font-semibold ${reviewText}`}>{review.displayName || "Cliente"}</p>
+                    <time dateTime={review.createdAt} className={`text-xs ${reviewMuted}`}>{new Date(review.createdAt).toLocaleDateString("es-CO", { dateStyle: "medium" })}</time>
                   </div>
-                  <div aria-label={`${review.rating} de 5 estrellas`} className="mt-2 flex text-[#c62828]">
+                  <div aria-label={`${review.rating} de 5 estrellas`} className={`mt-2 flex ${reviewStar}`}>
                     {Array.from({ length: 5 }, (_, index) => <Star key={index} aria-hidden="true" size={14} fill={index < review.rating ? "currentColor" : "none"} strokeWidth={1.8} />)}
                   </div>
-                  <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[#526157]">{review.comment}</p>
+                  <p className={`mt-2 whitespace-pre-line text-sm leading-6 ${reviewMuted}`}>{review.comment}</p>
                 </article>
               ))}
             </div>

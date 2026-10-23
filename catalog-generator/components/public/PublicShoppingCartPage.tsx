@@ -2,15 +2,23 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { FormEvent, startTransition, useEffect, useState } from "react";
-import { publicApiRequest, PublicCatalog, PublicProduct } from "@/lib/api";
+import { CSSProperties, FormEvent, startTransition, useEffect, useState } from "react";
+import { publicApiRequest, PublicCatalog, PublicProduct, rememberPublicCatalogTemplate } from "@/lib/api";
 import FloatingWhatsAppButton from "@/components/public/FloatingWhatsAppButton";
+import PublicRouteLoading from "@/components/public/PublicRouteLoading";
 
 type OrderReceipt = {
   id: string;
   total: number;
   items: { productName: string; quantity: number; unitPrice: number; subtotal: number }[];
 };
+
+const cartThemes = {
+  TECH: { background: "#07111d", foreground: "#e5edf5", muted: "#9aafc1", border: "#26394b", surface: "#102033", card: "#0c1927", accent: "#4de0c1", accentForeground: "#06211e", soft: "#12283a", danger: "#ffb1a1" },
+  FASHION: { background: "#f5eee7", foreground: "#322c29", muted: "#776b64", border: "#dfd2c5", surface: "#eadfd5", card: "#fffaf5", accent: "#9a554b", accentForeground: "#ffffff", soft: "#f0e5db", danger: "#a5432a" },
+  BEAUTY: { background: "#fff1ee", foreground: "#552e48", muted: "#896879", border: "#efd5dd", surface: "#f9e4e7", card: "#fffaf9", accent: "#b55271", accentForeground: "#ffffff", soft: "#fae8eb", danger: "#a5432a" },
+  DEFAULT: { background: "#f4f3eb", foreground: "#263b31", muted: "#68756e", border: "#d7d9cf", surface: "#e8e9dc", card: "#ffffff", accent: "#263b31", accentForeground: "#ffffff", soft: "#e8eee5", danger: "#a5432a" },
+} as const;
 
 export default function PublicShoppingCartPage({ publicId }: { publicId: string }) {
   const [catalog, setCatalog] = useState<PublicCatalog | null>(null);
@@ -35,6 +43,7 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
       .then(({ catalog: loadedCatalog }) => {
         if (!active) return;
         setCatalog(loadedCatalog);
+        rememberPublicCatalogTemplate(loadedCatalog.publicId, loadedCatalog.template);
         try {
           const storedCart = sessionStorage.getItem(cartStorageKey);
           const parsed: unknown = storedCart ? JSON.parse(storedCart) : {};
@@ -132,88 +141,110 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
   }
 
   if (loading) {
-    return <main className="grid min-h-screen place-items-center bg-[#f4f3eb] px-5 text-sm text-[#526257]">Cargando carrito...</main>;
+    return <PublicRouteLoading kind="cart" />;
   }
 
   if (!catalog) {
     return <main className="grid min-h-screen place-items-center bg-[#f4f3eb] px-5 text-center"><div><h1 className="font-serif text-3xl text-[#263b31]">No pudimos abrir el carrito.</h1><p className="mt-2 text-sm text-[#68756e]">{error}</p></div></main>;
   }
 
+  const normalizedTemplate = catalog.template === "GRID" ? "TECH"
+    : catalog.template === "EDITORIAL" ? "FASHION"
+      : catalog.template === "BOUTIQUE" ? "BEAUTY"
+        : catalog.template;
+  const theme = normalizedTemplate in cartThemes
+    ? cartThemes[normalizedTemplate as keyof typeof cartThemes]
+    : cartThemes.DEFAULT;
+  const themeStyle = {
+    "--cart-bg": theme.background,
+    "--cart-fg": theme.foreground,
+    "--cart-muted": theme.muted,
+    "--cart-border": theme.border,
+    "--cart-surface": theme.surface,
+    "--cart-card": theme.card,
+    "--cart-accent": theme.accent,
+    "--cart-accent-fg": theme.accentForeground,
+    "--cart-soft": theme.soft,
+    "--cart-danger": theme.danger,
+  } as CSSProperties;
+  const controlClass = "mt-1.5 min-h-11 w-full rounded-xl border border-[var(--cart-border)] bg-[var(--cart-bg)] px-3 text-[var(--cart-fg)] outline-none transition placeholder:text-[var(--cart-muted)] focus:border-[var(--cart-accent)] focus:ring-4 focus:ring-[var(--cart-accent)]/10";
+  const areaClass = "mt-1.5 w-full rounded-xl border border-[var(--cart-border)] bg-[var(--cart-bg)] px-3 py-2 text-[var(--cart-fg)] outline-none transition placeholder:text-[var(--cart-muted)] focus:border-[var(--cart-accent)] focus:ring-4 focus:ring-[var(--cart-accent)]/10";
+
   return (
-    <main className="min-h-screen bg-[#f4f3eb] text-[#263b31]">
+    <main data-cart-theme={normalizedTemplate} style={themeStyle} className="min-h-screen bg-[var(--cart-bg)] text-[var(--cart-fg)] transition-colors duration-300">
       <div className="mx-auto max-w-7xl px-5 pb-16 pt-6 sm:px-8 sm:pt-9">
-        <Link href={`/c/${encodeURIComponent(publicId)}`} className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-[#41574b] transition hover:text-[#bd4d36]">
+        <Link href={`/c/${encodeURIComponent(publicId)}`} className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-[var(--cart-muted)] transition hover:text-[var(--cart-accent)]">
           <span aria-hidden="true">←</span> Seguir comprando
         </Link>
-        <header className="mt-4 flex flex-wrap items-end justify-between gap-4 border-y border-[#d7d9cf] py-5 sm:py-7">
-          <div className="flex items-center gap-3">{catalog.logoUrl && <img src={catalog.logoUrl} alt="" className="size-12 rounded-full bg-white object-contain" />}<div><p className="text-xs font-semibold uppercase text-[#ad553b]">Tu selección · {catalog.name}</p><h1 className="mt-2 font-serif text-4xl leading-tight sm:text-5xl">Carrito</h1></div></div>
-          <p className="text-sm text-[#68756e]">{cartCount} {cartCount === 1 ? "unidad" : "unidades"}</p>
+        <header className="mt-4 flex flex-wrap items-end justify-between gap-4 border-y border-[var(--cart-border)] py-5 sm:py-7">
+          <div className="flex items-center gap-3">{catalog.logoUrl && <Image src={catalog.logoUrl} alt="" width={48} height={48} unoptimized className="size-12 rounded-xl bg-[var(--cart-card)] object-contain p-1" />}<div><p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--cart-accent)]">Tu selección · {catalog.name}</p><h1 className="mt-2 font-serif text-4xl leading-tight sm:text-5xl">Carrito</h1></div></div>
+          <p className="rounded-full border border-[var(--cart-border)] bg-[var(--cart-card)] px-3 py-1.5 text-sm text-[var(--cart-muted)]">{cartCount} {cartCount === 1 ? "unidad" : "unidades"}</p>
         </header>
 
         {cartItems.length === 0 && !receipt ? (
-          <section className="py-16 text-center sm:py-24">
-            <p className="text-xs font-semibold uppercase text-[#ad553b]">Todavía está vacío</p>
-            <h2 className="mt-3 font-serif text-3xl text-[#263b31]">Empieza por algo que te guste.</h2>
-            <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#68756e]">Los productos que agregues aparecerán aquí para revisar cantidades y preparar tu pedido.</p>
-            <Link href={`/c/${encodeURIComponent(publicId)}`} className="mt-7 inline-flex min-h-12 items-center justify-center bg-[#263b31] px-6 text-sm font-semibold text-white transition hover:bg-[#192b22]">Explorar catálogo</Link>
+          <section className="mx-auto my-10 max-w-2xl rounded-3xl border border-[var(--cart-border)] bg-[var(--cart-card)] px-6 py-16 text-center shadow-sm sm:my-14 sm:py-20">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--cart-accent)]">Todavía está vacío</p>
+            <h2 className="mt-3 font-serif text-3xl">Empieza por algo que te guste.</h2>
+            <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[var(--cart-muted)]">Los productos que agregues aparecerán aquí para revisar cantidades y preparar tu pedido.</p>
+            <Link href={`/c/${encodeURIComponent(publicId)}`} className="mt-7 inline-flex min-h-12 items-center justify-center rounded-xl bg-[var(--cart-accent)] px-6 text-sm font-semibold text-[var(--cart-accent-fg)] transition hover:brightness-110">Explorar catálogo</Link>
           </section>
         ) : (
           <div className="grid items-start gap-10 pt-7 lg:grid-cols-[minmax(0,1fr)_minmax(340px,0.7fr)] lg:gap-16 lg:pt-10">
             <section aria-labelledby="cart-items-heading">
-              <div className="mb-4 flex items-end justify-between gap-4"><h2 id="cart-items-heading" className="text-lg font-semibold">Productos</h2><span className="text-xs text-[#68756e]">Precio en COP</span></div>
+              <div className="mb-4 flex items-end justify-between gap-4"><h2 id="cart-items-heading" className="text-lg font-semibold">Productos</h2><span className="text-xs text-[var(--cart-muted)]">Precio en COP</span></div>
               {cartItems.length > 0 ? (
-                <ul className="divide-y divide-[#d7d9cf] border-y border-[#d7d9cf]">
+                <ul className="divide-y divide-[var(--cart-border)] overflow-hidden rounded-2xl border border-[var(--cart-border)] bg-[var(--cart-card)] px-4 sm:px-5">
                   {cartItems.map((product) => (
                     <li key={product.id} className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-3 py-4 sm:grid-cols-[6rem_minmax(0,1fr)_auto] sm:gap-5">
-                      <Link href={`/c/${encodeURIComponent(publicId)}/producto/${encodeURIComponent(product.slug)}`} aria-label={`Ver ${product.name}`} className="relative aspect-square overflow-hidden border border-black/5 bg-[#e8e9dc]">
-                        {product.images[0] ? <Image src={product.images[0].url} alt={product.images[0].alt || product.name} fill unoptimized sizes="96px" className="object-cover" /> : <span className="grid h-full place-items-center px-2 text-center font-serif text-xs text-[#45584d]">{product.name}</span>}
+                      <Link href={`/c/${encodeURIComponent(publicId)}/producto/${encodeURIComponent(product.slug)}`} aria-label={`Ver ${product.name}`} className="relative aspect-square overflow-hidden rounded-xl border border-[var(--cart-border)] bg-[var(--cart-surface)]">
+                        {product.images[0] ? <Image src={product.images[0].url} alt={product.images[0].alt || product.name} fill unoptimized sizes="96px" className="object-cover" /> : <span className="grid h-full place-items-center px-2 text-center font-serif text-xs text-[var(--cart-muted)]">{product.name}</span>}
                       </Link>
                       <div className="flex min-w-0 flex-col justify-center">
-                        <p className="text-[10px] font-semibold uppercase text-[#ad553b]">{product.category?.name || "Producto"}</p>
-                        <Link href={`/c/${encodeURIComponent(publicId)}/producto/${encodeURIComponent(product.slug)}`} className="mt-1 truncate text-sm font-semibold text-[#263b31] hover:underline">{product.name}</Link>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--cart-accent)]">{product.category?.name || "Producto"}</p>
+                        <Link href={`/c/${encodeURIComponent(publicId)}/producto/${encodeURIComponent(product.slug)}`} className="mt-1 truncate text-sm font-semibold hover:underline">{product.name}</Link>
                         <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
-                          <p className={`text-xs font-semibold tabular-nums ${product.regularPrice !== null ? "text-[#c62828]" : "text-[#68756e]"}`}>${product.price.toLocaleString("es-CO")} c/u</p>
-                          {product.regularPrice !== null && <p className="text-[10px] tabular-nums text-[#737d77] line-through">${product.regularPrice.toLocaleString("es-CO")}</p>}
+                          <p className={`text-xs font-semibold tabular-nums ${product.regularPrice !== null ? "text-[var(--cart-danger)]" : "text-[var(--cart-muted)]"}`}>${product.price.toLocaleString("es-CO")} c/u</p>
+                          {product.regularPrice !== null && <p className="text-[10px] tabular-nums text-[var(--cart-muted)] line-through">${product.regularPrice.toLocaleString("es-CO")}</p>}
                         </div>
                         <div className="mt-3 flex items-center gap-2">
-                          <button type="button" onClick={() => changeQuantity(product, -1)} aria-label={`Quitar una unidad de ${product.name}`} className="grid size-9 place-items-center border border-[#cbd4cb] bg-white text-lg">−</button>
+                          <button type="button" onClick={() => changeQuantity(product, -1)} aria-label={`Quitar una unidad de ${product.name}`} className="grid size-9 place-items-center rounded-lg border border-[var(--cart-border)] bg-[var(--cart-bg)] text-lg transition hover:border-[var(--cart-accent)]">−</button>
                           <span aria-live="polite" className="w-7 text-center text-sm tabular-nums">{quantities[product.id]}</span>
-                          <button type="button" onClick={() => changeQuantity(product, 1)} aria-label={`Añadir una unidad de ${product.name}`} className="grid size-9 place-items-center border border-[#cbd4cb] bg-white text-lg">+</button>
+                          <button type="button" onClick={() => changeQuantity(product, 1)} aria-label={`Añadir una unidad de ${product.name}`} className="grid size-9 place-items-center rounded-lg border border-[var(--cart-border)] bg-[var(--cart-bg)] text-lg transition hover:border-[var(--cart-accent)]">+</button>
                         </div>
                       </div>
-                      <p className="col-start-2 row-start-2 self-end text-sm font-semibold tabular-nums text-[#263b31] sm:col-start-3 sm:row-start-1 sm:self-center">${(product.price * quantities[product.id]).toLocaleString("es-CO")}</p>
+                      <p className="col-start-2 row-start-2 self-end text-sm font-semibold tabular-nums sm:col-start-3 sm:row-start-1 sm:self-center">${(product.price * quantities[product.id]).toLocaleString("es-CO")}</p>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <div role="status" className="border-y border-[#d7d9cf] py-6">
+                <div role="status" className="rounded-2xl border border-[var(--cart-border)] bg-[var(--cart-card)] p-5">
                   <p className="text-sm font-semibold">Pedido registrado · {receipt?.id.slice(0, 8)}</p>
-                  <p className="mt-2 text-sm text-[#68756e]">Tu lista ya está en camino al vendedor.</p>
-                  {whatsAppUrl && <a href={whatsAppUrl} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex min-h-11 items-center bg-[#263b31] px-5 text-sm font-semibold text-white">Enviar por WhatsApp</a>}
+                  <p className="mt-2 text-sm text-[var(--cart-muted)]">Tu lista ya está en camino al vendedor.</p>
+                  {whatsAppUrl && <a href={whatsAppUrl} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-[var(--cart-accent)] px-5 text-sm font-semibold text-[var(--cart-accent-fg)]">Enviar por WhatsApp</a>}
                 </div>
               )}
             </section>
 
             {cartItems.length > 0 && (
-              <section className="lg:sticky lg:top-20">
-                <div className="border border-[#d7d9cf] bg-white p-5 sm:p-6">
-                  <p className="text-xs font-semibold uppercase text-[#ad553b]">Cierre de compra</p>
+              <section className="lg:sticky lg:top-6">
+                <div className="rounded-2xl border border-[var(--cart-border)] bg-[var(--cart-card)] p-5 shadow-[0_18px_50px_-40px_rgba(0,0,0,0.35)] sm:p-6">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--cart-accent)]">Cierre de compra</p>
                   <h2 className="mt-1 text-xl font-semibold">Datos de entrega</h2>
                   <form onSubmit={submitOrder} className="mt-5 space-y-4">
-                    <label className="block text-sm font-medium text-[#37443d]">Nombre<input required maxLength={100} autoComplete="name" value={customerName} onChange={(event) => setCustomerName(event.target.value)} className="mt-1.5 min-h-11 w-full border border-[#cbd4cb] px-3 outline-none focus:border-[#315c53]" /></label>
-                    <label className="block text-sm font-medium text-[#37443d]">Teléfono<input required type="tel" maxLength={24} autoComplete="tel" value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} className="mt-1.5 min-h-11 w-full border border-[#cbd4cb] px-3 outline-none focus:border-[#315c53]" /></label>
-                    <label className="block text-sm font-medium text-[#37443d]">Correo <span className="font-normal text-[#849087]">(opcional)</span><input type="email" maxLength={254} autoComplete="email" value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} className="mt-1.5 min-h-11 w-full border border-[#cbd4cb] px-3 outline-none focus:border-[#315c53]" /></label>
-                    <label className="block text-sm font-medium text-[#37443d]">Dirección de entrega<textarea required minLength={5} maxLength={300} autoComplete="street-address" rows={3} value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} className="mt-1.5 w-full resize-y border border-[#cbd4cb] px-3 py-2 outline-none focus:border-[#315c53]" /></label>
-                    <label className="block text-sm font-medium text-[#37443d]">Nota <span className="font-normal text-[#849087]">(opcional)</span><textarea maxLength={500} rows={2} value={notes} onChange={(event) => setNotes(event.target.value)} className="mt-1.5 w-full resize-y border border-[#cbd4cb] px-3 py-2 outline-none focus:border-[#315c53]" /></label>
-                    <label className="flex items-start gap-2.5 text-xs leading-5 text-[#68756e]"><input required type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} className="mt-0.5 size-4 accent-[#315c53]" /><span>Autorizo guardar estos datos para gestionar este pedido. Después podré abrir WhatsApp y enviar al vendedor la lista, mi teléfono y mi dirección.</span></label>
+                    <label className="block text-sm font-medium">Nombre<input required maxLength={100} autoComplete="name" value={customerName} onChange={(event) => setCustomerName(event.target.value)} className={controlClass} /></label>
+                    <label className="block text-sm font-medium">Teléfono<input required type="tel" maxLength={24} autoComplete="tel" value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} className={controlClass} /></label>
+                    <label className="block text-sm font-medium">Correo <span className="font-normal text-[var(--cart-muted)]">(opcional)</span><input type="email" maxLength={254} autoComplete="email" value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} className={controlClass} /></label>
+                    <label className="block text-sm font-medium">Dirección de entrega<textarea required minLength={5} maxLength={300} autoComplete="street-address" rows={3} value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} className={areaClass} /></label>
+                    <label className="block text-sm font-medium">Nota <span className="font-normal text-[var(--cart-muted)]">(opcional)</span><textarea maxLength={500} rows={2} value={notes} onChange={(event) => setNotes(event.target.value)} className={areaClass} /></label>
+                    <label className="flex items-start gap-2.5 text-xs leading-5 text-[var(--cart-muted)]"><input required type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} className="mt-0.5 size-4 accent-[var(--cart-accent)]" /><span>Autorizo guardar estos datos para gestionar este pedido. Después podré abrir WhatsApp y enviar al vendedor la lista, mi teléfono y mi dirección.</span></label>
                     {error && <p role="alert" className="bg-[#fff1ec] px-3 py-2 text-sm text-[#a5432a]">{error}</p>}
                     <div className="border-t border-[#e3e7e0] pt-4">
-                      <p className="flex justify-between text-sm text-[#68756e]"><span>Subtotal</span><span className="tabular-nums">${cartTotal.toLocaleString("es-CO")}</span></p>
+                      <p className="flex justify-between text-sm text-[var(--cart-muted)]"><span>Subtotal</span><span className="tabular-nums">${cartTotal.toLocaleString("es-CO")}</span></p>
                       <p className="mt-2 flex justify-between text-base font-semibold"><span>Total</span><span className="tabular-nums">${cartTotal.toLocaleString("es-CO")}</span></p>
                     </div>
-                    <button type="submit" disabled={submitting || !catalog.whatsappPhone} className="min-h-12 w-full bg-[#263b31] px-4 text-sm font-semibold text-white transition hover:bg-[#192b22] disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Preparando pedido..." : "Confirmar pedido"}</button>
-                    {!catalog.whatsappPhone && <p className="text-xs leading-5 text-[#a5432a]">La tienda todavía no configuró WhatsApp para recibir pedidos.</p>}
-                    <p className="text-[11px] leading-5 text-[#849087]">No se solicitan pagos ni datos bancarios. El pedido queda pendiente de confirmación del vendedor.</p>
+                    <button type="submit" disabled={submitting || !catalog.whatsappPhone} className="min-h-12 w-full rounded-xl bg-[var(--cart-accent)] px-4 text-sm font-semibold text-[var(--cart-accent-fg)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Preparando pedido..." : "Confirmar pedido"}</button>
+                    {!catalog.whatsappPhone && <p className="text-xs leading-5 text-[var(--cart-danger)]">La tienda todavía no configuró WhatsApp para recibir pedidos.</p>}
+                    <p className="text-[11px] leading-5 text-[var(--cart-muted)]">No se solicitan pagos ni datos bancarios. El pedido queda pendiente de confirmación del vendedor.</p>
                   </form>
                 </div>
               </section>

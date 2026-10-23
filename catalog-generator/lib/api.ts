@@ -64,6 +64,8 @@ export type Product = {
   name: string;
   slug: string;
   description: string | null;
+  brand: string | null;
+  model: string | null;
   sku: string | null;
   price: number;
   salePrice: number | null;
@@ -113,6 +115,15 @@ export type PublicCatalog = Pick<
   categories: Category[];
   products: PublicProduct[];
 };
+
+export function rememberPublicCatalogTemplate(publicId: string, template: Catalog["template"]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(`catalogo-template-${publicId}`, template);
+  } catch {
+    // The public page still renders normally when storage is unavailable.
+  }
+}
 
 export class ApiError extends Error {
   constructor(

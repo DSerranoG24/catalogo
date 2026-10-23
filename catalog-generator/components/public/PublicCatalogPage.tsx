@@ -1,7 +1,7 @@
 "use client";
 
 import { startTransition, useDeferredValue, useEffect, useState } from "react";
-import { publicApiRequest, PublicCatalog, PublicProduct } from "@/lib/api";
+import { publicApiRequest, PublicCatalog, PublicProduct, rememberPublicCatalogTemplate } from "@/lib/api";
 import EditorialTemplate from "@/components/public/EditorialTemplate";
 import GridTemplate from "@/components/public/GridTemplate";
 import BoutiqueTemplate from "@/components/public/BoutiqueTemplate";
@@ -10,6 +10,7 @@ import FloatingWhatsAppButton from "@/components/public/FloatingWhatsAppButton";
 import TechnologyTemplate from "@/components/public/TechnologyTemplate";
 import FashionTemplate from "@/components/public/FashionTemplate";
 import BeautyTemplate from "@/components/public/BeautyTemplate";
+import PublicRouteLoading from "@/components/public/PublicRouteLoading";
 
 export default function PublicCatalogPage({ publicId }: { publicId: string }) {
   const [catalog, setCatalog] = useState<PublicCatalog | null>(null);
@@ -64,7 +65,10 @@ export default function PublicCatalogPage({ publicId }: { publicId: string }) {
     let active = true;
     publicApiRequest<{ catalog: PublicCatalog }>(`/public/catalogs/${encodeURIComponent(publicId)}`)
       .then((result) => {
-        if (active) setCatalog(result.catalog);
+        if (active) {
+          setCatalog(result.catalog);
+          rememberPublicCatalogTemplate(result.catalog.publicId, result.catalog.template);
+        }
       })
       .catch((requestError) => {
         if (active) setError(requestError instanceof Error ? requestError.message : "No se pudo encontrar este catálogo.");
@@ -93,7 +97,7 @@ export default function PublicCatalogPage({ publicId }: { publicId: string }) {
       if (sortOrder === "name-asc") return left.name.localeCompare(right.name, "es");
       return 0;
     });
-  const pageSize = 12;
+  const pageSize = 20;
   const pageCount = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
   const currentPage = Math.min(page, pageCount);
   const pageProducts = filteredProducts.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -111,7 +115,7 @@ export default function PublicCatalogPage({ publicId }: { publicId: string }) {
   }
 
   if (loading) {
-    return <main className="grid min-h-screen place-items-center bg-[#f2f5ef] px-5 text-sm text-[#68756e]">Cargando catálogo...</main>;
+    return <PublicRouteLoading kind="catalog" />;
   }
 
   if (!catalog) {

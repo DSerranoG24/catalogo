@@ -66,12 +66,12 @@ export default function CatalogCategories({
   }
 
   return (
-    <section className="rounded-lg border border-[#dce4dc] bg-white p-5 sm:p-6">
-      <p className="text-xs font-semibold uppercase text-[#c65c3d]">Organización</p>
-      <h2 className="mt-1 text-lg font-semibold text-[#202b27]">Categorías</h2>
+    <section className="rounded-3xl border border-[#e2e8e0] bg-white p-5 shadow-[0_16px_44px_-38px_rgba(36,63,47,0.35)] sm:p-6">
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#a46d52]">Organización</p>
+      <h2 className="mt-1 text-lg font-semibold tracking-tight text-[#202b27]">Categorías</h2>
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
         {categories.length ? categories.map((category) => (
-          <article key={category.id} className="min-w-0 border border-[#dce4dc] bg-white">
+          <article key={category.id} className="min-w-0 overflow-hidden rounded-xl border border-[#e2e8e0] bg-white">
             <div className="relative aspect-[4/3] overflow-hidden bg-[#edf3ec]">
               {category.imageUrl ? <Image src={category.imageUrl} alt={category.name} fill unoptimized sizes="200px" className="object-cover" /> : <div className="absolute inset-0 grid place-items-center"><ImagePlus aria-hidden="true" size={22} className="text-[#789084]" /></div>}
             </div>

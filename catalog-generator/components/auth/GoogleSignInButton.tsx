@@ -48,7 +48,7 @@ export default function GoogleSignInButton({
 
   if (!clientId) {
     return (
-      <div className="mt-5 rounded-md border border-dashed border-[#d6dfd7] px-4 py-3 text-center text-xs text-[#68756e]">
+      <div className="mt-5 rounded-xl border border-dashed border-[#d6dfd7] bg-[#fafbf9] px-4 py-4 text-center text-xs leading-5 text-[#68756e]">
         Google Sign-In requiere configurar su Client ID.
       </div>
     );

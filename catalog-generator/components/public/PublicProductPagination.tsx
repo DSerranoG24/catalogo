@@ -3,18 +3,20 @@ export default function PublicProductPagination({
   pageCount,
   totalProducts,
   onPageChange,
+  pageSize = 20,
   variant = "default",
 }: {
   page: number;
   pageCount: number;
   totalProducts: number;
   onPageChange: (page: number) => void;
+  pageSize?: number;
   variant?: "default" | "tech" | "fashion" | "beauty";
 }) {
   if (totalProducts === 0) return null;
 
-  const firstProduct = (page - 1) * 12 + 1;
-  const lastProduct = Math.min(page * 12, totalProducts);
+  const firstProduct = (page - 1) * pageSize + 1;
+  const lastProduct = Math.min(page * pageSize, totalProducts);
   const tones = variant === "tech"
     ? { nav: "border-[#26394a]", text: "text-[#a9bccd]", button: "border-[#34495c] bg-[#101e2d] text-[#e5f2ff] hover:bg-[#1b2c3d]" }
     : variant === "fashion"

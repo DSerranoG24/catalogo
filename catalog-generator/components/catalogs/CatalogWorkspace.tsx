@@ -21,9 +21,13 @@ import CatalogCategories from "@/components/catalogs/CatalogCategories";
 import CatalogProductEditor, { ProductFormState } from "@/components/products/CatalogProductEditor";
 import CatalogProductList from "@/components/products/CatalogProductList";
 import { toDateTimeLocalValue } from "@/lib/product-pricing";
+import { ClipboardList, LayoutGrid, MessageSquareText, Settings2, Store } from "lucide-react";
 
 const emptyProduct: ProductFormState = {
   name: "",
+  brand: "",
+  model: "",
+  sku: "",
   price: "",
   saleEnabled: false,
   salePrice: "",
@@ -141,6 +145,9 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
 
     const payload = {
       name: normalizedName,
+      brand: form.brand.trim(),
+      model: form.model.trim(),
+      ...(form.sku.trim() ? { sku: form.sku.trim() } : {}),
       slug,
       price,
       salePrice,
@@ -197,6 +204,9 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
     setEditingProduct(product);
     setForm({
       name: product.name,
+      brand: product.brand ?? "",
+      model: product.model ?? "",
+      sku: product.sku ?? "",
       price: String(product.price),
       saleEnabled: product.salePrice !== null,
       salePrice: product.salePrice === null ? "" : String(product.salePrice),
@@ -222,7 +232,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
   }
 
   if (loading && !catalog) {
-    return <main className="mx-auto w-full max-w-6xl px-5 py-16 text-sm text-[#68756e] sm:px-8">Cargando catálogo...</main>;
+    return <main role="status" aria-label="Cargando catálogo" className="mx-auto w-full max-w-7xl animate-pulse px-5 py-10 sm:px-8 sm:py-12"><div className="h-3 w-36 rounded-full bg-[#dce5dc]" /><div className="mt-7 h-40 rounded-3xl border border-[#e2e8e0] bg-white" /><div className="mt-6 flex gap-2 rounded-2xl border border-[#e2e8e0] bg-white p-2">{[0, 1, 2, 3].map((item) => <div key={item} className="h-10 w-28 rounded-xl bg-[#e8eee5]" />)}</div><div className="mt-8 grid gap-8 lg:grid-cols-2"><div className="h-[34rem] rounded-3xl border border-[#e2e8e0] bg-white" /><div className="h-[34rem] rounded-3xl border border-[#e2e8e0] bg-white" /></div></main>;
   }
 
   if (!catalog) {
@@ -235,28 +245,27 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
   }
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-12">
-      <Link href="/" className="text-sm font-medium text-[#17665c] hover:text-[#10554c]">← Catálogos</Link>
-      <div className="mt-5 flex flex-col justify-between gap-4 border-b border-[#dce4dc] pb-6 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-xs font-semibold uppercase text-[#c65c3d]">/{catalog.slug}</p>
-          <h1 className="mt-2 text-3xl font-semibold text-[#202b27]">{catalog.name}</h1>
-          {catalog.description && <p className="mt-2 max-w-2xl text-sm leading-6 text-[#68756e]">{catalog.description}</p>}
+    <main className="mx-auto w-full max-w-7xl px-5 py-8 sm:px-8 sm:py-12">
+      <div className="mb-6 flex items-center gap-2 text-xs font-medium text-[#7b8780]"><Link href="/" className="transition hover:text-[#315e4f]">Catálogos</Link><span className="text-[#c2cbc3]">/</span><span className="max-w-48 truncate text-[#35473d]">{catalog.name}</span></div>
+      <section className="relative overflow-hidden rounded-3xl border border-[#e2e8e0] bg-white p-6 shadow-[0_18px_54px_-44px_rgba(36,63,47,0.45)] sm:p-8">
+        <div className="pointer-events-none absolute -right-16 -top-24 size-64 rounded-full border border-[#eaf0e8]" /><div className="pointer-events-none absolute -right-3 -top-12 size-40 rounded-full border border-[#eaf0e8]" />
+        <div className="relative flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+          <div className="min-w-0"><p className="inline-flex items-center gap-2 rounded-full bg-[#edf4ed] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#52725e]"><Store className="size-3.5" aria-hidden="true" /> Panel de tienda <span className="text-[#a5b5a7]">·</span> /{catalog.slug}</p><h1 className="mt-3 truncate text-3xl font-semibold tracking-tight text-[#202b27] sm:text-4xl">{catalog.name}</h1>{catalog.description && <p className="mt-2 max-w-2xl text-sm leading-6 text-[#68756e]">{catalog.description}</p>}</div>
+          <div className="flex items-center gap-3 self-start rounded-2xl border border-[#edf1ec] bg-[#fafbf9] px-4 py-3 sm:self-auto"><span className="grid size-9 place-items-center rounded-xl bg-white text-[#557a62]"><LayoutGrid className="size-4" aria-hidden="true" /></span><div><p className="text-lg font-semibold leading-none text-[#263b31]">{products.length}</p><p className="mt-1 text-[10px] uppercase tracking-[0.1em] text-[#849087]">{products.length === 1 ? "producto" : "productos"}</p></div></div>
         </div>
-        <div className="text-sm text-[#68756e]">{products.length} {products.length === 1 ? "producto" : "productos"}</div>
-      </div>
+      </section>
 
       {error && <p role="alert" className="mt-6 rounded-md border border-[#f0c8b9] bg-[#fff4ef] px-4 py-3 text-sm text-[#a5432a]">{error}</p>}
 
-      <nav aria-label="Secciones del catálogo" className="mt-6 flex gap-1 border-b border-[#dce4dc]">
+      <nav aria-label="Secciones del catálogo" className="mt-6 flex gap-1 overflow-x-auto rounded-2xl border border-[#e2e8e0] bg-white/75 p-1.5 shadow-sm">
         {([
-          ["products", "Productos"],
-          ["orders", "Órdenes"],
-          ["reviews", "Reseñas"],
-          ["settings", "Enlace y diseño"],
-        ] as const).map(([tab, label]) => (
-          <button key={tab} type="button" onClick={() => setActiveTab(tab)} aria-current={activeTab === tab ? "page" : undefined} className={`border-b-2 px-4 py-3 text-sm font-semibold transition ${activeTab === tab ? "border-[#17665c] text-[#17665c]" : "border-transparent text-[#68756e] hover:text-[#202b27]"}`}>
-            {label}
+          ["products", "Productos", LayoutGrid],
+          ["orders", "Órdenes", ClipboardList],
+          ["reviews", "Reseñas", MessageSquareText],
+          ["settings", "Tienda y diseño", Settings2],
+        ] as const).map(([tab, label, Icon]) => (
+          <button key={tab} type="button" onClick={() => setActiveTab(tab)} aria-current={activeTab === tab ? "page" : undefined} className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-xs font-semibold transition sm:px-4 sm:text-sm ${activeTab === tab ? "bg-[#245c4c] text-white shadow-sm" : "text-[#68756e] hover:bg-[#f0f4ee] hover:text-[#202b27]"}`}>
+            <Icon className="size-4" aria-hidden="true" /> {label}
           </button>
         ))}
       </nav>
@@ -266,6 +275,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
           <CatalogProductEditor
             value={form}
             categories={categories}
+            products={products}
             editing={Boolean(editingProduct)}
             imageFile={imageFile}
             saving={savingProduct}

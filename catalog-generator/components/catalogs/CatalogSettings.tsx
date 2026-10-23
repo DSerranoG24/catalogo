@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useRef, useState } from "react";
+import Image from "next/image";
 import { apiRequest, Catalog } from "@/lib/api";
 
 type Template = Catalog["template"];
@@ -72,7 +73,7 @@ export default function CatalogSettings({
   const publicUrl = typeof window === "undefined"
     ? ""
     : `${window.location.origin}/c/${catalog.publicId}`;
-  const inputClass = "mt-2 w-full rounded-md border border-[#d6dfd7] px-3.5 py-3 outline-none focus:border-[#17665c] focus:ring-2 focus:ring-[#17665c]/15";
+  const inputClass = "mt-2 min-h-11 w-full rounded-xl border border-[#d6dfd7] bg-[#fcfdfb] px-3.5 py-3 outline-none transition focus:border-[#5a886c] focus:bg-white focus:ring-4 focus:ring-[#5a886c]/10";
 
   function updateProfileField(field: keyof typeof profile, value: string) {
     setProfile((current) => ({ ...current, [field]: value }));
@@ -162,7 +163,7 @@ export default function CatalogSettings({
 
   return (
     <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.72fr)]">
-      <form onSubmit={saveSettings} className="space-y-7 rounded-lg border border-[#dce4dc] bg-white p-5 sm:p-7">
+      <form onSubmit={saveSettings} className="space-y-7 rounded-3xl border border-[#e2e8e0] bg-white p-5 shadow-[0_18px_54px_-44px_rgba(36,63,47,0.4)] sm:p-7">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#c65c3d]">Diseño de tu tienda</p>
           <h2 className="mt-1 text-xl font-semibold text-[#202b27]">Elige cómo verán tu catálogo</h2>
@@ -177,13 +178,13 @@ export default function CatalogSettings({
               role="radio"
               aria-checked={template === item.id}
               onClick={() => setTemplate(item.id)}
-              className={`group w-full rounded-xl border p-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#17665c] focus-visible:ring-offset-2 ${template === item.id ? "border-[#17665c] bg-[#f3f7f2] ring-1 ring-[#17665c]" : "border-[#e0e7df] hover:border-[#a8bcae]"}`}
+              className={`group w-full rounded-2xl border p-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#17665c] focus-visible:ring-offset-2 ${template === item.id ? "border-[#17665c] bg-[#f3f7f2] ring-1 ring-[#17665c]" : "border-[#e0e7df] bg-white hover:border-[#a8bcae] hover:bg-[#fafbf9]"}`}
             >
               <TemplatePreview template={item.id} colors={item.colors} />
               <span className="flex items-start justify-between gap-2 px-1 pb-1 pt-3">
                 <span className="min-w-0">
-                <span className={`block text-sm font-semibold ${item.id === "TECH" ? "text-white" : "text-[#202b27]"}`}>{item.name}</span>
-                <span className={`mt-0.5 block text-xs leading-5 ${item.id === "TECH" ? "text-[#a9bccd]" : "text-[#68756e]"}`}>{item.description}</span>
+                <span className="block text-sm font-semibold text-[#202b27]">{item.name}</span>
+                <span className="mt-0.5 block text-xs leading-5 text-[#68756e]">{item.description}</span>
                 <span className="mt-2 inline-flex rounded-full px-2 py-1 text-[8px] font-bold tracking-[0.1em]" style={{ backgroundColor: `${item.colors[1]}20`, color: item.id === "TECH" ? "#176d61" : item.colors[1] }}>{item.category}</span>
                 </span>
               <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-full border ${template === item.id ? "border-[#17665c] bg-[#17665c] text-white" : "border-[#b7c2b8] text-transparent"}`}>
@@ -194,17 +195,17 @@ export default function CatalogSettings({
           ))}
         </div>
 
-        {publicUrl && <a href={publicUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-md border border-[#d6dfd7] px-3.5 text-sm font-semibold text-[#17665c] transition hover:bg-[#f4f7f2]">Ver catálogo público <span aria-hidden="true">↗</span></a>}
+        {publicUrl && <a href={publicUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#d6dfd7] px-4 text-sm font-semibold text-[#315e4f] transition hover:bg-[#f4f7f2]">Ver catálogo público <span aria-hidden="true">↗</span></a>}
 
         <section className="space-y-4 border-t border-[#e2e8e1] pt-6">
           <div>
             <h3 className="text-sm font-semibold text-[#202b27]">Información del negocio</h3>
             <p className="mt-1 text-xs text-[#68756e]">Los campos vacíos no aparecerán en el catálogo público.</p>
           </div>
-          <div className="rounded-lg border border-[#e2e8e1] bg-[#fafbf9] p-4">
+          <div className="rounded-2xl border border-[#e2e8e1] bg-[#fafbf9] p-4">
             <div className="flex flex-wrap items-center gap-4">
               <div className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-lg border border-[#d6dfd7] bg-white">
-                {logoUrl ? <img src={logoUrl} alt="Logo del negocio" className="size-full object-contain" /> : <span className="text-xs font-semibold text-[#849087]">Logo</span>}
+                {logoUrl ? <Image src={logoUrl} alt="Logo del negocio" width={64} height={64} unoptimized className="size-full object-contain" /> : <span className="text-xs font-semibold text-[#849087]">Logo</span>}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-[#202b27]">Logo de la empresa</p>
@@ -212,7 +213,7 @@ export default function CatalogSettings({
               </div>
               <div className="flex gap-2">
                 <input ref={logoInput} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => void uploadLogo(event.target.files?.[0])} />
-                <button type="button" disabled={logoBusy} onClick={() => logoInput.current?.click()} className="min-h-10 rounded-md border border-[#cbd7ce] px-3 text-xs font-semibold text-[#17665c] hover:bg-white disabled:opacity-60">{logoBusy ? "Subiendo..." : logoUrl ? "Cambiar logo" : "Subir logo"}</button>
+                <button type="button" disabled={logoBusy} onClick={() => logoInput.current?.click()} className="min-h-10 rounded-xl border border-[#cbd7ce] px-3 text-xs font-semibold text-[#315e4f] transition hover:bg-white disabled:opacity-60">{logoBusy ? "Subiendo..." : logoUrl ? "Cambiar logo" : "Subir logo"}</button>
                 {logoUrl && <button type="button" disabled={logoBusy} onClick={() => void removeLogo()} className="min-h-10 rounded-md px-2 text-xs font-semibold text-[#a5432a] hover:bg-white disabled:opacity-60">Quitar</button>}
               </div>
             </div>
@@ -278,12 +279,12 @@ export default function CatalogSettings({
         </button>
       </form>
 
-      <aside className="rounded-xl border border-[#dce4dc] bg-[#e8eee5] p-5 sm:sticky sm:top-6 sm:p-6">
+      <aside className="rounded-3xl border border-[#dce4dc] bg-[#e8eee5] p-5 sm:sticky sm:top-6 sm:p-6">
         <p className="text-xs font-semibold uppercase text-[#c65c3d]">Enlace personal</p>
         <h2 className="mt-1 text-lg font-semibold text-[#202b27]">Listo para compartir</h2>
         <p className="mt-2 text-sm leading-6 text-[#68756e]">Cualquier persona con este enlace puede ver los productos activos y preparar una orden.</p>
-        <div className="mt-5 break-all rounded-md border border-[#d4ded2] bg-white px-3 py-3 text-xs text-[#435047]">{publicUrl}</div>
-        <button type="button" onClick={() => void copyLink()} className="mt-3 w-full rounded-md bg-[#202b27] px-4 py-3 text-sm font-semibold text-white hover:bg-[#34423a]">Copiar enlace</button>
+        <div className="mt-5 break-all rounded-xl border border-[#d4ded2] bg-white px-3 py-3 text-xs text-[#435047]">{publicUrl}</div>
+        <button type="button" onClick={() => void copyLink()} className="mt-3 min-h-11 w-full rounded-xl bg-[#245c4c] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#173f36]">Copiar enlace</button>
         <p className="mt-3 text-xs leading-5 text-[#68756e]">El identificador público es aleatorio. No incluye correo ni datos privados del vendedor.</p>
       </aside>
     </div>

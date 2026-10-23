@@ -65,27 +65,27 @@ export default function OrdersPanel({ catalogId }: { catalogId: string }) {
     }
   }
 
-  if (loading) return <p className="py-8 text-sm text-[#68756e]">Cargando órdenes...</p>;
+  if (loading) return <div aria-label="Cargando órdenes" className="mt-5 grid gap-3 animate-pulse">{[0, 1].map((item) => <div key={item} className="rounded-2xl border border-[#e2e8e0] bg-white p-5"><div className="h-4 w-40 rounded-full bg-[#e8eee5]" /><div className="mt-3 h-3 w-28 rounded-full bg-[#edf1ec]" /><div className="mt-6 h-16 rounded-xl bg-[#f2f5f0]" /></div>)}</div>;
 
   return (
     <section>
-      <div className="flex items-end justify-between border-b border-[#dce4dc] pb-3">
+      <div className="flex items-end justify-between rounded-3xl border border-[#e2e8e0] bg-white p-5 shadow-[0_16px_44px_-38px_rgba(36,63,47,0.35)] sm:p-6">
         <div>
-          <p className="text-xs font-semibold uppercase text-[#c65c3d]">Solicitudes de clientes</p>
-          <h2 className="mt-1 text-lg font-semibold text-[#202b27]">Órdenes recibidas</h2>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#a46d52]">Solicitudes de clientes</p>
+          <h2 className="mt-1 text-lg font-semibold tracking-tight text-[#202b27]">Órdenes recibidas</h2>
         </div>
-        <button type="button" onClick={() => { setLoading(true); setReloadKey((key) => key + 1); }} className="text-xs font-semibold text-[#17665c] hover:underline">Actualizar</button>
+        <button type="button" onClick={() => { setLoading(true); setReloadKey((key) => key + 1); }} className="min-h-10 rounded-xl border border-[#dce7dc] px-3.5 text-xs font-semibold text-[#315e4f] transition hover:bg-[#f1f5ef]">Actualizar</button>
       </div>
       {error && <p role="alert" className="mt-4 rounded-md bg-[#fff1ec] px-4 py-3 text-sm text-[#a5432a]">{error}</p>}
       {orders.length === 0 ? (
-        <div className="mt-5 rounded-lg border border-dashed border-[#cbd7cc] bg-white/70 px-5 py-12 text-center">
+        <div className="mt-4 rounded-3xl border border-dashed border-[#cbd7cc] bg-white/70 px-5 py-14 text-center">
           <h3 className="font-semibold text-[#202b27]">Aún no hay órdenes</h3>
           <p className="mt-1 text-sm text-[#68756e]">Las solicitudes enviadas desde tu catálogo aparecerán aquí.</p>
         </div>
       ) : (
         <div className="mt-4 space-y-3">
           {orders.map((order) => (
-            <article key={order.id} className="rounded-lg border border-[#dce4dc] bg-white p-4 sm:p-5">
+            <article key={order.id} className="rounded-2xl border border-[#e2e8e0] bg-white p-4 shadow-[0_14px_36px_-34px_rgba(36,63,47,0.5)] sm:p-5">
               <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">

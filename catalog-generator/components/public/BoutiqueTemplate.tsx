@@ -25,7 +25,7 @@ export default function BoutiqueTemplate({ catalog, products, totalProducts, sea
           <div><p className="text-[10px] font-bold uppercase text-[#bd4d36]">El inventario</p><h2 className="mt-1 font-serif text-2xl">Elegidos para ti</h2></div>
         </div>
         <PublicProductToolbar searchQuery={searchQuery} sortOrder={sortOrder} totalProducts={totalProducts} onSearchChange={onSearchChange} onSortChange={onSortChange} />
-        {products.length === 0 ? <p className="border-b border-[#e4d5c4] py-16 text-center text-sm text-[#766258]">{searchQuery ? `No encontramos productos para “${searchQuery}”. Prueba otra búsqueda.` : "La colección se está preparando."}</p> : <div className="grid gap-4 pt-4 sm:grid-cols-2">{products.map((product) => <PublicProductCard key={product.id} catalogPublicId={catalog.publicId} product={product} quantity={quantities[product.id] ?? 0} layout="boutique" onAdd={onAdd} />)}</div>}
+        {products.length === 0 ? <p className="border-b border-[#e4d5c4] py-16 text-center text-sm text-[#766258]">{searchQuery ? `No encontramos productos para “${searchQuery}”. Prueba otra búsqueda.` : "La colección se está preparando."}</p> : <div className="grid grid-cols-2 gap-3 pt-4 sm:gap-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">{products.map((product) => <PublicProductCard key={product.id} catalogPublicId={catalog.publicId} product={product} quantity={quantities[product.id] ?? 0} layout="boutique" onAdd={onAdd} />)}</div>}
         <PublicProductPagination page={page} pageCount={pageCount} totalProducts={totalProducts} onPageChange={onPageChange} />
       </section>
       <PublicCatalogContact catalog={catalog} />

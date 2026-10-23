@@ -34,7 +34,7 @@ export default function EditorialTemplate({ catalog, products, totalProducts, se
           <div><p className="text-[10px] font-semibold uppercase text-[#ad553b]">La colección</p><h2 className="mt-1 font-serif text-2xl">Piezas para descubrir</h2></div>
         </div>
         <PublicProductToolbar searchQuery={searchQuery} sortOrder={sortOrder} totalProducts={totalProducts} onSearchChange={onSearchChange} onSortChange={onSortChange} />
-        {products.length === 0 ? <p className="border-b border-[#d6d8ca] py-16 text-center text-sm text-[#68756e]">{searchQuery ? `No encontramos productos para “${searchQuery}”. Prueba otra búsqueda.` : "Pronto habrá novedades en esta colección."}</p> : <div className="grid gap-5 pt-5 sm:grid-cols-2 lg:grid-cols-3">{products.map((product, index) => <PublicProductCard key={product.id} catalogPublicId={catalog.publicId} product={product} quantity={quantities[product.id] ?? 0} layout="editorial" featured={index === 0 && products.length > 2} onAdd={onAdd} />)}</div>}
+        {products.length === 0 ? <p className="border-b border-[#d6d8ca] py-16 text-center text-sm text-[#68756e]">{searchQuery ? `No encontramos productos para “${searchQuery}”. Prueba otra búsqueda.` : "Pronto habrá novedades en esta colección."}</p> : <div className="grid grid-cols-2 gap-3 pt-5 sm:gap-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">{products.map((product) => <PublicProductCard key={product.id} catalogPublicId={catalog.publicId} product={product} quantity={quantities[product.id] ?? 0} layout="editorial" onAdd={onAdd} />)}</div>}
         <PublicProductPagination page={page} pageCount={pageCount} totalProducts={totalProducts} onPageChange={onPageChange} />
       </section>
       <PublicCatalogContact catalog={catalog} />

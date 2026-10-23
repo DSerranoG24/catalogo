@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { apiRequest, saveSession, Session } from "@/lib/api";
 import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
+import { ArrowRight, Check, LockKeyhole, Sparkles, Store } from "lucide-react";
 
 type AuthMode = "login" | "register";
 
@@ -68,22 +69,24 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-5 py-12">
-      <div className="w-full max-w-md">
-        <Link href="/" className="mb-10 inline-flex items-center gap-3">
-          <span className="grid size-11 place-items-center rounded-lg bg-[#17665c] text-lg font-bold text-white">
-            C
-          </span>
-          <span className="text-lg font-semibold text-[#202b27]">
-            Catalogo
-          </span>
-        </Link>
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-8 sm:px-8 sm:py-12">
+      <div className="pointer-events-none absolute -left-28 top-20 size-72 rounded-full border border-[#dce7dc]" /><div className="pointer-events-none absolute -bottom-40 right-0 size-[28rem] rounded-full border border-[#dce7dc]" />
+      <div className="relative w-full max-w-5xl overflow-hidden rounded-[2rem] border border-[#e3e9e1] bg-white shadow-[0_35px_100px_-55px_rgba(25,57,42,0.45)] lg:grid lg:grid-cols-[0.9fr_1.1fr]">
+        <aside className="relative hidden min-h-[650px] flex-col justify-between overflow-hidden bg-[#173f36] p-10 text-white lg:flex xl:p-12">
+          <div className="pointer-events-none absolute -right-32 top-12 size-96 rounded-full border border-white/10" /><div className="pointer-events-none absolute -right-16 top-28 size-64 rounded-full border border-white/10" /><div className="pointer-events-none absolute bottom-24 left-16 size-36 rounded-full bg-[#b8dec8]/10 blur-2xl" />
+          <Link href="/" className="relative inline-flex items-center gap-3"><span className="grid size-11 place-items-center rounded-2xl bg-[#c3e5d4] text-[#173f36]"><Store className="size-5" aria-hidden="true" /></span><span className="text-lg font-semibold tracking-tight">Catalogo</span></Link>
+          <div className="relative"><span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[#c3e5d4]"><Sparkles className="size-3.5" /> Tu negocio, en línea</span><h2 className="mt-5 max-w-sm text-4xl font-semibold leading-tight tracking-tight xl:text-5xl">Una tienda digital que se siente <span className="font-serif font-normal italic text-[#b8dec8]">tuya.</span></h2><p className="mt-4 max-w-sm text-sm leading-6 text-white/70">Organiza tus productos, personaliza tu catálogo y compártelo con tus clientes.</p>
+            <div className="mt-8 space-y-3"><p className="flex items-center gap-2.5 text-sm text-white/85"><Check className="size-4 text-[#b8dec8]" /> Diseños para cada tipo de negocio</p><p className="flex items-center gap-2.5 text-sm text-white/85"><Check className="size-4 text-[#b8dec8]" /> Pedidos organizados en un solo lugar</p><p className="flex items-center gap-2.5 text-sm text-white/85"><Check className="size-4 text-[#b8dec8]" /> Comparte tu enlace cuando quieras</p></div>
+          </div>
+          <p className="relative text-xs text-white/45">Tu espacio de trabajo, siempre disponible.</p>
+        </aside>
 
-        <section className="rounded-lg border border-[#dce4dc] bg-white p-7 shadow-[0_18px_60px_-38px_rgba(31,55,44,0.42)] sm:p-9">
-          <p className="text-xs font-semibold uppercase text-[#c65c3d]">
+        <section className="p-6 sm:p-10 lg:px-12 lg:py-12">
+          <Link href="/" className="mb-8 inline-flex items-center gap-2 text-sm font-semibold text-[#315e4f] lg:hidden"><span className="grid size-9 place-items-center rounded-xl bg-[#eaf2e9]"><Store className="size-4" /></span>Catalogo</Link>
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#a46d52]">
             Tu espacio de trabajo
           </p>
-          <h1 className="mt-3 text-3xl font-semibold text-[#202b27]">
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#202b27] sm:text-4xl">
             {mode === "login" ? "Qué bueno verte." : "Crea tu cuenta."}
           </h1>
           <p className="mt-2 text-sm leading-6 text-[#68756e]">
@@ -92,7 +95,7 @@ export default function LoginPage() {
               : "Un espacio para organizar tus productos y compartirlos."}
           </p>
 
-          <div className="mt-7 grid grid-cols-2 rounded-lg bg-[#f0f4ef] p-1">
+          <div className="mt-7 grid grid-cols-2 rounded-xl bg-[#f0f4ef] p-1">
             {(["login", "register"] as const).map((authMode) => (
               <button
                 key={authMode}
@@ -101,7 +104,7 @@ export default function LoginPage() {
                   setMode(authMode);
                   setError("");
                 }}
-                className={`rounded-md px-3 py-2.5 text-sm font-medium transition ${
+                className={`min-h-10 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${
                   mode === authMode
                     ? "bg-white text-[#202b27] shadow-sm"
                     : "text-[#68756e] hover:text-[#202b27]"
@@ -120,7 +123,7 @@ export default function LoginPage() {
                   autoComplete="name"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
-                  className="mt-2 w-full rounded-md border border-[#d6dfd7] bg-white px-3.5 py-3 text-[#202b27] outline-none transition placeholder:text-[#a2aca5] focus:border-[#17665c] focus:ring-2 focus:ring-[#17665c]/15"
+                  className="mt-2 min-h-12 w-full rounded-xl border border-[#d9e2d9] bg-[#fcfdfb] px-4 py-3 text-[#202b27] outline-none transition placeholder:text-[#a2aca5] focus:border-[#5a886c] focus:bg-white focus:ring-4 focus:ring-[#5a886c]/10"
                   placeholder="Tu nombre"
                 />
               </label>
@@ -134,7 +137,7 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                className="mt-2 w-full rounded-md border border-[#d6dfd7] bg-white px-3.5 py-3 text-[#202b27] outline-none transition placeholder:text-[#a2aca5] focus:border-[#17665c] focus:ring-2 focus:ring-[#17665c]/15"
+                className="mt-2 min-h-12 w-full rounded-xl border border-[#d9e2d9] bg-[#fcfdfb] px-4 py-3 text-[#202b27] outline-none transition placeholder:text-[#a2aca5] focus:border-[#5a886c] focus:bg-white focus:ring-4 focus:ring-[#5a886c]/10"
                 placeholder="nombre@tienda.com"
               />
             </label>
@@ -148,7 +151,7 @@ export default function LoginPage() {
                 required
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                className="mt-2 w-full rounded-md border border-[#d6dfd7] bg-white px-3.5 py-3 text-[#202b27] outline-none transition placeholder:text-[#a2aca5] focus:border-[#17665c] focus:ring-2 focus:ring-[#17665c]/15"
+                className="mt-2 min-h-12 w-full rounded-xl border border-[#d9e2d9] bg-[#fcfdfb] px-4 py-3 text-[#202b27] outline-none transition placeholder:text-[#a2aca5] focus:border-[#5a886c] focus:bg-white focus:ring-4 focus:ring-[#5a886c]/10"
                 placeholder={mode === "register" ? "Al menos 8 caracteres" : "Tu contraseña"}
               />
             </label>
@@ -162,13 +165,13 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={busy}
-              className="w-full rounded-md bg-[#17665c] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#10554c] disabled:cursor-wait disabled:opacity-60"
+              className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#245c4c] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#173f36] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#5a886c]/20 disabled:cursor-wait disabled:opacity-60"
             >
               {busy
                 ? "Un momento..."
                 : mode === "login"
                   ? "Entrar al panel"
-                  : "Crear cuenta"}
+                  : "Crear cuenta"} {!busy && <ArrowRight className="size-4" aria-hidden="true" />}
             </button>
           </form>
 
@@ -176,7 +179,8 @@ export default function LoginPage() {
             <GoogleSignInButton onCredential={signInWithGoogle} />
           </div>
 
-          <p className="mt-6 text-center text-xs leading-5 text-[#849087]">
+          <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-xs leading-5 text-[#849087]">
+            <LockKeyhole className="size-3.5 shrink-0" aria-hidden="true" />
             La sesión queda protegida en una cookie segura de este sitio.
           </p>
         </section>
