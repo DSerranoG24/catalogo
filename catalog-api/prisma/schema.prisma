@@ -20,15 +20,6 @@ enum ReviewStatus {
   REJECTED
 }
 
-enum CatalogTemplate {
-  EDITORIAL
-  GRID
-  BOUTIQUE
-  TECH
-  FASHION
-  BEAUTY
-}
-
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -61,7 +52,7 @@ model Catalog {
   tiktokUrl     String?
   email         String?
   mapUrl        String?
-  template      CatalogTemplate @default(EDITORIAL)
+  template      String          @default("EDITORIAL")
   active        Boolean         @default(true)
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt

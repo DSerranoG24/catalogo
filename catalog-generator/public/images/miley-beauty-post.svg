@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080" role="img" aria-labelledby="title desc">
+  <title id="title">Miley Beauty — La magia ocurre cuando amas lo que haces</title>
+  <desc id="desc">Diseño promocional de productos de belleza en tonos rosa, fucsia y vino, con un frasco ilustrado y datos de contacto.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff8f7"/><stop offset="1" stop-color="#f8dce7"/></linearGradient>
+    <linearGradient id="rose" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ed4f91"/><stop offset="1" stop-color="#a91d5a"/></linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#fff" stop-opacity=".8"/><stop offset=".48" stop-color="#f4a2c3" stop-opacity=".68"/><stop offset="1" stop-color="#fff" stop-opacity=".5"/></linearGradient>
+    <filter id="shadow" x="-.3" y="-.3" width="1.7" height="1.8"><feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#6f1a42" flood-opacity=".18"/></filter>
+    <pattern id="grain" width="48" height="48" patternUnits="userSpaceOnUse"><circle cx="4" cy="8" r="1" fill="#a33360" opacity=".12"/><circle cx="30" cy="36" r="1" fill="#a33360" opacity=".1"/></pattern>
+  </defs>
+  <rect width="1080" height="1080" rx="56" fill="url(#bg)"/>
+  <rect width="1080" height="1080" rx="56" fill="url(#grain)"/>
+  <circle cx="910" cy="166" r="195" fill="#f2b5ca" opacity=".34"/><circle cx="885" cy="170" r="150" fill="none" stroke="#c63f78" stroke-opacity=".17" stroke-width="2"/>
+  <path d="M0 850C215 730 337 839 515 805s367-105 565-19v294H0Z" fill="#f3c8d7" opacity=".5"/>
+  <g fill="none" stroke="#c33973" stroke-width="3" opacity=".38"><path d="M83 130c26-34 69-35 96-2-30 37-70 38-96 2Z"/><path d="M131 90c0 40-15 65-48 83M131 90c4 42 22 66 48 82"/><path d="M910 520c26-34 69-35 96-2-30 37-70 38-96 2Z"/><path d="M958 480c0 40-15 65-48 83M958 480c4 42 22 66 48 82"/></g>
+  <g transform="translate(92 82)">
+    <circle cx="29" cy="29" r="28" fill="#a91d5a"/><path d="M29 10c-10 12-14 18-14 25a14 14 0 0 0 28 0c0-7-4-13-14-25Z" fill="#fff5f8"/>
+    <text x="75" y="27" fill="#4a1830" font-family="Georgia,serif" font-size="22" letter-spacing="5">BELLEZA CON ESENCIA</text>
+    <text x="75" y="56" fill="#9d5470" font-family="Arial,sans-serif" font-size="13" letter-spacing="4">CUIDADO · COLOR · CONFIANZA</text>
+  </g>
+  <g transform="translate(92 292)">
+    <text x="0" y="0" fill="#44172d" font-family="Georgia,serif" font-size="112" font-weight="700" letter-spacing="-5">MILEY</text>
+    <text x="0" y="116" fill="#c12868" font-family="Georgia,serif" font-size="112" font-weight="700" letter-spacing="-5">BEAUTY</text>
+    <path d="M5 147h390" stroke="#d65186" stroke-width="3"/>
+    <text x="4" y="201" fill="#4a1830" font-family="Arial,sans-serif" font-size="26" font-weight="700" letter-spacing="3">PRODUCTOS DE BELLEZA</text>
+    <text x="4" y="257" fill="#713550" font-family="Georgia,serif" font-size="28" font-style="italic">La magia ocurre cuando</text>
+    <text x="4" y="296" fill="#713550" font-family="Georgia,serif" font-size="28" font-style="italic">amas lo que haces.</text>
+    <text x="4" y="365" fill="#a91d5a" font-family="Arial,sans-serif" font-size="15" font-weight="700" letter-spacing="3">TU RITUAL, TU MOMENTO</text>
+  </g>
+  <g transform="translate(690 255)" filter="url(#shadow)">
+    <ellipse cx="163" cy="451" rx="158" ry="24" fill="#9a3a61" opacity=".17"/>
+    <path d="M119 37h88v44h-88z" rx="8" fill="#6d2444"/><path d="M133 0h60v39h-60z" rx="8" fill="#42172e"/><path d="M145 8h36v6h-36z" fill="#f1aec7" opacity=".65"/>
+    <rect x="50" y="78" width="226" height="354" rx="48" fill="url(#glass)" stroke="#fff" stroke-width="8"/>
+    <path d="M64 201h198v157a34 34 0 0 1-34 34H98a34 34 0 0 1-34-34Z" fill="url(#rose)" opacity=".95"/>
+    <path d="M71 119q16-25 27 0v276" fill="none" stroke="#fff" stroke-opacity=".8" stroke-width="10" stroke-linecap="round"/>
+    <rect x="79" y="233" width="168" height="104" rx="10" fill="#fff5f8" opacity=".96"/>
+    <text x="163" y="274" text-anchor="middle" fill="#7e214a" font-family="Georgia,serif" font-size="24" font-weight="700" letter-spacing="2">MILEY</text>
+    <text x="163" y="303" text-anchor="middle" fill="#b82b68" font-family="Arial,sans-serif" font-size="16" letter-spacing="4">BEAUTY</text>
+    <path d="M134 317h58" stroke="#db779c" stroke-width="2"/>
+    <path d="M312 142c0-20 15-35 35-35 20 0 35 15 35 35 0 31-35 69-35 69s-35-38-35-69Z" fill="#f3a7c1" opacity=".8"/><circle cx="347" cy="142" r="11" fill="#fff5f8"/>
+    <path d="M26 253c-27-7-40-31-25-54 17 10 25 27 25 54Zm282 97c26-5 42-28 29-52-18 9-28 25-29 52Z" fill="#b98770"/><path d="M25 253c-5-22-1-43 13-61M308 350c7-21 5-41-8-60" fill="none" stroke="#71834b" stroke-width="4"/>
+  </g>
+  <rect x="66" y="827" width="948" height="184" rx="28" fill="#45182f"/>
+  <text x="105" y="882" fill="#f5bbd0" font-family="Arial,sans-serif" font-size="16" font-weight="700" letter-spacing="3">ENCUÉNTRANOS</text>
+  <path d="M105 903h870" stroke="#a95375" stroke-width="1"/>
+  <circle cx="120" cy="946" r="17" fill="#28b96a"/><path d="M112 947q8 11 16 0m-13-7q-5 9 0 15" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+  <text x="151" y="955" fill="#fff8fa" font-family="Arial,sans-serif" font-size="24" font-weight="700">324 354 0832</text>
+  <text x="480" y="955" fill="#f5bbd0" font-family="Arial,sans-serif" font-size="18">@miley.beauty6</text>
+  <text x="105" y="991" fill="#f5bbd0" font-family="Arial,sans-serif" font-size="16">Carrera 87 # 33-09 · Sur Patio Bonito, Medellín</text>
+  <text x="975" y="991" text-anchor="end" fill="#fff8fa" font-family="Arial,sans-serif" font-size="14" letter-spacing="2">@ MILEY BEAUTY6</text>
+</svg>

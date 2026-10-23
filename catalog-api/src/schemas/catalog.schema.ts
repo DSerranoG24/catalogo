@@ -13,6 +13,10 @@ const httpUrlSchema = z.string().trim().url().max(2048).refine((value) => {
   }
 }, "La URL debe usar HTTP o HTTPS");
 
+// Keep accepted design IDs explicit. PostgreSQL stores these as strings so
+// adding a template does not require a database enum migration each time.
+const catalogTemplateSchema = z.enum(["EDITORIAL", "GRID", "BOUTIQUE", "TECH", "FASHION", "BEAUTY", "GLAMOUR"]);
+
 export const createCatalogSchema = z.object({
   name: z.string().min(1).max(100),
   slug: z
@@ -34,7 +38,7 @@ export const createCatalogSchema = z.object({
   tiktokUrl: httpUrlSchema.optional(),
   email: z.string().trim().email().max(254).optional(),
   mapUrl: httpUrlSchema.optional(),
-  template: z.enum(["EDITORIAL", "GRID", "BOUTIQUE", "TECH", "FASHION", "BEAUTY"]).optional(),
+  template: catalogTemplateSchema.optional(),
 });
 
 export const updateCatalogSchema = z.object({
@@ -60,5 +64,5 @@ export const updateCatalogSchema = z.object({
   tiktokUrl: httpUrlSchema.nullable().optional(),
   email: z.string().trim().email().max(254).nullable().optional(),
   mapUrl: httpUrlSchema.nullable().optional(),
-  template: z.enum(["EDITORIAL", "GRID", "BOUTIQUE", "TECH", "FASHION", "BEAUTY"]).optional(),
+  template: catalogTemplateSchema.optional(),
 });

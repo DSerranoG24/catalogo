@@ -157,7 +157,7 @@ export default function PublicProductDetailPage({
   const image = product.images[selectedImage];
   const isOnSale = product.regularPrice !== null && product.discountPercent !== null;
   const isTech = catalog.template === "TECH" || catalog.template === "GRID";
-  const isBeauty = catalog.template === "BEAUTY" || catalog.template === "BOUTIQUE";
+  const isBeauty = catalog.template === "BEAUTY" || catalog.template === "BOUTIQUE" || catalog.template === "GLAMOUR";
   const isFashion = catalog.template === "FASHION" || catalog.template === "EDITORIAL";
   const surface = isTech ? "bg-[#081421]" : isBeauty ? "bg-[#fff8f6]" : isFashion ? "bg-[#f7f2ec]" : "bg-[#f4f3eb]";
   const foreground = isTech ? "text-[#e5f2ff]" : isBeauty ? "text-[#552e48]" : "text-[#322c29]";

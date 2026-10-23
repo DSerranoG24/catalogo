@@ -15,7 +15,7 @@ export async function createCatalog(data: {
   tiktokUrl?: string;
   email?: string;
   mapUrl?: string;
-  template?: "EDITORIAL" | "GRID" | "BOUTIQUE" | "TECH" | "FASHION" | "BEAUTY";
+  template?: string;
 }) {
   return prisma.catalog.create({
     data,
@@ -64,7 +64,7 @@ export async function updateCatalog(
     tiktokUrl?: string | null;
     email?: string | null;
     mapUrl?: string | null;
-    template?: "EDITORIAL" | "GRID" | "BOUTIQUE" | "TECH" | "FASHION" | "BEAUTY";
+    template?: string;
   }
 ) {
   return prisma.catalog.updateMany({

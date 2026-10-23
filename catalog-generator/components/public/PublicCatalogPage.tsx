@@ -1,16 +1,24 @@
 "use client";
 
-import { startTransition, useDeferredValue, useEffect, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useState, type ComponentType } from "react";
 import { publicApiRequest, PublicCatalog, PublicProduct, rememberPublicCatalogTemplate } from "@/lib/api";
 import EditorialTemplate from "@/components/public/EditorialTemplate";
-import GridTemplate from "@/components/public/GridTemplate";
-import BoutiqueTemplate from "@/components/public/BoutiqueTemplate";
 import { ProductSortOrder } from "@/components/public/PublicProductToolbar";
 import FloatingWhatsAppButton from "@/components/public/FloatingWhatsAppButton";
 import TechnologyTemplate from "@/components/public/TechnologyTemplate";
 import FashionTemplate from "@/components/public/FashionTemplate";
 import BeautyTemplate from "@/components/public/BeautyTemplate";
+import GlamourTemplate from "@/components/public/GlamourTemplate";
 import PublicRouteLoading from "@/components/public/PublicRouteLoading";
+import { CatalogTemplateId, normalizeCatalogTemplate } from "@/lib/catalogTemplates";
+import { PublicCatalogTemplateProps } from "@/components/public/PublicCatalogTemplateProps";
+
+const templateComponents: Record<CatalogTemplateId, ComponentType<PublicCatalogTemplateProps>> = {
+  TECH: TechnologyTemplate,
+  FASHION: FashionTemplate,
+  BEAUTY: BeautyTemplate,
+  GLAMOUR: GlamourTemplate,
+};
 
 export default function PublicCatalogPage({ publicId }: { publicId: string }) {
   const [catalog, setCatalog] = useState<PublicCatalog | null>(null);
@@ -150,16 +158,8 @@ export default function PublicCatalogPage({ publicId }: { publicId: string }) {
     cartCount,
     cartTotal,
   };
-  const template = catalog.template === "GRID" ? "TECH"
-    : catalog.template === "BOUTIQUE" ? "BEAUTY"
-      : catalog.template === "EDITORIAL" ? "FASHION"
-        : catalog.template;
-  const Template = template === "TECH" ? TechnologyTemplate
-    : template === "BEAUTY" ? BeautyTemplate
-      : template === "FASHION" ? FashionTemplate
-        : template === "GRID" ? GridTemplate
-          : template === "BOUTIQUE" ? BoutiqueTemplate
-            : EditorialTemplate;
+  const templateId = normalizeCatalogTemplate(catalog.template);
+  const Template = templateComponents[templateId] ?? EditorialTemplate;
 
   return (
     <main className="min-h-screen pb-12">

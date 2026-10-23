@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import type { StoredCatalogTemplate } from "@/lib/catalogTemplates";
 
 export type Session = {
   user: {
@@ -25,7 +26,7 @@ export type Catalog = {
   tiktokUrl: string | null;
   email: string | null;
   mapUrl: string | null;
-  template: "EDITORIAL" | "GRID" | "BOUTIQUE" | "TECH" | "FASHION" | "BEAUTY";
+  template: StoredCatalogTemplate;
   active: boolean;
 };
 

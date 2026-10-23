@@ -17,6 +17,7 @@ const cartThemes = {
   TECH: { background: "#07111d", foreground: "#e5edf5", muted: "#9aafc1", border: "#26394b", surface: "#102033", card: "#0c1927", accent: "#4de0c1", accentForeground: "#06211e", soft: "#12283a", danger: "#ffb1a1" },
   FASHION: { background: "#f5eee7", foreground: "#322c29", muted: "#776b64", border: "#dfd2c5", surface: "#eadfd5", card: "#fffaf5", accent: "#9a554b", accentForeground: "#ffffff", soft: "#f0e5db", danger: "#a5432a" },
   BEAUTY: { background: "#fff1ee", foreground: "#552e48", muted: "#896879", border: "#efd5dd", surface: "#f9e4e7", card: "#fffaf9", accent: "#b55271", accentForeground: "#ffffff", soft: "#fae8eb", danger: "#a5432a" },
+  GLAMOUR: { background: "#fff4f7", foreground: "#45182f", muted: "#7f425b", border: "#efd0dc", surface: "#f9dfe9", card: "#fff9fb", accent: "#c12868", accentForeground: "#ffffff", soft: "#f8e1eb", danger: "#a5432a" },
   DEFAULT: { background: "#f4f3eb", foreground: "#263b31", muted: "#68756e", border: "#d7d9cf", surface: "#e8e9dc", card: "#ffffff", accent: "#263b31", accentForeground: "#ffffff", soft: "#e8eee5", danger: "#a5432a" },
 } as const;
 

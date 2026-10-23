@@ -8,10 +8,9 @@ import {
 import { randomUUID } from "node:crypto";
 import { createProductImageSignedUrl, deleteProductImageFile, uploadProductImage } from "./storage.service";
 
-type CatalogTemplate = "EDITORIAL" | "GRID" | "BOUTIQUE" | "TECH" | "FASHION" | "BEAUTY";
-type PersistedCatalogTemplate = "EDITORIAL" | "GRID" | "BOUTIQUE";
+type CatalogTemplate = string;
 
-function toPersistedTemplate(template?: CatalogTemplate): PersistedCatalogTemplate | undefined {
+function toPersistedTemplate(template?: CatalogTemplate): string | undefined {
   if (!template) return undefined;
   if (template === "TECH") return "GRID";
   if (template === "FASHION") return "EDITORIAL";
@@ -34,7 +33,7 @@ export async function createCatalogService(data: {
   tiktokUrl?: string;
   email?: string;
   mapUrl?: string;
-  template?: "EDITORIAL" | "GRID" | "BOUTIQUE" | "TECH" | "FASHION" | "BEAUTY";
+  template?: CatalogTemplate;
 }) {
   return createCatalog({ ...data, template: toPersistedTemplate(data.template) });
 }
@@ -69,7 +68,7 @@ export async function updateCatalogService(
     tiktokUrl?: string | null;
     email?: string | null;
     mapUrl?: string | null;
-    template?: "EDITORIAL" | "GRID" | "BOUTIQUE" | "TECH" | "FASHION" | "BEAUTY";
+    template?: CatalogTemplate;
   }
 ) {
   return updateCatalog(id, userId, { ...data, template: toPersistedTemplate(data.template) });

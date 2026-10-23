@@ -3,13 +3,9 @@
 import { FormEvent, useRef, useState } from "react";
 import Image from "next/image";
 import { apiRequest, Catalog } from "@/lib/api";
+import { catalogTemplateOptions } from "@/lib/catalogTemplates";
 
 type Template = Catalog["template"];
-const templates: { id: Template; name: string; description: string; colors: string[]; category: string }[] = [
-  { id: "TECH", name: "Tecnología", description: "Estética oscura, detalles eléctricos y foco en especificaciones.", colors: ["#081421", "#56e0c0", "#e5f2ff"], category: "SMART / AUDIO / GAMING" },
-  { id: "FASHION", name: "Ropa", description: "Editorial de moda con tonos cálidos y fotografía protagonista.", colors: ["#f5eee7", "#9a554b", "#322c29"], category: "NUEVA TEMPORADA" },
-  { id: "BEAUTY", name: "Maquillaje", description: "Paleta suave y luminosa para destacar color y textura.", colors: ["#fff1ee", "#b55271", "#552e48"], category: "BEAUTY / SKIN / COLOR" },
-];
 
 function initialTemplate(value: Template): Template {
   if (value === "GRID") return "TECH";
@@ -18,9 +14,10 @@ function initialTemplate(value: Template): Template {
   return value;
 }
 
-function TemplatePreview({ template, colors }: { template: Template; colors: string[] }) {
+function TemplatePreview({ template, colors }: { template: Template; colors: readonly string[] }) {
   const tech = template === "TECH";
   const beauty = template === "BEAUTY";
+  const glamour = template === "GLAMOUR";
   return (
     <div className="overflow-hidden rounded-lg border border-black/10 bg-white shadow-sm" aria-hidden="true">
       <div className="flex h-5 items-center gap-1.5 border-b border-black/5 bg-white px-2">
@@ -28,14 +25,14 @@ function TemplatePreview({ template, colors }: { template: Template; colors: str
         <span className="ml-1 h-2 w-1/2 rounded-full bg-[#edf0eb]" />
       </div>
       <div className="px-3 pb-3 pt-2" style={{ backgroundColor: colors[0], color: colors[2] }}>
-        <div className="flex items-center justify-between border-y border-white/15 py-1 text-[5px] font-bold uppercase tracking-[0.12em]"><span>Tu marca</span><span>{tech ? "Tech store" : beauty ? "Beauty studio" : "Atelier"}</span></div>
+        <div className="flex items-center justify-between border-y border-white/15 py-1 text-[5px] font-bold uppercase tracking-[0.12em]"><span>Tu marca</span><span>{tech ? "Tech store" : beauty || glamour ? "Beauty studio" : "Atelier"}</span></div>
         <div className={`py-3 ${tech ? "" : "text-center"}`}>
-          <p className="text-[5px] font-bold uppercase tracking-[0.16em]" style={{ color: colors[1] }}>{tech ? "Tecnología para ti" : beauty ? "Ritual de belleza" : "Nueva temporada"}</p>
+          <p className="text-[5px] font-bold uppercase tracking-[0.16em]" style={{ color: colors[1] }}>{tech ? "Tecnología para ti" : beauty || glamour ? (glamour ? "Esencia y glamour" : "Ritual de belleza") : "Nueva temporada"}</p>
           <div className={`mt-1 h-3 rounded-sm ${tech ? "w-3/4" : "mx-auto w-2/3"}`} style={{ backgroundColor: colors[2], opacity: 0.88 }} />
           <div className={`mt-1 h-1.5 rounded-sm ${tech ? "w-1/2" : "mx-auto w-1/3"}`} style={{ backgroundColor: colors[2], opacity: 0.2 }} />
         </div>
         <div className={`grid gap-1.5 ${tech ? "grid-cols-4" : "grid-cols-3"}`}>
-          {Array.from({ length: tech ? 4 : 3 }, (_, index) => <div key={index} className="min-w-0"><div className={`aspect-[1.15] ${beauty ? "rounded-full" : "rounded-sm"}`} style={{ backgroundColor: index % 2 ? colors[1] : colors[2], opacity: index % 2 ? 0.72 : 0.16 }} /><div className="mt-1 h-1 w-3/4 rounded-full" style={{ backgroundColor: colors[2], opacity: 0.3 }} /><div className="mt-0.5 h-1 w-1/2 rounded-full" style={{ backgroundColor: colors[2], opacity: 0.18 }} /></div>)}
+          {Array.from({ length: tech ? 4 : 3 }, (_, index) => <div key={index} className="min-w-0"><div className={`aspect-[1.15] ${beauty || glamour ? (glamour ? "rounded-xl" : "rounded-full") : "rounded-sm"}`} style={{ backgroundColor: index % 2 ? colors[1] : colors[2], opacity: index % 2 ? 0.72 : 0.16 }} /><div className="mt-1 h-1 w-3/4 rounded-full" style={{ backgroundColor: colors[2], opacity: 0.3 }} /><div className="mt-0.5 h-1 w-1/2 rounded-full" style={{ backgroundColor: colors[2], opacity: 0.18 }} /></div>)}
         </div>
       </div>
     </div>
@@ -170,8 +167,8 @@ export default function CatalogSettings({
           <p className="mt-1 text-sm leading-6 text-[#68756e]">Selecciona una plantilla y guarda para actualizar tu página pública.</p>
         </div>
 
-        <div role="radiogroup" aria-label="Plantilla del catálogo" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {templates.map((item) => (
+        <div role="radiogroup" aria-label="Plantilla del catálogo" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {catalogTemplateOptions.map((item) => (
             <button
               key={item.id}
               type="button"

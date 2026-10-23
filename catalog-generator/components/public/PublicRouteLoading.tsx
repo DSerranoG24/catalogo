@@ -12,6 +12,7 @@ const palettes: Record<string, { background: string; foreground: string; muted: 
   FASHION: { background: "#f5eee7", foreground: "#322c29", muted: "#776b64", border: "#dfd2c5", surface: "#eadfd5", accent: "#9a554b" },
   EDITORIAL: { background: "#f5eee7", foreground: "#322c29", muted: "#776b64", border: "#dfd2c5", surface: "#eadfd5", accent: "#9a554b" },
   BEAUTY: { background: "#fff1ee", foreground: "#552e48", muted: "#896879", border: "#efd5dd", surface: "#f9e4e7", accent: "#b55271" },
+  GLAMOUR: { background: "#fff4f7", foreground: "#45182f", muted: "#7f425b", border: "#efd0dc", surface: "#f9dfe9", accent: "#c12868" },
   BOUTIQUE: { background: "#fff1ee", foreground: "#552e48", muted: "#896879", border: "#efd5dd", surface: "#f9e4e7", accent: "#b55271" },
   DEFAULT: { background: "#f4f5f1", foreground: "#263b31", muted: "#68756e", border: "#dce4dc", surface: "#e8eee5", accent: "#5b896e" },
 };

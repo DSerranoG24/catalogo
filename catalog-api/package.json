@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "prisma generate && tsx watch src/server.ts",
     "build": "tsc",
     "test": "tsx --test src/app.test.ts src/schemas/catalog.schema.test.ts src/schemas/order.schema.test.ts src/services/product-pricing.test.ts src/schemas/product-review.test.ts src/utils/image-validation.test.ts",
     "start": "node dist/server.js",
