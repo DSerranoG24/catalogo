@@ -7,7 +7,6 @@ import { Star } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { publicApiRequest, PublicCatalog, PublicProduct, PublicProductReview, rememberPublicCatalogTemplate } from "@/lib/api";
 import FloatingWhatsAppButton from "@/components/public/FloatingWhatsAppButton";
-import PublicRouteLoading from "@/components/public/PublicRouteLoading";
 
 type PublicReviewFeed = {
   averageRating: number | null;
@@ -19,18 +18,16 @@ const emptyReviewFeed: PublicReviewFeed = { averageRating: null, reviewCount: 0,
 
 export default function PublicProductDetailPage({
   publicId,
-  productSlug,
+  initialCatalog: catalog,
+  initialProduct: product,
 }: {
   publicId: string;
-  productSlug: string;
+  initialCatalog: PublicCatalog;
+  initialProduct: PublicProduct;
 }) {
   const router = useRouter();
-  const [catalog, setCatalog] = useState<PublicCatalog | null>(null);
-  const [product, setProduct] = useState<PublicProduct | null>(null);
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [added, setAdded] = useState(false);
   const [reviewFeed, setReviewFeed] = useState(emptyReviewFeed);
   const [reviewName, setReviewName] = useState("");
@@ -42,24 +39,8 @@ export default function PublicProductDetailPage({
   const cartStorageKey = `catalogo-cart-${publicId}`;
 
   useEffect(() => {
-    let active = true;
-    publicApiRequest<{ catalog: PublicCatalog }>(`/public/catalogs/${encodeURIComponent(publicId)}`)
-      .then(({ catalog: loadedCatalog }) => {
-        if (!active) return;
-        setCatalog(loadedCatalog);
-        rememberPublicCatalogTemplate(loadedCatalog.publicId, loadedCatalog.template);
-        setProduct(loadedCatalog.products.find((item) => item.slug === productSlug) ?? null);
-      })
-      .catch((requestError) => {
-        if (active) setError(requestError instanceof Error ? requestError.message : "No se pudo cargar el producto.");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [productSlug, publicId]);
+    rememberPublicCatalogTemplate(publicId, catalog.template);
+  }, [publicId, catalog.template]);
 
   useEffect(() => {
     try {
@@ -135,23 +116,6 @@ export default function PublicProductDetailPage({
     } finally {
       setReviewSubmitting(false);
     }
-  }
-
-  if (loading) {
-    return <PublicRouteLoading kind="product" />;
-  }
-
-  if (!catalog || !product) {
-    return (
-      <main className="grid min-h-screen place-items-center bg-[#f4f3eb] px-5 text-center">
-        <div className="max-w-md">
-          <p className="text-xs font-semibold uppercase text-[#bd4d36]">Producto no disponible</p>
-          <h1 className="mt-2 font-serif text-3xl text-[#263b31]">No encontramos esta pieza.</h1>
-          <p className="mt-3 text-sm text-[#68756e]">{error || "Puede que el enlace haya cambiado o el producto ya no esté publicado."}</p>
-          <Link href={`/c/${encodeURIComponent(publicId)}`} className="mt-6 inline-flex min-h-11 items-center bg-[#263b31] px-4 text-sm font-semibold text-white">Volver al catálogo</Link>
-        </div>
-      </main>
-    );
   }
 
   const image = product.images[selectedImage];

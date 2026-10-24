@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Resolve public metadata (and missing resources) before streaming a successful response.
+  htmlLimitedBots: /.*/,
   async headers() {
     const headers = [
       { key: "X-Content-Type-Options", value: "nosniff" },

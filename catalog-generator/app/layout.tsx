@@ -3,6 +3,8 @@ import SessionStorageCleanup from "@/components/auth/SessionStorageCleanup";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://catalogo-pink.vercel.app"),
+  robots: { index: false, follow: false },
   title: "Catalogo | Panel de catálogos",
   description: "Administra tus catálogos, categorías y productos.",
 };

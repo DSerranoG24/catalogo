@@ -1,7 +1,7 @@
 "use client";
 
 import { startTransition, useDeferredValue, useEffect, useState, type ComponentType } from "react";
-import { publicApiRequest, PublicCatalog, PublicProduct, rememberPublicCatalogTemplate } from "@/lib/api";
+import { PublicCatalog, PublicProduct, rememberPublicCatalogTemplate } from "@/lib/api";
 import EditorialTemplate from "@/components/public/EditorialTemplate";
 import { ProductSortOrder } from "@/components/public/PublicProductToolbar";
 import FloatingWhatsAppButton from "@/components/public/FloatingWhatsAppButton";
@@ -9,7 +9,6 @@ import TechnologyTemplate from "@/components/public/TechnologyTemplate";
 import FashionTemplate from "@/components/public/FashionTemplate";
 import BeautyTemplate from "@/components/public/BeautyTemplate";
 import GlamourTemplate from "@/components/public/GlamourTemplate";
-import PublicRouteLoading from "@/components/public/PublicRouteLoading";
 import { CatalogTemplateId, normalizeCatalogTemplate } from "@/lib/catalogTemplates";
 import { PublicCatalogTemplateProps } from "@/components/public/PublicCatalogTemplateProps";
 
@@ -20,8 +19,7 @@ const templateComponents: Record<CatalogTemplateId, ComponentType<PublicCatalogT
   GLAMOUR: GlamourTemplate,
 };
 
-export default function PublicCatalogPage({ publicId }: { publicId: string }) {
-  const [catalog, setCatalog] = useState<PublicCatalog | null>(null);
+export default function PublicCatalogPage({ publicId, initialCatalog: catalog }: { publicId: string; initialCatalog: PublicCatalog }) {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [cartReady, setCartReady] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("");
@@ -29,8 +27,6 @@ export default function PublicCatalogPage({ publicId }: { publicId: string }) {
   const [sortOrder, setSortOrder] = useState<ProductSortOrder>("store");
   const deferredSearchQuery = useDeferredValue(searchQuery.trim().toLocaleLowerCase("es"));
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const cartStorageKey = `catalogo-cart-${publicId}`;
 
   useEffect(() => {
@@ -70,24 +66,8 @@ export default function PublicCatalogPage({ publicId }: { publicId: string }) {
   }, [cartReady, cartStorageKey, quantities]);
 
   useEffect(() => {
-    let active = true;
-    publicApiRequest<{ catalog: PublicCatalog }>(`/public/catalogs/${encodeURIComponent(publicId)}`)
-      .then((result) => {
-        if (active) {
-          setCatalog(result.catalog);
-          rememberPublicCatalogTemplate(result.catalog.publicId, result.catalog.template);
-        }
-      })
-      .catch((requestError) => {
-        if (active) setError(requestError instanceof Error ? requestError.message : "No se pudo encontrar este catálogo.");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [publicId]);
+    rememberPublicCatalogTemplate(publicId, catalog.template);
+  }, [publicId, catalog.template]);
 
   const filteredProducts = [...(catalog?.products ?? [])]
     .filter((product) => {
@@ -120,14 +100,6 @@ export default function PublicCatalogPage({ publicId }: { publicId: string }) {
       else next[product.id] = nextQuantity;
       return next;
     });
-  }
-
-  if (loading) {
-    return <PublicRouteLoading kind="catalog" />;
-  }
-
-  if (!catalog) {
-    return <main className="grid min-h-screen place-items-center bg-[#f2f5ef] px-5"><div className="max-w-md text-center"><p className="text-xs font-semibold uppercase text-[#c65c3d]">Catálogo no disponible</p><h1 className="mt-2 text-2xl font-semibold text-[#202b27]">No encontramos este enlace.</h1><p className="mt-2 text-sm text-[#68756e]">{error || "Puede estar inactivo o haber cambiado."}</p></div></main>;
   }
 
   const templateProps = {
