@@ -4,7 +4,7 @@ services:
     runtime: node
     rootDir: catalog-api
     buildCommand: npm ci && npx prisma generate && npm run build
-    startCommand: npm run prisma:migrate:deploy && npm start
+    startCommand: npm start
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL

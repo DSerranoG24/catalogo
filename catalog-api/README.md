@@ -15,9 +15,9 @@ Los esquemas Zod usados para validar las solicitudes son la fuente de verdad del
 3. Genera Prisma y aplica migraciones locales con `npm run prisma:generate` y `npm run prisma:migrate`.
 4. Inicia la API con `npm run dev`; por defecto escucha en `http://localhost:3000`.
 
-Para un despliegue con migraciones revisadas, ejecuta `npm run prisma:migrate:deploy` desde el proceso de release, después de respaldar la base y confirmar `DATABASE_URL`.
+La migración es un paso manual y deliberado: ejecuta `npm.cmd run prisma:migrate:deploy` después de respaldar la base y confirmar el destino, ANTES de empujar el código que la necesita, porque un push a main puede disparar un despliegue automático. Sigue el [procedimiento de migraciones](../docs/migrations.md#orden-del-despliegue).
 
-Para Render, el repositorio incluye `render.yaml`: al crear un Blueprint conectado a este repositorio, Render configura `catalog-api`, sus comandos de build/inicio y la comprobación `/api/health`. El Blueprint solicitará las variables privadas; cópialas de `.env.production.example` y sustituye los marcadores. `PORT` lo asigna Render automáticamente. El comando de inicio aplica las migraciones pendientes con `prisma migrate deploy` antes de abrir la API; confirma que `DATABASE_URL` apunta a la base de Supabase correcta. Configura `CORS_ORIGINS` con el dominio HTTPS final de Vercel. No subas archivos `.env` reales ni secretos a GitHub.
+Para Render, el repositorio incluye `render.yaml`: al crear un Blueprint conectado a este repositorio, Render configura `catalog-api`, sus comandos de build/inicio y la comprobación `/api/health`. El Blueprint solicitará las variables privadas; cópialas de `.env.production.example` y sustituye los marcadores. `PORT` lo asigna Render automáticamente. El comando de inicio es `npm start` y no aplica migraciones; estas se ejecutan por separado siguiendo el procedimiento anterior. Configura `CORS_ORIGINS` con el dominio HTTPS final de Vercel. No subas archivos `.env` reales ni secretos a GitHub.
 
 ## Google Sign-In
 
