@@ -25,7 +25,6 @@ router.post("/:id/logo", upload.single("image"), validateImageContent, uploadCat
 router.delete("/:id/logo", deleteCatalogLogoController);
 router.put("/:id", updateCatalogController);
 router.post("/:id/archive", archiveCatalogController);
-router.post("/:id/archive", archiveCatalogController);
 router.post("/:id/reactivate", reactivateCatalogController);
 router.get("/:id/order-count", getCatalogOrderCountController);
 router.delete("/:id", deleteCatalogController);
