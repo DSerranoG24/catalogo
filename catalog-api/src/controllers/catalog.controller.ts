@@ -12,6 +12,9 @@ import {
   getCatalogsService,
   getCatalogService,
   updateCatalogService,
+  archiveCatalogService,
+  reactivateCatalogService,
+  getCatalogOrderCountService,
   deleteCatalogService,
 } from "../services/catalog.service";
 
@@ -169,6 +172,34 @@ export async function deleteCatalogController(
       req.params.id as string,
       req.user!.id
     );
+    if (result.count === 0) {
+      return res.status(404).json({ success: false, message: "Catálogo no encontrado" });
+    }
+    return res.json({ success: true, message: "Catálogo eliminado" });
+  } catch (error) {
+    if (error instanceof Error && error.message === "CATALOG_HAS_ORDERS") {
+      return res.status(409).json({
+        success: false,
+        message: "Este catálogo tiene pedidos registrados. Archívalo para ocultarlo sin perder el historial.",
+      });
+    }
+    if (error instanceof Error && error.message === "CATALOG_NOT_FOUND") {
+      return res.status(404).json({ success: false, message: "Catálogo no encontrado" });
+    }
+    console.error(error);
+    return res.status(500).json({ success: false, message: "No se pudo eliminar el catálogo" });
+  }
+}
+
+export async function archiveCatalogController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const result = await archiveCatalogService(
+      req.params.id as string,
+      req.user!.id
+    );
 
     if (result.count === 0) {
       return res.status(404).json({
@@ -179,14 +210,52 @@ export async function deleteCatalogController(
 
     return res.json({
       success: true,
-      message: "Catálogo eliminado",
+      message: "Catálogo archivado",
     });
   } catch (error) {
     console.error(error);
 
     return res.status(500).json({
       success: false,
-      message: "No se pudo eliminar el catálogo",
+      message: "No se pudo archivar el catálogo",
     });
+  }
+}
+
+export async function reactivateCatalogController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const result = await reactivateCatalogService(
+      req.params.id as string,
+      req.user!.id
+    );
+    if (result.count === 0) {
+      return res.status(404).json({ success: false, message: "Catálogo no encontrado" });
+    }
+    return res.json({ success: true, message: "Catálogo reactivado" });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: "No se pudo reactivar el catálogo" });
+  }
+}
+
+export async function getCatalogOrderCountController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const orders = await getCatalogOrderCountService(
+      req.params.id as string,
+      req.user!.id
+    );
+    return res.json({ success: true, orders });
+  } catch (error) {
+    if (error instanceof Error && error.message === "CATALOG_NOT_FOUND") {
+      return res.status(404).json({ success: false, message: "Catálogo no encontrado" });
+    }
+    console.error(error);
+    return res.status(500).json({ success: false, message: "No se pudo contar los pedidos" });
   }
 }

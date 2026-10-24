@@ -76,21 +76,49 @@ export async function updateCatalog(
   });
 }
 
+export async function archiveCatalog(
+  id: string,
+  userId: string
+) {
+  return prisma.catalog.updateMany({
+    where: { id, userId },
+    data: { archivedAt: new Date() },
+  });
+}
+
+export async function reactivateCatalog(
+  id: string,
+  userId: string
+) {
+  return prisma.catalog.updateMany({
+    where: { id, userId },
+    data: { archivedAt: null },
+  });
+}
+
+export async function countCatalogOrders(
+  catalogId: string
+) {
+  return prisma.order.count({ where: { catalogId } });
+}
+
 export async function deleteCatalog(
   id: string,
   userId: string
 ) {
+  const orders = await prisma.order.count({ where: { catalogId: id } });
+  if (orders > 0) {
+    throw new Error("CATALOG_HAS_ORDERS");
+  }
   return prisma.catalog.deleteMany({
-    where: {
-      id,
-      userId,
-    },
+    where: { id, userId },
   });
 }
 
+
 export async function findPublicCatalog(publicId: string) {
   return prisma.catalog.findFirst({
-    where: { publicId, active: true },
+    where: { publicId, active: true, archivedAt: null },
     select: {
       publicId: true,
       name: true,

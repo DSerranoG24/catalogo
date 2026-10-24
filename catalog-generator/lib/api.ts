@@ -28,6 +28,7 @@ export type Catalog = {
   mapUrl: string | null;
   template: StoredCatalogTemplate;
   active: boolean;
+  archivedAt: string | null;
 };
 
 export type OrderStatus = "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED";

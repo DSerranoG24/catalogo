@@ -3,6 +3,9 @@ import {
   findCatalogsByUser,
   findCatalogById,
   updateCatalog,
+  archiveCatalog,
+  reactivateCatalog,
+  countCatalogOrders,
   deleteCatalog,
 } from "../repositories/catalog.repository";
 import { randomUUID } from "node:crypto";
@@ -108,10 +111,28 @@ export async function signCatalogLogo<T extends { logoUrl: string | null }>(cata
   return { ...catalog, logoUrl: catalog.logoUrl ? await createProductImageSignedUrl(catalog.logoUrl) : null };
 }
 
-export async function deleteCatalogService(
-  id: string,
-  userId: string
-) {
+export async function archiveCatalogService(id: string, userId: string) {
+  return archiveCatalog(id, userId);
+}
+
+export async function reactivateCatalogService(id: string, userId: string) {
+  return reactivateCatalog(id, userId);
+}
+
+export async function getCatalogOrderCountService(id: string, userId: string) {
+  const catalog = await findCatalogById(id, userId);
+  if (!catalog) throw new Error("CATALOG_NOT_FOUND");
+  return countCatalogOrders(id);
+}
+
+export async function deleteCatalogService(id: string, userId: string) {
+  const catalog = await findCatalogById(id, userId);
+  if (!catalog) throw new Error("CATALOG_NOT_FOUND");
+  const orders = await countCatalogOrders(id);
+  if (orders > 0) {
+    throw new Error("CATALOG_HAS_ORDERS");
+  }
   return deleteCatalog(id, userId);
 }
+
 

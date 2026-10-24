@@ -54,6 +54,7 @@ model Catalog {
   mapUrl        String?
   template      String          @default("EDITORIAL")
   active        Boolean         @default(true)
+   archivedAt    DateTime?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
@@ -164,7 +165,7 @@ model Order {
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 
-  catalog Catalog     @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  catalog Catalog @relation(fields: [catalogId], references: [id], onDelete: Restrict)
   items   OrderItem[]
 
   @@index([catalogId])
