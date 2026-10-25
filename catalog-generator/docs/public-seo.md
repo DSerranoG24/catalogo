@@ -1,6 +1,16 @@
 # SEO y tarjetas públicas
 
-El dominio canónico es `https://catalogo-pink.vercel.app`. La raíz `/` es la landing pública y sobrescribe explícitamente los robots del layout con `index, follow`, canonical raíz y metadata propia de Vitrinaya. El listado privado reside en `/dashboard`. Login y dashboard conservan `noindex, nofollow` del layout raíz; carrito lo define expresamente. Catálogos y productos publicados mantienen su metadata de servidor, canonical, Open Graph y Twitter. Esto no sustituye autenticación. No se ha añadido robots.txt ni sitemap en el bloque de landing.
+El dominio canónico es `https://catalogo-pink.vercel.app`. La raíz `/` es la landing pública y sobrescribe explícitamente los robots del layout con `index, follow`, canonical raíz y metadata propia de Vitrinaya. El listado privado reside en `/dashboard`. Login y dashboard conservan `noindex, nofollow` del layout raíz; carrito lo define expresamente. Catálogos y productos publicados mantienen su metadata de servidor, canonical, Open Graph y Twitter. Esto no sustituye autenticación.
+
+## Rastreo, indexación y sitemap de marca
+
+[app/robots.ts](../app/robots.ts) genera `/robots.txt` con `User-Agent: *`, `Allow: /` y la URL absoluta del sitemap. No usa `Disallow`: bloquear el rastreo impediría al buscador leer el `noindex` de login, dashboard y carrito. Rastreo permitido no significa indexación permitida; la exclusión de esas páginas se conserva en su metadata HTML. Robots no es un mecanismo de autorización.
+
+[app/sitemap.ts](../app/sitemap.ts) genera `/sitemap.xml` con exactamente una URL: `https://catalogo-pink.vercel.app/`. No incluye login, dashboard, carrito ni URLs de vendedores. No inventa `lastModified`. Ambas rutas usan `MetadataRoute`, son estáticas y no consultan API, base de datos, sesión ni cabeceras de la petición. El dominio procede de `SITE_URL`, coherente con `metadataBase`, y nunca de `Host`.
+
+El `noindex` del layout raíz afecta a las páginas HTML que lo heredan; no filtra las entradas del sitemap ni se aplica al contenido XML/texto de estos manejadores. La landing lo sobrescribe explícitamente. La lista del sitemap debe mantenerse deliberadamente limitada a URLs canónicas indexables.
+
+La separación entre rastreo e indexación se explica en la [documentación de Google sobre noindex](https://developers.google.com/search/docs/crawling-indexing/block-indexing). Un sitemap ayuda al descubrimiento; no garantiza la indexación.
 
 ## Lecturas y errores
 
@@ -35,6 +45,6 @@ El script usa los puertos loopback 4317 y 4318, arranca el build con Next, compr
 
 ## Pendiente
 
-- Sitemap: fuera de este bloque. Requiere fuente pública paginada y definir su política de descubrimiento; no se crea endpoint en la API.
+- Sitemap de catálogos y productos de vendedores: pendiente. Necesita un endpoint público paginado y una decisión de privacidad por catálogo antes de enumerar sus URLs. No se crea ese endpoint ni se cambia su indexabilidad actual en este bloque.
 - Visibilidad por catálogo: todos los públicos activos son indexables por defecto; la opción individual no está implementada.
 - Verificación real de WhatsApp y descargas Supabase tras despliegue autorizado. Las pruebas locales no demuestran el comportamiento de cachés externas ni conectividad de producción.

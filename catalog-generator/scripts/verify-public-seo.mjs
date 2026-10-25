@@ -39,6 +39,24 @@ async function run() {
     try { await fetch(base + "/login"); break; } catch { await new Promise(r => setTimeout(r, 100)); }
     if (i === 99) throw new Error("Next readiness timeout");
   }
+  const readsBeforeMetadataRoutes = [...counts.values()].reduce((sum, value) => sum + value, 0);
+  for (const host of [undefined, "untrusted.example"]) {
+    const options = host ? { headers: { Host: host } } : {};
+    const robotsResponse = await fetch(base + "/robots.txt", options);
+    assert.equal(robotsResponse.status, 200);
+    assert.match(robotsResponse.headers.get("content-type"), /text\/plain/);
+    const robots = await robotsResponse.text();
+    assert.equal(robots.trim(), "User-Agent: *\nAllow: /\n\nSitemap: https://catalogo-pink.vercel.app/sitemap.xml");
+    assert.ok(!/disallow/i.test(robots));
+    const sitemapResponse = await fetch(base + "/sitemap.xml", options);
+    assert.equal(sitemapResponse.status, 200);
+    assert.match(sitemapResponse.headers.get("content-type"), /application\/xml/);
+    const sitemap = await sitemapResponse.text();
+    assert.deepEqual([...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(match => match[1]), ["https://catalogo-pink.vercel.app/"]);
+    assert.ok(!/lastmod|\/login|\/dashboard|\/carrito|\/c\//.test(sitemap));
+  }
+  assert.equal([...counts.values()].reduce((sum, value) => sum + value, 0), readsBeforeMetadataRoutes, "Metadata routes must not query the API");
+  console.log("robots/sitemap: static canonical URL only, no private paths, no API reads, unaffected by Host.");
   for (const ua of ["WhatsApp/2.24", "facebookexternalhit/1.1", "Mozilla/5.0"]) {
     const before = counts.get("demo") || 0;
     const response = await fetch(base + "/c/demo", { headers: { "User-Agent": ua } });
