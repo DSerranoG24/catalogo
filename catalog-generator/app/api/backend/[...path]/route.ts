@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { backendBodyLimit } from "../../../../lib/backend-proxy-limits";
 
 const SESSION_COOKIE = "catalogo_session";
-const MAX_REQUEST_BYTES = 5 * 1024 * 1024 + 64 * 1024;
 const API_BASE_URL = (
   process.env.CATALOG_API_URL ?? "http://localhost:3000/api"
 ).replace(/\/$/, "");
@@ -73,9 +73,7 @@ async function proxyRequest(request: NextRequest, context: RouteContext) {
 
   let body: ArrayBuffer | undefined;
   if (!["GET", "HEAD"].includes(method)) {
-    const bodyLimit = contentType?.startsWith("multipart/form-data")
-      ? MAX_REQUEST_BYTES
-      : 64 * 1024;
+    const bodyLimit = backendBodyLimit(method, path, contentType);
     const contentLength = Number(request.headers.get("content-length") ?? 0);
     if (contentLength > bodyLimit) {
       return NextResponse.json({ message: "La solicitud supera el tamaño permitido" }, { status: 413 });
