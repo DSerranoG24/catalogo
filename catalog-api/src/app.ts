@@ -16,6 +16,9 @@ import { apiErrorHandler, routeNotFound } from "./middlewares/error.middleware";
 import { rateLimit } from "express-rate-limit";
 
 const app = express();
+// Render is the single trusted hop immediately in front of this service.
+// Reassess the hop count if ingress paths change; never trust the entire XFF chain.
+app.set("trust proxy", 1);
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 300,

@@ -19,6 +19,10 @@ export default function ProductImportPanel({ flow, state, archived, onClose }: {
   const eligible = counts.new + counts.updates;
   const pages = Math.max(1, Math.ceil(state.report.length / 25)), currentPage = Math.min(page, pages - 1);
   const retrySeconds = Math.max(0, Math.ceil(((state.failure?.retryAt ?? 0) - now) / 1000));
+  const fileDisabledReason = archived ? "Este catálogo está archivado y no admite importaciones."
+    : busy ? "Espera a que termine la operación o usa la acción de cancelar o detener."
+    : state.failure?.status === 401 ? "Vuelve a iniciar sesión para seleccionar un archivo."
+    : retrySeconds > 0 ? `Podrás seleccionar otro archivo en ${retrySeconds} s.` : "";
   const expired = state.expiresAt > 0 && now >= state.expiresAt;
   useEffect(() => { title.current?.focus(); }, []);
   useEffect(() => {
@@ -40,10 +44,14 @@ export default function ProductImportPanel({ flow, state, archived, onClose }: {
     </div>
     {busy && <p id="import-close-help" className="mt-2 text-sm text-[#52655a]">El cierre está bloqueado mientras hay trabajo activo. Usa la acción de cancelar o detener que aparece abajo.</p>}
     {archived && <p role="alert" className="mt-4 text-sm text-[#963b23]">Este catálogo está archivado y no admite importaciones.</p>}
-    <div className="mt-5 flex flex-wrap items-end gap-4">
-      <a href="/templates/productos.xlsx" download="plantilla-productos.xlsx" className={button}>Descargar plantilla</a>
-      <div className="min-w-0 flex-1"><label htmlFor="product-import-file" className="block text-sm font-semibold text-[#202b27]">Archivo Excel</label><input id="product-import-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-describedby="product-import-rules" disabled={busy || archived || state.failure?.status === 401 || retrySeconds > 0} className="mt-1 block max-w-full rounded text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#245c4c] disabled:opacity-50" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) { setPage(0); void flow.select(file); } }} /></div>
+    <div className="mt-5 flex flex-wrap items-center gap-4">
+      <a href="/templates/productos.xlsx" download="plantilla-productos.xlsx" className={`${button} inline-flex items-center`}>Descargar plantilla</a>
+      <div className="relative">
+        <input id="product-import-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-describedby={`product-import-rules${fileDisabledReason ? " product-import-file-help" : ""}`} disabled={Boolean(fileDisabledReason)} className="peer sr-only" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) { setPage(0); void flow.select(file); } }} />
+        <label htmlFor="product-import-file" aria-disabled={Boolean(fileDisabledReason)} className={`${button} inline-flex cursor-pointer items-center peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#245c4c] peer-disabled:cursor-not-allowed peer-disabled:opacity-50`}>Seleccionar archivo<span className="sr-only"> Excel</span></label>
+      </div>
     </div>
+    {fileDisabledReason && <p id="product-import-file-help" className="mt-2 text-sm text-[#52655a]">{fileDisabledReason}</p>}
     <p id="product-import-rules" className="mt-3 text-sm leading-6 text-[#52655a]">Solo .xlsx, hasta 5 MiB y 500 filas. Guarda SKU como Texto antes de escribir (por ejemplo, 00123). Las celdas vacías conservan los valores existentes. El archivo se lee en tu navegador; solo se envían filas JSON para validar e importar.</p>
     {state.fileName && <p className="mt-3 break-all text-sm text-[#202b27]">Archivo: {state.fileName}</p>}
     <div role="status" aria-live="polite" aria-atomic="true" className="mt-5 rounded-xl bg-[#edf4ed] p-4 text-sm text-[#245c4c]">

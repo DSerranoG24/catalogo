@@ -22,7 +22,7 @@ La telemetría de Prisma falló al abrir su caché de checkpoint bajo el perfil 
 
 ## Orden del despliegue
 
-La migración se aplica ANTES de empujar el código que la necesita, porque un push a main puede disparar un despliegue automático. `render.yaml` inicia la API con `npm start`: ni el build ni el arranque aplican migraciones. No hay un script de release adicional ni un pre-deploy configurado en el repositorio.
+La migración se aplica ANTES de empujar el código que la necesita, porque un push a main puede disparar un despliegue automático. `render.yaml` define `npm start` y no incluye migraciones en build/arranque, pero eso NO garantiza la configuración efectiva de un servicio existente en Render. Hay que comprobar también el panel y el comando que aparece en los logs. No hay un script de release adicional ni un pre-deploy configurado en el repositorio.
 
 Este procedimiento lo ejecuta manualmente un único responsable autorizado; no se ejecuta como parte de las pruebas ni desde cada instancia:
 
@@ -46,6 +46,37 @@ Si falla la migración o su verificación: NO empujar el código dependiente ni 
 El health check `/api/health` ejecuta `SELECT 1`: verifica respuesta de la API y conexión a PostgreSQL, pero NO verifica migraciones aplicadas ni compatibilidad del esquema. Una respuesta saludable no autoriza a omitir los pasos anteriores.
 
 El cambio local del YAML solo tendrá efecto cuando se incorpore a la configuración efectiva del servicio. Confirmar manualmente en Render que Start Command sea `npm start` y que no haya otro ejecutor de migraciones. Este bloque no cambia el panel ni realiza despliegues.
+
+## Render: Start Command efectivo y Blueprint
+
+Incidencia comunicada por el responsable: el log de arranque muestra `npm run prisma:migrate:deploy && npm start`, aunque el YAML ya define `npm start`. Por tanto, la separación de migraciones NO está aplicada en esa configuración efectiva: cada arranque sigue intentando migrar hasta que se corrija.
+
+Tener `render.yaml` en el repositorio no convierte automáticamente un servicio creado desde el panel en un recurso gestionado por Blueprint. Para comprobarlo, un operador debe abrir el servicio en Render Dashboard y buscar el icono/relación de Blueprint; revisar además la sección Blueprints del workspace y si el servicio pertenece a uno de ellos. Si pertenece, comprobar repositorio, rama, Blueprint Path, Auto Sync y último sync aplicado. La discrepancia del log, por sí sola, también puede deberse a un Blueprint sin sincronizar o a un cambio manual posterior; no prueba que nunca haya existido esa asociación.
+
+Antes del siguiente reinicio o despliegue, el responsable debe hacer este ajuste manual:
+
+1. Render Dashboard → servicio `catalog-api` → Settings → Build & Deploy → Start Command → Edit.
+2. Sustituir el comando completo por este valor exacto:
+
+   ```text
+   npm start
+   ```
+
+3. Guardar el cambio de acuerdo con la ventana de despliegue autorizada; guardar configuración puede iniciar un despliegue. No ejecutar ninguna migración para este ajuste.
+4. Si el recurso tiene Blueprint, mantener el YAML con ese mismo valor y reconciliar su sync: un sync posterior puede sobrescribir cambios manuales del panel.
+5. Comprobar en los logs del siguiente arranque que aparece `Running 'npm start'`, sin `prisma:migrate:deploy`. Verificar `/api/health` y los flujos de login, catálogo, productos y categorías por separado.
+
+Cambiar el YAML o hacer un push de código no sustituye este paso cuando el servicio no consume ese Blueprint. No se ha accedido al panel desde este bloque. La referencia oficial explica el icono de recursos gestionados y la sobrescritura de cambios manuales al sincronizar: [Render Blueprints](https://render.com/docs/infrastructure-as-code).
+
+## Proxy de Render y limitación de solicitudes
+
+La API establece `app.set("trust proxy", 1)` antes de los limitadores: confía en el salto inmediatamente anterior a Express, según la topología acordada de un proxy de Render. Con X-Forwarded-For, Express toma la dirección más cercana a la aplicación, leyendo la cadena de derecha a izquierda; no acepta sin límite las direcciones que un cliente anteponga. No se usa `true`, no se desactivan validaciones y no se inventan rangos de IP de Render.
+
+Esto requiere que todo el tráfico público pase por ese proxy y que este mantenga correctamente las cabeceras. Si cambian los caminos o el número de saltos, hay que reevaluarlo; no aumentar el valor a ciegas. Sin X-Forwarded-For se usa la dirección del socket. Con IP inválida, puerto añadido o socket sin dirección todavía puede registrarse una validación. Express no interpreta Forwarded (RFC 7239) como sustituto automático de X-Forwarded-For.
+
+El proxy same-origin de Next solo reenvía Content-Type, Accept y Authorization. Por tanto, para solicitudes que pasan por Next, la dirección identificada por la API es la del servidor de Next/Vercel que conecta con Render, NO necesariamente la del navegador. Los límites global y de login pueden agrupar esos usuarios. El limitador adicional de importación se basa en usuario autenticado y catálogo, no en IP, pero sigue sujeto al límite global. No se cambia esa arquitectura ni se añade reenvío de cabeceras no verificadas en esta corrección.
+
+La versión instalada de express-rate-limit registra los errores de validación y captura esa excepción internamente. La reproducción local con trust proxy=false y X-Forwarded-For generó ERR_ERL_UNEXPECTED_X_FORWARDED_FOR pero respondió HTTP 200. Corregir la configuración es necesario; atribuir una conexión rota/502 exclusivamente a ese mensaje requiere más evidencia del fallo de la petición efectiva. El health check saludable tampoco demuestra que login y demás rutas funcionen.
 
 ## Respaldo previo
 

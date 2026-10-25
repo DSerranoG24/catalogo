@@ -21,6 +21,7 @@ const testFiles = [
   "src/services/product-import.test.ts",
   "src/routes/product-import.routes.test.ts",
   "src/repositories/catalog-write-lock.test.ts",
+  "src/proxy-rate-limit.test.ts",
 ];
 
 function isUserInfoSystemError(error) {
