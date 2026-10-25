@@ -79,6 +79,9 @@ export async function googleAuthController(req: Request, res: Response) {
     if (error instanceof Error && error.message === "GOOGLE_AUTH_NOT_CONFIGURED") {
       return res.status(503).json({ success: false, message: "El inicio de sesión con Google no está configurado." });
     }
+    if (error instanceof Error && error.message === "GOOGLE_LINK_REQUIRED") {
+      return res.status(409).json({ success: false, message: "Para vincular Google, inicia sesión primero con tu correo y contraseña. Si no la recuerdas, recupera el acceso." });
+    }
     return res.status(401).json({ success: false, message: "No se pudo verificar la cuenta de Google." });
   }
 }

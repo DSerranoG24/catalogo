@@ -64,6 +64,7 @@ Consulta la [matriz de pruebas](docs/testing.md): reúne comandos por paquete, p
 | Comprobar un cambio | [Matriz de pruebas](docs/testing.md), [workaround Windows de API](catalog-api/docs/testing.md) |
 | Trabajar en un módulo | [API](catalog-api/README.md), [frontend](catalog-generator/README.md) |
 | Pedidos y PDF | [Idempotencia](catalog-api/docs/order-idempotency.md), [cotizaciones](docs/quotations.md) |
+| Verificación de correo y recuperación | [Contratos, límites, migración y configuración de correo](docs/accounts.md) |
 | Importar Excel | [Contrato API](docs/product-import.md), [lector/plantilla](catalog-generator/docs/product-import-reader.md), [flujo UI](catalog-generator/docs/product-import-ui.md) |
 | Publicación y diseños | [SEO/OG](catalog-generator/docs/public-seo.md), [añadir diseños](catalog-generator/docs/agregar-disenos-de-catalogo.md) |
 | Consultar verificaciones anteriores | [Historial fechado](docs/historial/README.md), incluido el parche Zod |

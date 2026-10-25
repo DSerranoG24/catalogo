@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { clearSession, getSession, useStoredSession } from "@/lib/api";
 import BrandLogo from "@/components/brand/BrandLogo";
+import EmailVerificationNotice from "@/components/auth/EmailVerificationNotice";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -38,6 +39,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </div>
       </header>
+      <EmailVerificationNotice />
       {children}
     </div>
   );

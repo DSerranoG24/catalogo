@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
-import { apiRequest, saveSession, Session } from "@/lib/api";
+import { ApiError, apiRequest, saveSession, Session } from "@/lib/api";
 import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
 import BrandLogo from "@/components/brand/BrandLogo";
 import { ArrowLeft, ArrowRight, Check, LockKeyhole, Sparkles } from "lucide-react";
@@ -18,10 +18,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pendingGoogle, setPendingGoogle] = useState("");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    if (mode === "register" && new TextEncoder().encode(password).length > 72) {
+      setError("La contraseña no puede superar 72 bytes. Usa una más corta."); return;
+    }
     setBusy(true);
 
     try {
@@ -38,9 +42,14 @@ export default function LoginPage() {
       );
 
       saveSession(session);
+      if (pendingGoogle && mode === "login") {
+        await apiRequest("/auth/google/link", { method: "POST", body: JSON.stringify({ idToken: pendingGoogle, password }) });
+        setPendingGoogle("");
+      }
       router.replace("/dashboard");
       router.refresh();
     } catch (requestError) {
+      if (pendingGoogle) setPendingGoogle("");
       setError(
         requestError instanceof Error
           ? requestError.message
@@ -63,6 +72,9 @@ export default function LoginPage() {
       router.replace("/dashboard");
       router.refresh();
     } catch (requestError) {
+      if (requestError instanceof ApiError && requestError.status === 409) {
+        setPendingGoogle(credential); setMode("login");
+      }
       setError(requestError instanceof Error ? requestError.message : "No se pudo iniciar sesión con Google.");
     } finally {
       setBusy(false);
@@ -181,6 +193,7 @@ export default function LoginPage() {
                   : "Crear cuenta"} {!busy && <ArrowRight className="size-4" aria-hidden="true" />}
             </button>
           </form>
+          {mode === "login" && <Link href="/recuperar-contrasena" className="mt-3 inline-flex min-h-11 items-center rounded-lg text-sm font-semibold text-[var(--brand-emerald)] focus-visible:outline-2 focus-visible:outline-offset-4">Olvidé mi contraseña</Link>}
 
           <div className="mt-5 border-t border-[#edf1ec] pt-2">
             <GoogleSignInButton onCredential={signInWithGoogle} />

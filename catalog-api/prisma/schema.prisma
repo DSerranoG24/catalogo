@@ -20,18 +20,50 @@ enum ReviewStatus {
   REJECTED
 }
 
+enum AccountActionPurpose {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
   passwordHash String?
   googleId     String?  @unique
+  emailVerifiedAt DateTime?
+  sessionVersion Int @default(0)
   name         String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   catalogs Catalog[]
+  accountActionTokens AccountActionToken[]
 
   @@map("users")
+}
+
+model AccountActionToken {
+  id String @id @default(uuid())
+  userId String
+  purpose AccountActionPurpose
+  tokenHash String @unique
+  emailAtIssue String
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, createdAt])
+  @@index([expiresAt])
+  @@map("account_action_tokens")
+}
+
+// Reservations survive token cleanup and process restarts. No recipient or token data.
+model EmailDeliveryBudget {
+  period String @id
+  reserved Int @default(0)
+
+  @@map("email_delivery_budgets")
 }
 
 model Catalog {

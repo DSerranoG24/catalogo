@@ -1,20 +1,23 @@
 import bcrypt from "bcrypt";
 import { OAuth2Client } from "google-auth-library";
 import {
-  attachGoogleId,
+  linkGoogleUser,
   createGoogleUser,
   createUser,
   findUserByEmail,
   findUserByGoogleId,
+  findUserById,
 } from "../repositories/user.repository";
 import { generateToken } from "../utils/jwt";
+import { accountActionService } from "./account-action.service";
 
 const googleClient = new OAuth2Client();
 
-function createSession(user: { id: string; email: string; name: string | null }) {
+function createSession(user: { id: string; email: string; name: string | null; sessionVersion: number }) {
+  const claims = { userId: user.id, email: user.email, sessionVersion: user.sessionVersion };
   return {
     user: { id: user.id, email: user.email, name: user.name },
-    token: generateToken({ userId: user.id, email: user.email }),
+    token: generateToken(claims),
   };
 }
 
@@ -22,8 +25,8 @@ export async function registerUser(data: {
   email: string;
   password: string;
   name?: string;
-}) {
-  const existingUser = await findUserByEmail(data.email);
+}, store = { findUserByEmail, createUser }, actions = accountActionService) {
+  const existingUser = await store.findUserByEmail(data.email);
 
   if (existingUser) {
     throw new Error("EMAIL_ALREADY_EXISTS");
@@ -31,12 +34,14 @@ export async function registerUser(data: {
 
   const passwordHash = await bcrypt.hash(data.password, 12);
 
-  const user = await createUser({
+  const user = await store.createUser({
     email: data.email,
     passwordHash,
     name: data.name,
   });
 
+  try { actions.requestVerification(user.id); }
+  catch { console.warn("[account-mail]", { operation: "VERIFY_EMAIL", result: "failed" }); }
   return createSession(user);
 }
 
@@ -62,7 +67,7 @@ export async function loginUser(data: {
   return createSession(user);
 }
 
-export async function loginWithGoogle(idToken: string) {
+export async function verifyGoogleIdentity(idToken: string) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   if (!clientId) throw new Error("GOOGLE_AUTH_NOT_CONFIGURED");
 
@@ -80,31 +85,43 @@ export async function loginWithGoogle(idToken: string) {
     throw new Error("INVALID_GOOGLE_CREDENTIAL");
   }
 
-  const googleId = payload.sub;
-  const email = payload.email.trim().toLowerCase();
-  const existingGoogleUser = await findUserByGoogleId(googleId);
+  return { googleId: payload.sub, email: payload.email.trim().toLowerCase(), name: payload.name?.slice(0, 100), authoritative: payload.email.toLowerCase().endsWith("@gmail.com") || Boolean(payload.hd) };
+}
+
+export async function loginWithGoogle(idToken: string, store = { findUserByGoogleId, findUserByEmail, createGoogleUser }, verify = verifyGoogleIdentity) {
+  const { googleId, email, name, authoritative } = await verify(idToken);
+  const existingGoogleUser = await store.findUserByGoogleId(googleId);
   if (existingGoogleUser) return createSession(existingGoogleUser);
 
-  const existingEmailUser = await findUserByEmail(email);
+  const existingEmailUser = await store.findUserByEmail(email);
   if (existingEmailUser) {
     if (existingEmailUser.googleId && existingEmailUser.googleId !== googleId) {
       throw new Error("GOOGLE_ACCOUNT_MISMATCH");
     }
-    return createSession(await attachGoogleId(existingEmailUser.id, googleId));
+    throw new Error("GOOGLE_LINK_REQUIRED");
   }
 
   try {
-    const user = await createGoogleUser({
+    const user = await store.createGoogleUser({
       email,
-      name: payload.name?.slice(0, 100),
+      name,
       googleId,
+      ...(authoritative ? { emailVerifiedAt: new Date() } : {}),
     });
+    if (!authoritative) accountActionService.requestVerification(user.id);
     return createSession(user);
   } catch (error) {
     if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
-      const concurrentUser = await findUserByGoogleId(googleId);
+      const concurrentUser = await store.findUserByGoogleId(googleId);
       if (concurrentUser) return createSession(concurrentUser);
     }
     throw error;
   }
+}
+
+export async function linkGoogleAccount(userId: string, idToken: string, password: string, store = { findUserById, linkGoogleUser }, verify = verifyGoogleIdentity) {
+  const identity = await verify(idToken);
+  const user = await store.findUserById(userId);
+  if (!user?.passwordHash || user.email !== identity.email || !await bcrypt.compare(password, user.passwordHash)) throw new Error("GOOGLE_LINK_REJECTED");
+  await store.linkGoogleUser(user.id, user.email, user.passwordHash, user.sessionVersion, identity.googleId, identity.authoritative);
 }

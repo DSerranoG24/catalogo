@@ -1,9 +1,10 @@
 import { Response, NextFunction } from "express";
 import { AuthenticatedRequest } from "../types/auth.types";
-import { verifyToken } from "../utils/jwt";
+import { verifiedSession } from "../services/session-version";
 import { findUserById } from "../repositories/user.repository";
 
-export async function authenticate(
+export function makeAuthenticate(lookup = findUserById) {
+return async function authenticate(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
@@ -27,20 +28,22 @@ export async function authenticate(
       });
     }
 
-    const payload = verifyToken(token);
+    const payload = verifiedSession(token);
 
-    const user = await findUserById(payload.userId);
+    const user = await lookup(payload.userId);
 
-    if (!user) {
+    if (!user || user.sessionVersion !== payload.sessionVersion) {
       return res.status(401).json({
         success: false,
-        message: "Usuario no encontrado",
+        message: "Sesión no válida. Inicia sesión de nuevo.",
       });
     }
 
     req.user = {
       id: user.id,
       email: user.email,
+      emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
+      hasLocalPassword: Boolean(user.passwordHash),
     };
 
     next();
@@ -51,3 +54,5 @@ export async function authenticate(
     });
   }
 }
+}
+export const authenticate = makeAuthenticate();

@@ -19,6 +19,7 @@ const folder = fs.mkdtempSync(path.join(os.tmpdir(), "catalogo-import-browser-")
 const catalogId = "11111111-1111-4111-8111-111111111111";
 const catalog = { id: catalogId, publicId: catalogId, name: "Catálogo ficticio", slug: "prueba-local", active: true, archivedAt: null, template: "TECH", description: null, logoUrl: null };
 const products = new Map();
+let emailVerified = false, verificationRequests = 0, verificationConfirms = 0, passwordResets = 0, forgotRequests = 0;
 let categoryPresent = true, categoryDeletes = 0, categoryDeleteFails = false;
 const categoryId = "22222222-2222-4222-8222-222222222222";
 const category = { id: categoryId, name: "Manos Libres", slug: "manos-libres", imageUrl: null, position: 0 };
@@ -92,6 +93,7 @@ try {
       apiReads.push(req.url);
       if (mode === "auth" && confirms > 0) return reply({ success: false, error: "AUTH_REQUIRED" }, 401);
       if (req.url === "/api/catalogs") return reply({ catalogs: [catalog] });
+      if (req.url === "/api/me") return reply({ success: true, user: { id: "test-user", email: "owner@example.invalid", emailVerifiedAt: emailVerified ? "2026-10-25T12:00:00Z" : null, hasLocalPassword: true } });
       if (req.url === `/api/catalogs/${catalogId}`) return reply({ catalog });
       if (req.url === `/api/categories/catalog/${catalogId}`) return reply({ categories: categoryPresent ? [category] : [] });
       if (req.url === `/api/products/catalog/${catalogId}`) return reply({ products: [...products.values()] });
@@ -135,6 +137,14 @@ try {
     if (req.method === "DELETE" && req.url.startsWith("/api/products/product-")) {
       for (const [sku, p] of products) if (req.url === `/api/products/${p.id}`) products.delete(sku);
       return reply({ success: true });
+    }
+    if (req.method === "POST" && req.url.startsWith("/api/auth/")) {
+      const chunks = []; for await (const chunk of req) chunks.push(chunk);
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      if (req.url === "/api/auth/verification/request") { verificationRequests++; return reply({ success: true, retryAfterSeconds: 60, message: "Solicitud registrada." }, 202); }
+      if (req.url === "/api/auth/verification/confirm") { verificationConfirms++; emailVerified = true; assert.ok(body.token); return reply({ success: true, message: "Correo verificado." }); }
+      if (req.url === "/api/auth/password/forgot") { forgotRequests++; return reply({ success: true, message: "Si corresponde, recibirás instrucciones para recuperar el acceso." }, 202); }
+      if (req.url === "/api/auth/password/reset") { passwordResets++; assert.ok(body.token); assert.equal(body.password, body.passwordConfirmation); return reply({ success: true, message: "Contraseña actualizada. Inicia sesión de nuevo en tus dispositivos." }); }
     }
     if (req.method !== "POST" || !req.url.startsWith(`/api/products/catalog/${catalogId}/import/`)) return reply({ success: false }, 404);
     const chunks = []; for await (const chunk of req) chunks.push(chunk);
@@ -185,11 +195,31 @@ try {
   assert.ok(await evaluate(`Boolean([...document.querySelectorAll('a')].find(a=>a.textContent.includes('Crear mi catálogo')&&a.getAttribute('href')==='/login'))`));
   assert.ok(await evaluate(`Boolean([...document.querySelectorAll('button')].find(b=>b.textContent==='Ver un ejemplo'&&b.disabled&&document.getElementById(b.getAttribute('aria-describedby'))?.textContent.includes('próximamente')))`));
   assert.deepEqual(await evaluate(`[...document.querySelectorAll('footer [role="link"][aria-disabled="true"]')].map(e=>e.textContent)`), ["Contacto", "Privacidad", "Términos"]);
-  assert.equal(await evaluate(`document.querySelectorAll('footer a').length`), 0);
+  const socialLinks = [
+    { label: "Instagram de Vitrinaya", href: "https://www.instagram.com/vitrinaya.app/" },
+    { label: "Facebook de Vitrinaya", href: "https://www.facebook.com/profile.php?id=61595710178606" },
+  ];
+  const landingResponse = await fetch("http://localhost:4328/");
+  assert.equal(landingResponse.status, 200);
+  const landingHtml = await landingResponse.text();
+  const footerHtml = landingHtml.match(/<footer\b[^]*?<\/footer>/)?.[0];
+  assert.ok(footerHtml, "Footer exists in server HTML");
+  for (const social of socialLinks) {
+    const escapedHref = social.href.replaceAll("&", "&amp;");
+    const anchor = footerHtml.match(new RegExp(`<a\\b[^>]*aria-label="${social.label}"[^>]*>`))?.[0];
+    assert.ok(anchor?.includes(`href="${escapedHref}"`), `${social.label} has its exact href in server HTML`);
+    assert.ok(anchor.includes('target="_blank"'));
+    assert.ok(anchor.includes('rel="noopener noreferrer"'));
+    assert.ok(!anchor.includes("nofollow"));
+  }
+  assert.equal(await evaluate(`document.querySelectorAll('footer a').length`), 2);
   assert.ok(await evaluate(`!document.querySelector('[href="#ejemplo"]')&&document.getElementById('footer-coming-soon').textContent.includes('próximamente')`));
   for (const width of [320, 390, 1024, 1440]) {
     await command("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 600 });
     assert.ok(await evaluate(`document.documentElement.scrollWidth<=innerWidth+1`), `Landing fits at ${width}px without JS`);
+    for (const social of socialLinks) {
+      assert.ok(await evaluate(`(()=>{const a=document.querySelector('footer a[aria-label="${social.label}"]');const r=a.getBoundingClientRect();return a.href===${JSON.stringify(social.href)}&&a.target==='_blank'&&!a.relList.contains('nofollow')&&r.width>=44&&r.height>=44&&r.left>=0&&r.right<=innerWidth})()`), `${social.label} is accessible and fits ${width}px without JS`);
+    }
     if (width === 390 || width === 1440) {
       const landingShot = await command("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
       fs.writeFileSync(path.join(os.tmpdir(), `vitrinaya-landing-${width}.png`), Buffer.from(landingShot.data, "base64"));
@@ -198,6 +228,17 @@ try {
   await command("Emulation.clearDeviceMetricsOverride");
   assert.equal(apiReads.length, 0, "Landing does not consult the API");
   await command("Emulation.setScriptExecutionDisabled", { value: false });
+  await command("Page.reload");
+  await poll(() => evaluate(`Boolean(document.querySelector('footer a[aria-label="Instagram de Vitrinaya"]'))`));
+  for (const social of socialLinks) {
+    await evaluate(`document.querySelector('footer a[aria-label="${social.label}"]').focus()`);
+    await command("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+    await command("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+    await command("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, modifiers: 8 });
+    await command("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, modifiers: 8 });
+    assert.ok(await evaluate(`document.activeElement.getAttribute('aria-label')==='${social.label}'&&getComputedStyle(document.activeElement).outlineStyle==='solid'&&parseFloat(getComputedStyle(document.activeElement).outlineWidth)>=2`), `${social.label} has visible keyboard focus`);
+  }
+  summary.scenarios.push("social profiles: exact crawlable anchors in server HTML, blank target with noopener noreferrer and no nofollow, 44px targets at four widths without JS, keyboard focus; legal links remain pending");
   step("private-dashboard-without-session");
   await command("Page.navigate", { url: "http://localhost:4328/dashboard" });
   await poll(() => evaluate(`location.pathname==='/login'&&Boolean(document.querySelector('button[type="submit"]'))`));
@@ -266,6 +307,55 @@ try {
   }
   await command("Emulation.clearDeviceMetricsOverride");
   summary.scenarios.push("login and register: explicit home link navigates by actual pointer click and Tab/Enter at 320/390/1024/1440px; visible logo and return link have keyboard focus outlines, correct href and no overflow");
+  step("account-verification-and-recovery");
+  await command("Page.navigate", { url: "http://localhost:4328/dashboard" });
+  await poll(() => evaluate(`Boolean(document.querySelector('aside[aria-label="Verificación de correo"]'))`));
+  assert.ok(await evaluate(`document.querySelector('aside[aria-label="Verificación de correo"]').textContent.includes('owner@example.invalid')&&Boolean(document.querySelector('a[href="/dashboard/catalogos/${catalogId}"]'))`));
+  await click("Reenviar verificación");
+  await poll(() => evaluate(`[...document.querySelectorAll('button')].some(b=>b.textContent.startsWith('Reenviar en ')&&b.disabled)`));
+  assert.equal(verificationRequests, 1);
+  emailVerified = true;
+  await evaluate(`window.dispatchEvent(new Event('focus'))`);
+  await poll(() => evaluate(`!document.querySelector('aside[aria-label="Verificación de correo"]')`));
+  emailVerified = false;
+  await evaluate(`window.dispatchEvent(new Event('focus'))`);
+  await poll(() => evaluate(`Boolean(document.querySelector('aside[aria-label="Verificación de correo"]'))`));
+  const demoToken = "v".repeat(43);
+  for (const path of ["verificar-correo", "restablecer-contrasena", "recuperar-contrasena"]) {
+    const response = await fetch(`http://localhost:4328/${path}`), html = await response.text();
+    assert.equal(response.status, 200); assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+    assert.ok(response.headers.get("cache-control").includes("no-store"));
+    assert.ok(html.includes('content="noindex, nofollow"')); assert.ok(!html.includes(demoToken));
+  }
+  for (const path of ["verificar-correo", "restablecer-contrasena"]) {
+    await command("Page.navigate", { url: `http://localhost:4328/${path}#token=${demoToken}` });
+    await poll(() => evaluate(`location.hash===''&&Boolean(document.querySelector('button[type="submit"]:not(:disabled)'))`));
+    assert.equal(verificationConfirms, 0); assert.equal(passwordResets, 0, "Opening a link cannot consume it");
+    for (const width of [320, 390, 1024, 1440]) {
+      await command("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 600 });
+      assert.ok(await evaluate(`document.documentElement.scrollWidth<=innerWidth+1`), `Account form fits ${width}px`);
+    }
+  }
+  await command("Emulation.clearDeviceMetricsOverride");
+  await input('input[type="password"]', "new-password");
+  await input('label:nth-of-type(2) input[type="password"]', "new-password");
+  await click("Cambiar contraseña");
+  await poll(() => evaluate(`document.querySelector('[role="status"]')?.textContent.includes('Contraseña actualizada')`));
+  assert.equal(passwordResets, 1); assert.equal(await evaluate(`location.pathname`), "/restablecer-contrasena");
+  await command("Page.navigate", { url: `http://localhost:4328/verificar-correo#token=${demoToken}` });
+  await poll(() => evaluate(`Boolean(document.querySelector('button[type="submit"]:not(:disabled)'))`));
+  await click("Confirmar mi correo");
+  await poll(() => evaluate(`document.querySelector('[role="status"]')?.textContent==='Correo verificado.'`));
+  assert.equal(verificationConfirms, 1);
+  await command("Page.navigate", { url: "http://localhost:4328/recuperar-contrasena" });
+  await poll(() => evaluate(`Boolean(document.querySelector('input[type="email"]'))`));
+  await input('input[type="email"]', "missing@example.invalid"); await click("Solicitar instrucciones");
+  await poll(() => evaluate(`document.querySelector('[role="status"]')?.textContent.includes('Si corresponde')`));
+  assert.equal(forgotRequests, 1);
+  await command("Page.navigate", { url: "http://localhost:4328/dashboard" });
+  await poll(() => evaluate(`Boolean(document.querySelector('a[href="/dashboard/catalogos/${catalogId}"]'))`));
+  assert.equal(await evaluate(`Boolean(document.querySelector('aside[aria-label="Verificación de correo"]'))`), false);
+  summary.scenarios.push("account flows: persistent nonblocking server-backed notice and resend cooldown; token pages no-store/noindex/no-referrer, fragments cleared, GET never consumes, explicit confirmation/reset without auto-login, generic recovery, four widths (simulated API)");
   await command("Page.navigate", { url: "http://localhost:4328/" });
   await poll(() => evaluate(`document.querySelector('h1')?.textContent==='Tu vitrina digital, lista para compartir.'`));
   assert.ok(await evaluate(`localStorage.getItem('catalogo-session')!==null&&location.pathname==='/'`));

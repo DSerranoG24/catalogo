@@ -8,6 +8,7 @@ router.get(
   "/",
   authenticate,
   (req: AuthenticatedRequest, res) => {
+    res.setHeader("Cache-Control", "no-store");
     res.json({
       success: true,
       user: req.user,
