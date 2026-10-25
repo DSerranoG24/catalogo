@@ -62,6 +62,7 @@ async function evaluate(expression) {
 const click = label => evaluate(`(()=>{const button=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(label)});if(!button||button.disabled)return false;button.click();return true})()`);
 const counts = () => evaluate(`Object.fromEntries([...document.querySelectorAll('#product-import-panel dl>div')].map(e=>[e.querySelector('dt').textContent,Number(e.querySelector('dd').textContent)]))`);
 const status = () => evaluate(`document.querySelector('#product-import-panel [role="status"]')?.textContent||''`);
+const selectionLayout = () => evaluate(`(()=>{const label=document.querySelector('label[for="product-import-file"]'),state=document.getElementById('product-import-file-name')||document.querySelector('#product-import-panel [role="status"]');const rect=e=>{const r=e.getBoundingClientRect();return {left:r.left,top:r.top,width:r.width,height:r.height,centerY:r.top+r.height/2}};return {selector:rect(label),state:rect(state),text:state.textContent}})()`);
 async function select(target) {
   const document = await command("DOM.getDocument");
   const node = await command("DOM.querySelector", { nodeId: document.root.nodeId, selector: "#product-import-file" });
@@ -140,6 +141,10 @@ try {
   await command("Page.setInterceptFileChooserDialog", { enabled: true });
   const picker = await evaluate(`(()=>{const input=document.getElementById('product-import-file'),label=input.labels[0];label.scrollIntoView({block:'center'});const r=label.getBoundingClientRect();const x=r.left+r.width/2,y=r.top+r.height/2;return {x,y,rect:{left:r.left,top:r.top,width:r.width,height:r.height},disabled:input.disabled,hit:label.contains(document.elementFromPoint(x,y)),label:label.textContent,accept:input.accept}})()`);
   summary.pickerGeometry = picker;
+  summary.selectionLayout = await selectionLayout();
+  assert.equal(summary.selectionLayout.text, "Ningún archivo seleccionado");
+  assert.ok(Math.abs(summary.selectionLayout.selector.centerY - summary.selectionLayout.state.centerY) < 1);
+  assert.ok(summary.selectionLayout.state.left >= summary.selectionLayout.selector.left + summary.selectionLayout.selector.width);
   assert.equal(picker.disabled, false);
   assert.equal(picker.hit, true, "Visible label must receive pointer events without an overlay");
   assert.ok(picker.rect.height >= 44);
@@ -159,6 +164,9 @@ try {
   await command("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   const mobilePicker = await evaluate(`(()=>{const label=document.querySelector('label[for="product-import-file"]');label.scrollIntoView({block:'center'});const r=label.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;return {x,y,rect:{left:r.left,top:r.top,width:r.width,height:r.height},hit:label.contains(document.elementFromPoint(x,y)),fits:r.left>=0&&r.right<=innerWidth}})()`);
   summary.mobilePickerGeometry = mobilePicker;
+  summary.mobileSelectionLayout = await selectionLayout();
+  assert.ok(Math.abs(summary.mobileSelectionLayout.selector.centerY - summary.mobileSelectionLayout.state.centerY) < 1);
+  assert.ok(summary.mobileSelectionLayout.state.left >= summary.mobileSelectionLayout.selector.left + summary.mobileSelectionLayout.selector.width);
   assert.equal(mobilePicker.hit, true);
   assert.equal(mobilePicker.fits, true);
   assert.ok(mobilePicker.rect.height >= 44);
@@ -170,6 +178,9 @@ try {
   summary.scenarios.push("visible file label opens picker by pointer and Tab+Space; focus outline, 44px target, correct accept and no overlay");
   step("real-reader-and-mixed-preview"); await select(files.mixed);
   await poll(async () => (await status()).includes("Lista para revisar"));
+  assert.equal(await evaluate(`document.getElementById('product-import-file-name').textContent`), "mixed.xlsx");
+  summary.selectedFileLayout = await selectionLayout();
+  assert.ok(Math.abs(summary.selectedFileLayout.selector.centerY - summary.selectedFileLayout.state.centerY) < 1);
   let report = await counts(); assert.equal(report["Nuevas (vista previa)"], 1); assert.equal(report["Actualizar (vista previa)"], 1); assert.equal(report["Filas con error"], 1);
   assert.equal(await evaluate(`document.activeElement?.textContent`), "Revisión y reporte");
   assert.equal(await click("Importar 2 productos"), true);
