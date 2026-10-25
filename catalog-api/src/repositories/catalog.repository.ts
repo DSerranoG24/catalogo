@@ -1,10 +1,13 @@
 import { prisma } from "../config/prisma";
+import { quotationCatalogFieldsSchema } from "../schemas/catalog.schema";
 
 export async function createCatalog(data: {
   userId: string;
   name: string;
   slug: string;
   description?: string | null;
+  nit?: string | null;
+  quotationTerms?: string | null;
   whatsappMessage?: string | null;
   whatsappPhone?: string;
   phone?: string;
@@ -18,7 +21,7 @@ export async function createCatalog(data: {
   template?: string;
 }) {
   return prisma.catalog.create({
-    data,
+    data: { ...data, ...quotationCatalogFieldsSchema.parse(data) },
   });
 }
 
@@ -52,6 +55,8 @@ export async function updateCatalog(
     name?: string;
     slug?: string;
     description?: string | null;
+    nit?: string | null;
+    quotationTerms?: string | null;
     whatsappMessage?: string | null;
     logoUrl?: string | null;
     active?: boolean;
@@ -72,7 +77,7 @@ export async function updateCatalog(
       id,
       userId,
     },
-    data,
+    data: { ...data, ...quotationCatalogFieldsSchema.parse(data) },
   });
 }
 

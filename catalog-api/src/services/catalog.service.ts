@@ -26,6 +26,8 @@ export async function createCatalogService(data: {
   name: string;
   slug: string;
   description?: string | null;
+  nit?: string | null;
+  quotationTerms?: string | null;
   whatsappMessage?: string | null;
   whatsappPhone?: string;
   phone?: string;
@@ -59,6 +61,8 @@ export async function updateCatalogService(
     name?: string;
     slug?: string;
     description?: string | null;
+    nit?: string | null;
+    quotationTerms?: string | null;
     whatsappMessage?: string | null;
     logoUrl?: string | null;
     active?: boolean;

@@ -48,6 +48,8 @@ export default function CatalogSettings({
 }) {
   const [profile, setProfile] = useState({
     name: catalog.name,
+    nit: catalog.nit ?? "",
+    quotationTerms: catalog.quotationTerms ?? "",
     description: catalog.description ?? "",
     whatsappPhone: catalog.whatsappPhone ?? "",
     whatsappMessage: catalog.whatsappMessage ?? "",
@@ -84,6 +86,8 @@ export default function CatalogSettings({
     try {
       const updatedProfile = {
         name: profile.name.trim(),
+        nit: profile.nit.trim() || null,
+        quotationTerms: profile.quotationTerms.trim() || null,
         description: profile.description.trim() || null,
         whatsappPhone: profile.whatsappPhone.trim() || null,
         whatsappMessage: profile.whatsappMessage.trim() || null,
@@ -219,6 +223,15 @@ export default function CatalogSettings({
             <label className="block text-sm font-medium text-[#37443d]">
               Nombre comercial
               <input required maxLength={100} value={profile.name} onChange={(event) => updateProfileField("name", event.target.value)} className={inputClass} />
+            </label>
+            <label className="block text-sm font-medium text-[#37443d]">
+              NIT <span className="font-normal text-[#849087]">(opcional)</span>
+              <input maxLength={30} pattern="[0-9][0-9. -]*" value={profile.nit} onChange={(event) => updateProfileField("nit", event.target.value)} className={inputClass} />
+            </label>
+            <label className="block text-sm font-medium text-[#37443d] sm:col-span-2">
+              Condiciones de cotización <span className="font-normal text-[#849087]">(opcional)</span>
+              <textarea rows={5} maxLength={4000} value={profile.quotationTerms} onChange={(event) => updateProfileField("quotationTerms", event.target.value)} placeholder="Condiciones de entrega, formas de pago, garantía..." className={inputClass} />
+              <span className="mt-1.5 block text-xs font-normal text-[#849087]">Se guardan en cada nueva cotización. Los cambios no modifican las condiciones ya emitidas.</span>
             </label>
             <label className="block text-sm font-medium text-[#37443d] sm:col-span-2">
               Asunto o mensaje personalizado de WhatsApp <span className="font-normal text-[#849087]">(opcional)</span>

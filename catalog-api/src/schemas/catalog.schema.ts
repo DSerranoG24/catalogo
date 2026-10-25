@@ -17,7 +17,13 @@ const httpUrlSchema = z.string().trim().url().max(2048).refine((value) => {
 // adding a template does not require a database enum migration each time.
 const catalogTemplateSchema = z.enum(["EDITORIAL", "GRID", "BOUTIQUE", "TECH", "FASHION", "BEAUTY", "GLAMOUR"]);
 
+export const quotationCatalogFieldsSchema = z.object({
+  nit: z.string().trim().min(1).max(30).regex(/^[0-9][0-9. -]*$/).nullable().optional(),
+  quotationTerms: z.string().trim().max(4000).nullable().optional(),
+});
+
 export const createCatalogSchema = z.object({
+  ...quotationCatalogFieldsSchema.shape,
   name: z.string().min(1).max(100),
   slug: z
     .string()
@@ -42,6 +48,7 @@ export const createCatalogSchema = z.object({
 });
 
 export const updateCatalogSchema = z.object({
+  ...quotationCatalogFieldsSchema.shape,
   name: z.string().min(1).max(100).optional(),
   slug: z
     .string()

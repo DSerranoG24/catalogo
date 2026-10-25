@@ -2,11 +2,16 @@ import { OrderStatus, Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma";
 import { recoverIdempotentOrder } from "./order-idempotency";
 import { calculatePublicOrder } from "../services/order-calculation";
+import { randomBytes } from "node:crypto";
+import { quotationSellerSchema } from "../services/quotation-data";
 const publicOrderReceipt = {
   id: true,
   status: true,
   total: true,
   createdAt: true,
+  quotationNumber: true,
+  quotationToken: true,
+  quotationIssuedAt: true,
   items: { select: { productName: true, quantity: true, unitPrice: true, subtotal: true } },
 } satisfies Prisma.OrderSelect;
 
@@ -21,12 +26,13 @@ export async function createPublicOrder(
     notes?: string;
     idempotencyKey?: string;
     items: { productId: string; quantity: number }[];
-  }
+  },
+  database = prisma
 ) {
   const idempotencyKey = data.idempotencyKey;
-  return recoverIdempotentOrder(idempotencyKey, () => prisma.$transaction(async (transaction) => {
+  return recoverIdempotentOrder(idempotencyKey, () => database.$transaction(async (transaction) => {
     const catalog = await transaction.catalog.findFirst({
-      where: { publicId, active: true },
+      where: { publicId, active: true, archivedAt: null },
       select: { id: true },
     });
     if (!catalog) throw new Error("CATALOG_NOT_FOUND");
@@ -50,6 +56,24 @@ export async function createPublicOrder(
     });
     const { items, total } = calculatePublicOrder(data.items, products, pricingTime);
 
+    // PostgreSQL locks this catalog row until commit. The increment and order are atomic;
+    // a failed create (including an idempotency conflict) rolls the increment back.
+    const increment = await transaction.catalog.updateMany({
+      where: { id: catalog.id, active: true, archivedAt: null },
+      data: { quotationCounter: { increment: 1 } },
+    });
+    if (increment.count !== 1) throw new Error("CATALOG_NOT_FOUND");
+    const seller = await transaction.catalog.findUniqueOrThrow({
+      where: { id: catalog.id },
+      select: {
+        quotationCounter: true, name: true, nit: true, phone: true, whatsappPhone: true,
+        address: true, businessHours: true, email: true, instagramUrl: true,
+        facebookUrl: true, tiktokUrl: true, quotationTerms: true,
+      },
+    });
+    const quotationSellerSnapshot = quotationSellerSchema.parse(seller);
+    const quotationIssuedAt = new Date();
+
     return transaction.order.create({
       data: {
         catalogId: catalog.id,
@@ -61,15 +85,19 @@ export async function createPublicOrder(
         customerConsentAt: new Date(),
         notes: data.notes,
         total,
+        quotationNumber: seller.quotationCounter,
+        quotationToken: randomBytes(32).toString("hex"),
+        quotationIssuedAt,
+        quotationSellerSnapshot,
         items: { create: items },
       },
       select: publicOrderReceipt,
     });
   }), async () => {
     if (!idempotencyKey) return null;
-    const catalog = await prisma.catalog.findFirst({ where: { publicId, active: true }, select: { id: true } });
+    const catalog = await database.catalog.findFirst({ where: { publicId, active: true, archivedAt: null }, select: { id: true } });
     if (!catalog) return null;
-    const existing = await prisma.order.findUnique({
+    const existing = await database.order.findUnique({
       where: { catalogId_idempotencyKey: { catalogId: catalog.id, idempotencyKey } },
       select: publicOrderReceipt,
     });

@@ -16,6 +16,8 @@ export type Catalog = {
   slug: string;
   description: string | null;
   logoUrl: string | null;
+  nit: string | null;
+  quotationTerms: string | null;
   whatsappPhone: string | null;
   whatsappMessage: string | null;
   phone: string | null;

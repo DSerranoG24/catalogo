@@ -41,6 +41,9 @@ model Catalog {
   slug          String
   description   String?
   logoUrl       String?
+  nit           String?
+  quotationTerms String?
+  quotationCounter Int @default(0)
   publicId      String          @unique @default(uuid())
   whatsappPhone String?
   whatsappMessage String?
@@ -154,6 +157,10 @@ model Order {
   id                String      @id @default(uuid())
   catalogId         String
   idempotencyKey    String?
+  quotationNumber   Int?
+  quotationIssuedAt DateTime?
+  quotationSellerSnapshot Json?
+  quotationToken    String? @unique
   customerName      String
   customerPhone     String
   customerEmail     String?
@@ -170,6 +177,7 @@ model Order {
 
   @@index([catalogId])
   @@unique([catalogId, idempotencyKey])
+  @@unique([catalogId, quotationNumber])
   @@index([status])
   @@map("orders")
 }

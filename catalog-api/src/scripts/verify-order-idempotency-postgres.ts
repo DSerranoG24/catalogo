@@ -22,6 +22,7 @@ async function main() {
 
   const userId = randomUUID();
   const catalogIds: string[] = [];
+  const previousPublicApiUrl = process.env.PUBLIC_API_URL;
   let server: Server | undefined;
 
   try {
@@ -64,6 +65,7 @@ async function main() {
     const address = server.address();
     assert.ok(address && typeof address !== "string");
     const apiBase = `http://127.0.0.1:${address.port}/api`;
+    process.env.PUBLIC_API_URL = apiBase;
 
     async function submit(catalogIndex: number, key?: string) {
       const product = products[catalogIndex];
@@ -88,7 +90,7 @@ async function main() {
       );
       const body = await response.json() as {
         success: boolean;
-        order?: { id: string; total: number };
+        order?: { id: string; total: number; quotationNumber: string; quotationUrl: string };
         message?: string;
       };
 
@@ -96,6 +98,8 @@ async function main() {
       assert.equal(body.success, true);
       assert.ok(body.order);
       assert.equal(body.order.total, product.price * 2, "server must calculate the total from database prices");
+      assert.match(body.order.quotationNumber, /^COT-[0-9]{6,}$/);
+      assert.ok(body.order.quotationUrl.startsWith(`${apiBase}/public/catalogs/`));
       return body.order;
     }
 
@@ -105,6 +109,8 @@ async function main() {
       submit(0, concurrentKey),
     ]);
     assert.equal(concurrentA.id, concurrentB.id);
+    assert.equal(concurrentA.quotationNumber, concurrentB.quotationNumber);
+    assert.ok(concurrentA.quotationUrl === concurrentB.quotationUrl, "Idempotency must preserve the capability without logging it");
     const concurrentRows = await prisma.order.count({
       where: { catalogId: catalogs[0].id, idempotencyKey: concurrentKey },
     });
@@ -112,12 +118,13 @@ async function main() {
 
     const retry = await submit(0, concurrentKey);
     assert.equal(retry.id, concurrentA.id);
+    assert.ok(retry.quotationUrl === concurrentA.quotationUrl, "Retry must preserve the quotation link");
 
     const distinctKeyA = `distinct-a-${randomUUID()}`;
     const distinctKeyB = `distinct-b-${randomUUID()}`;
-    const distinctA = await submit(0, distinctKeyA);
-    const distinctB = await submit(0, distinctKeyB);
+    const [distinctA, distinctB] = await Promise.all([submit(0, distinctKeyA), submit(0, distinctKeyB)]);
     assert.notEqual(distinctA.id, distinctB.id);
+    assert.notEqual(distinctA.quotationNumber, distinctB.quotationNumber);
     const distinctRows = await prisma.order.count({
       where: {
         catalogId: catalogs[0].id,
@@ -139,6 +146,17 @@ async function main() {
 
     const [withoutKeyA, withoutKeyB] = await Promise.all([submit(0), submit(0)]);
     assert.notEqual(withoutKeyA.id, withoutKeyB.id);
+    assert.notEqual(withoutKeyA.quotationNumber, withoutKeyB.quotationNumber);
+
+    const beforeArchive = await prisma.catalog.findUniqueOrThrow({ where: { id: catalogs[0].id }, select: { quotationCounter: true } });
+    await prisma.catalog.update({ where: { id: catalogs[0].id }, data: { archivedAt: new Date() } });
+    const blocked = await fetch(`${apiBase}/public/catalogs/${catalogs[0].publicId}/orders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customerName: "Prueba local", customerPhone: "3001234567", customerAddress: "Direccion de prueba", consent: true, items: [{ productId: products[0].id, quantity: 1 }] }),
+    });
+    assert.equal(blocked.status, 404);
+    const afterArchive = await prisma.catalog.findUniqueOrThrow({ where: { id: catalogs[0].id }, select: { quotationCounter: true } });
+    assert.equal(afterArchive.quotationCounter, beforeArchive.quotationCounter);
 
     console.log(JSON.stringify({
       database: "catalogo_test@127.0.0.1",
@@ -148,20 +166,25 @@ async function main() {
       sameKeyAcrossCatalogs: { differentOrderIds: catalogOneOrder.id !== catalogTwoOrder.id, rows: crossCatalogRows },
       withoutKey: { differentOrderIds: withoutKeyA.id !== withoutKeyB.id },
       serverSideTotal: { expected: products[0].price * 2, returned: concurrentA.total, clientSent: 1 },
+      quotations: { concurrentNumbersDiffer: true, idempotentLinkPreserved: true, archivedOrderRejected: true },
     }, null, 2));
   } finally {
+    if (previousPublicApiUrl === undefined) delete process.env.PUBLIC_API_URL;
+    else process.env.PUBLIC_API_URL = previousPublicApiUrl;
     if (server?.listening) {
       await new Promise<void>((resolve, reject) => {
         server?.close((error?: Error) => error ? reject(error) : resolve());
       });
     }
-    await prisma.catalog.deleteMany({ where: { id: { in: catalogIds } } });
+    // Only this run's fixtures in the guarded disposable database; RESTRICT requires orders first.
+    await prisma.order.deleteMany({ where: { catalogId: { in: catalogIds }, catalog: { userId } } });
+    await prisma.catalog.deleteMany({ where: { id: { in: catalogIds }, userId } });
     await prisma.user.deleteMany({ where: { id: userId } });
     await prisma.$disconnect();
   }
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : "Local idempotency verification failed");
+main().catch(() => {
+  console.error("Local idempotency/quotation verification failed. No receipt or token is logged.");
   process.exitCode = 1;
 });

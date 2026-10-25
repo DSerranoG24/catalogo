@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
+import { getQuotationController, quotationPrivacyHeaders } from "../controllers/quotation.controller";
 import {
   createPublicOrderController,
   getPublicCatalogController,
@@ -10,6 +11,11 @@ import {
 } from "../controllers/product-review.controller";
 
 const router = Router();
+const quotationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, limit: 30,
+  standardHeaders: "draft-8", legacyHeaders: false,
+  message: { success: false, message: "Demasiadas descargas. Intenta más tarde." },
+});
 const publicReadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 120,
@@ -33,6 +39,10 @@ const reviewLimiter = rateLimit({
 });
 
 router.get("/:publicId", publicReadLimiter, getPublicCatalogController);
+router.get("/:publicId/orders/:orderId/quotation.pdf", (_req, res, next) => {
+  res.set(quotationPrivacyHeaders);
+  next();
+}, quotationLimiter, getQuotationController);
 router.get("/:publicId/products/:productSlug/reviews", publicReadLimiter, getPublicProductReviewsController);
 router.post("/:publicId/products/:productSlug/reviews", reviewLimiter, createPublicProductReviewController);
 router.post("/:publicId/orders", orderLimiter, createPublicOrderController);

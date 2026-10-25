@@ -9,6 +9,8 @@ import PublicRouteLoading from "@/components/public/PublicRouteLoading";
 
 type OrderReceipt = {
   id: string;
+  quotationNumber: string | null;
+  quotationUrl: string | null;
   total: number;
   items: { productName: string; quantity: number; unitPrice: number; subtotal: number }[];
 };
@@ -124,10 +126,11 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
       const order = result.order;
       const orderLines = order.items.map((item) => `- ${item.quantity} x ${item.productName}: $${item.subtotal.toLocaleString("es-CO")}`);
       const message = [
-        `Hola, quiero confirmar la orden ${order.id.slice(0, 8)}.`,
+        `Hola, quiero confirmar la orden ${order.quotationNumber ?? order.id.slice(0, 8)}.`,
         "",
         ...orderLines,
         `Total: $${order.total.toLocaleString("es-CO")}`,
+        ...(order.quotationUrl ? ["", `Cotización: ${order.quotationUrl}`, "Solicitud sujeta a confirmación. Validez: 15 días."] : []),
         "",
         `Cliente: ${customerName.trim()}`,
         `Teléfono: ${customerPhone.trim()}`,

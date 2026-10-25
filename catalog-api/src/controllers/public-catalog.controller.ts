@@ -5,6 +5,7 @@ import { createPublicOrder } from "../services/order.service";
 import { createProductImageSignedUrl } from "../services/storage.service";
 import { getCurrentProductPricing } from "../services/product-pricing";
 import { signCategoryImage } from "../services/category.service";
+import { quotationBaseUrl, quotationLabel, quotationUrl } from "../services/quotation-data";
 
 export async function getPublicCatalogController(req: Request, res: Response) {
   try {
@@ -40,8 +41,16 @@ export async function createPublicOrderController(req: Request, res: Response) {
   }
 
   try {
+    // Validate configuration before persisting; a missing URL must not create an orphan receipt.
+    const base = quotationBaseUrl();
     const order = await createPublicOrder(req.params.publicId as string, parsed.data);
-    return res.status(201).json({ success: true, order });
+    const { quotationToken, ...receipt } = order;
+    return res.set("Cache-Control", "private, no-store").status(201).json({ success: true, order: {
+      ...receipt,
+      quotationNumber: order.quotationNumber === null ? null : quotationLabel(order.quotationNumber),
+      quotationUrl: quotationToken && order.quotationNumber !== null
+        ? quotationUrl(base, req.params.publicId as string, order.id, quotationToken) : null,
+    } });
   } catch (error) {
     if (error instanceof Error && error.message === "CATALOG_NOT_FOUND") {
       return res.status(404).json({ success: false, message: "Catálogo no encontrado" });

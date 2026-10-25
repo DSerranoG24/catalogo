@@ -12,6 +12,10 @@ const testFiles = [
   "src/schemas/product-review.test.ts",
   "src/schemas/product-review.schema.test.ts",
   "src/utils/image-validation.test.ts",
+  "src/services/quotation-pdf.test.ts",
+  "src/repositories/order-quotation.test.ts",
+  "src/controllers/quotation.controller.test.ts",
+  "src/schemas/quotation-fields.test.ts",
 ];
 
 function isUserInfoSystemError(error) {
