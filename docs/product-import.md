@@ -100,6 +100,6 @@ Además del límite global, ambas rutas comparten 60 peticiones por 15 minutos y
 
 La fase 3A incorpora el lector local `.xlsx` con cuotas, plantilla y excepción de 2 MiB en las dos rutas exactas POST JSON del proxy. El resto de JSON del proxy conserva 64 KiB y Origin se comprueba antes de leer. Las dependencias autorizadas están fijadas: `read-excel-file: 9.3.12` y `fflate: 0.8.3`. El contrato de lectura, los límites y las comprobaciones están en `catalog-generator/docs/product-import-reader.md` (desde la raíz del repositorio).
 
-Para la fase 3B quedan la interfaz, previsualización, propagación de `invalidatedRows`, agregación de resultados y confirmación explícita. La fase 3A no envía filas ni implementa botones. No se cambió el backend en ese bloque.
+La fase 3B incorpora la interfaz en el workspace, previsualización secuencial, propagación de `invalidatedRows`, reporte por fila y confirmación explícita. El comportamiento de detención, resultados desconocidos, reintentos y accesibilidad está documentado en `catalog-generator/docs/product-import-ui.md` (desde la raíz del repositorio). No modifica el backend ni el lector de 3A.
 
 La documentación OpenAPI generada quedó intacta por restricción. Este documento describe el contrato nuevo. La suite usa HTTP loopback y dobles transaccionales; la verificación adicional del backend contra PostgreSQL local fue cerrada con los seis escenarios aprobados antes de la fase 3A, incluida concurrencia, edición manual y rollback por fila. La fase 3A no accede a esa base ni a producción y no aplica migraciones.

@@ -10,7 +10,9 @@
     "build": "next build",
     "start": "next start --port 3002",
     "lint": "eslint",
-    "test": "node scripts/verify-product-import.mjs"
+    "test": "node scripts/verify-product-import.mjs",
+    "test:import-flow": "node scripts/verify-product-import-flow.mjs",
+    "test:import-browser": "node scripts/verify-product-import-browser.mjs"
   },
   "dependencies": {
     "fflate": "0.8.3",
