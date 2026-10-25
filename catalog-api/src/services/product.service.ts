@@ -78,7 +78,7 @@ export async function createProductService(data: {
     ...promotion,
     stock: data.stock,
     specs: data.specs,
-  });
+  }, data.userId);
 }
 
 export async function getProductsService(

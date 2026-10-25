@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma";
+import { lockCatalogWrites } from "./catalog-write-lock";
 
 export async function createProduct(data: {
   catalogId: string;
@@ -16,9 +17,10 @@ export async function createProduct(data: {
   saleEndsAt?: Date | null;
   stock?: number;
   specs?: Prisma.InputJsonValue;
-}) {
-  return prisma.product.create({
-    data,
+}, userId: string, database = prisma) {
+  return database.$transaction(async tx => {
+    await lockCatalogWrites(tx, data.catalogId, userId);
+    return tx.product.create({ data });
   });
 }
 
@@ -87,30 +89,32 @@ export async function updateProduct(
     stock?: number;
     active?: boolean;
     specs?: Prisma.InputJsonValue;
-  }
+  },
+  database = prisma
 ) {
-  return prisma.product.updateMany({
-    where: {
-      id,
-      catalog: {
-        userId,
-      },
-    },
-    data,
+  return database.$transaction(async tx => {
+    const current = await tx.product.findFirst({ where: { id, catalog: { userId } }, select: { catalogId: true } });
+    if (!current) return { count: 0 };
+    await lockCatalogWrites(tx, current.catalogId, userId);
+    return tx.product.updateMany({
+      where: { id, catalog: { userId } },
+      data,
+    });
   });
 }
 
 export async function deleteProduct(
   id: string,
-  userId: string
+  userId: string,
+  database = prisma
 ) {
-  return prisma.product.deleteMany({
-    where: {
-      id,
-      catalog: {
-        userId,
-      },
-    },
+  return database.$transaction(async tx => {
+    const current = await tx.product.findFirst({ where: { id, catalog: { userId } }, select: { catalogId: true } });
+    if (!current) return { count: 0 };
+    await lockCatalogWrites(tx, current.catalogId, userId);
+    return tx.product.deleteMany({
+      where: { id, catalog: { userId } },
+    });
   });
 }
 

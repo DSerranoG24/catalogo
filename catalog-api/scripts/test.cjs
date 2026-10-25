@@ -18,6 +18,9 @@ const testFiles = [
   "src/schemas/quotation-fields.test.ts",
   "src/controllers/public-order-resilience.test.ts",
   "src/repositories/quotation-issue.test.ts",
+  "src/services/product-import.test.ts",
+  "src/routes/product-import.routes.test.ts",
+  "src/repositories/catalog-write-lock.test.ts",
 ];
 
 function isUserInfoSystemError(error) {

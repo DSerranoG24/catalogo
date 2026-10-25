@@ -1,13 +1,15 @@
 import { prisma } from "../config/prisma";
+import { lockCatalogWrites } from "./catalog-write-lock";
 
 export async function createCategory(data: {
   catalogId: string;
   name: string;
   slug: string;
   position?: number;
-}) {
-  return prisma.category.create({
-    data,
+}, userId: string, database = prisma) {
+  return database.$transaction(async tx => {
+    await lockCatalogWrites(tx, data.catalogId, userId);
+    return tx.category.create({ data });
   });
 }
 
@@ -51,30 +53,32 @@ export async function updateCategory(
     position?: number;
     active?: boolean;
     imageUrl?: string | null;
-  }
+  },
+  database = prisma
 ) {
-  return prisma.category.updateMany({
-    where: {
-      id,
-      catalog: {
-        userId,
-      },
-    },
-    data,
+  return database.$transaction(async tx => {
+    const current = await tx.category.findFirst({ where: { id, catalog: { userId } }, select: { catalogId: true } });
+    if (!current) return { count: 0 };
+    await lockCatalogWrites(tx, current.catalogId, userId);
+    return tx.category.updateMany({
+      where: { id, catalog: { userId } },
+      data,
+    });
   });
 }
 
 export async function deleteCategory(
   id: string,
-  userId: string
+  userId: string,
+  database = prisma
 ) {
-  return prisma.category.deleteMany({
-    where: {
-      id,
-      catalog: {
-        userId,
-      },
-    },
+  return database.$transaction(async tx => {
+    const current = await tx.category.findFirst({ where: { id, catalog: { userId } }, select: { catalogId: true } });
+    if (!current) return { count: 0 };
+    await lockCatalogWrites(tx, current.catalogId, userId);
+    return tx.category.deleteMany({
+      where: { id, catalog: { userId } },
+    });
   });
 }
 

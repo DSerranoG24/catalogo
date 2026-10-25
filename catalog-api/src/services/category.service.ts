@@ -23,7 +23,7 @@ export async function createCategoryService(data: {
     name: data.name,
     slug: data.slug,
     position: data.position,
-  });
+  }, data.userId);
 }
 
 export async function getCategoriesService(
