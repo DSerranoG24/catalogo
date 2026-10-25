@@ -11,13 +11,13 @@ Los esquemas Zod usados para validar las solicitudes son la fuente de verdad del
 ## Desarrollo local
 
 1. Copia `.env.example` como `.env` y configura `DATABASE_URL`, `JWT_SECRET`, `SUPABASE_URL` y `SUPABASE_SECRET_KEY`. No compartas ni versionés `.env`.
-2. Instala dependencias con `npm install`.
+2. Instala las dependencias del lockfile con `npm ci`. Usa Node.js `24.x`, según `engines.node`.
 3. Genera Prisma y aplica migraciones locales con `npm run prisma:generate` y `npm run prisma:migrate`.
 4. Inicia la API con `npm run dev`; por defecto escucha en `http://localhost:3000`.
 
 La migración es un paso manual y deliberado: ejecuta `npm.cmd run prisma:migrate:deploy` después de respaldar la base y confirmar el destino, ANTES de empujar el código que la necesita, porque un push a main puede disparar un despliegue automático. Sigue el [procedimiento de migraciones](../docs/migrations.md#orden-del-despliegue).
 
-Para Render, el repositorio incluye `render.yaml`: al crear un Blueprint conectado a este repositorio, Render configura `catalog-api`, sus comandos de build/inicio y la comprobación `/api/health`. El Blueprint solicitará las variables privadas; cópialas de `.env.production.example` y sustituye los marcadores. `PORT` lo asigna Render automáticamente. El comando de inicio es `npm start` y no aplica migraciones; estas se ejecutan por separado siguiendo el procedimiento anterior. Configura `CORS_ORIGINS` con el dominio HTTPS final de Vercel. No subas archivos `.env` reales ni secretos a GitHub.
+La [guía de despliegue](../docs/despliegue.md) centraliza los comandos exactos de Render, Blueprint, variables y comprobaciones de publicación. `.env.production.example` contiene solo marcadores; los valores reales se gestionan en el servicio. `PORT` lo asigna Render. El arranque no aplica migraciones. No subas archivos de entorno reales ni secretos a GitHub.
 
 ## Google Sign-In
 
@@ -25,7 +25,7 @@ Crea un OAuth Client ID de tipo Web en Google Cloud Console. Configura los oríg
 
 ## Orígenes y datos
 
-`CORS_ORIGINS` acepta una lista de orígenes exactos separados por coma. En producción usa solo los dominios HTTPS desplegados. Los catálogos públicos se consultan por su `publicId` aleatorio; la respuesta pública solo incluye campos de presentación, productos activos e imágenes con URL firmada. Las órdenes guardan nombre, teléfono, dirección y productos para que el vendedor las atienda; la ruta autenticada del propietario es la única que devuelve esos datos.
+`CORS_ORIGINS` acepta una lista de orígenes exactos separados por coma. En producción usa solo los dominios HTTPS desplegados. Los catálogos públicos se consultan por su `publicId` aleatorio; la respuesta pública solo incluye campos de presentación, productos activos e imágenes con URL firmada. Las órdenes guardan nombre, teléfono, dirección y productos para que el vendedor las atienda. El listado privado exige propietario autenticado; el PDF también contiene datos personales y permite acceso al portador del token de cotización, sujeto a sus comprobaciones y revocación por cancelación. Consulta [cotizaciones y privacidad](../docs/quotations.md#descarga-y-privacidad).
 
 Las órdenes quedan `PENDING`; no se procesa pago ni se descuenta inventario automáticamente. Las transiciones permitidas son pendiente a confirmada/cancelada y confirmada a completada/cancelada.
 

@@ -2,7 +2,7 @@
 
 ## Alcance
 
-Interfaz en la pestaña Productos del workspace. El botón Importar Excel está en la cabecera de CatalogProductList, junto al contador. Abre un panel sobre la cuadrícula de editor/listado. No se modifican el backend, el lector de 3A, dependencias ni formatos del archivo.
+Interfaz en la pestaña Productos del workspace. El botón Importar Excel está en la cabecera de CatalogProductList, junto al contador. Abre un panel sobre la cuadrícula de editor/listado. La mejora posterior incorpora `rejectedRows` al contrato del lector local para identificar filas rechazadas; conserva el contrato del backend, las dependencias y el formato del archivo.
 
 CatalogWorkspace crea ProductImportFlow y se suscribe con useSyncExternalStore. El estado no pertenece al panel y no se borra al refrescar productos, cerrar/reabrir el panel ni cambiar de pestaña cuando no hay trabajo activo. El borrador del editor individual tampoco se reinicia al importar.
 
@@ -48,8 +48,10 @@ El disparador controla un contenedor con ID estable, incluso cerrado. Se enfoca 
 
 ## Verificación reproducible
 
-- `npm.cmd run test:import-flow`: 20 grupos; estados, token encadenado, conflictos entre lotes, errores locales, detención, cierre, red, 401, 429, vencimiento, doble envío, refresco, unicidad por fila, tamaño de JSON y respuestas inválidas.
-- `npm.cmd test`: 16 grupos del lector/proxy de 3A, intactos.
+El registro anterior y sus cifras se conservan en el [historial](../../docs/historial/2026-10-25-verificaciones.md). Los comandos y prerrequisitos actuales se reúnen en la [matriz de pruebas](../../docs/testing.md).
+
+- `npm.cmd run test:import-flow`: 22 grupos; estados, token encadenado, conflictos entre lotes, errores locales, aviso de formato, identificación parcial, detención, cierre, red, 401, 429, vencimiento, doble envío, refresco, unicidad por fila, tamaño de JSON y respuestas inválidas. El bloque inicial tenía 20 grupos; las mejoras añadieron dos.
+- `npm.cmd test`: 17 grupos del lector/proxy. El bloque inicial tenía 16; la identificación parcial añadió uno.
 - `npm.cmd run test:import-browser`: build de Next ya generado, Chrome/Edge local y OpenSSL de Git for Windows. Usa perfil temporal, servidores solo en loopback y API simulada HTTPS. La clave TLS efímera queda en memoria; solo se escribe el certificado público y se confía en él mediante NODE_EXTRA_CA_CERTS exclusivamente en el proceso temporal de Next. No se deshabilita TLS ni se cambia Origin. Se navega por localhost, que coincide con la normalización local de Next.
 
 La comprobación de navegador usa el worker y lector reales y peticiones reales por el proxy, con respuestas simuladas. Cubre archivo mixto con SKU numérico, creación/actualización, refresco y borrador, tres lotes encadenados, stop mientras un lote sigue en curso, controles bloqueados, paginación/foco, respuesta perdida, 429 manual, 401 también al refrescar y cierre/reapertura con reporte. Incluye viewport de 390px sin desbordamiento del documento y una captura temporal. Los servicios/procesos temporales se cierran al finalizar.

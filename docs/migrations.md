@@ -1,24 +1,14 @@
 # Procedimiento seguro para migraciones
 
-## Estado conocido del repositorio
+## Estado del repositorio
 
-- Prisma usa `DATABASE_URL` del proceso y carga `catalog-api/.env` como respaldo. No se inspeccionan archivos de entorno reales ni se presupone su destino: confírmalo antes de cualquier comando contra una base.
-- Se instaló PostgreSQL 17.11-5 para Windows con `winget` y el asistente interactivo del instalador oficial de EDB. El servicio `postgresql-x64-17` está activo y escucha en `127.0.0.1:5432`; el instalador lo dejó con inicio automático. No se pudo cambiar a inicio manual desde esta sesión por `Acceso denegado`; un usuario con permisos de administrador puede hacerlo desde Services o PowerShell elevado. `psql` existe en `C:\Program Files\PostgreSQL\17\bin`, pero no está en `PATH`. Docker no está instalado/disponible y no se pudo consultar WSL desde esta sesión.
-- Se crearon las bases locales `catalogo_test`, `catalogo_shadow` y `catalogo_restore_test`; las dos primeras eran nuevas y vacías. No contienen datos de producción. La clave local se usó solo en variables de proceso/comandos locales y no se guarda en este documento ni en archivos del proyecto.
-- El historial versionado contiene 12 migraciones: una inicial y once incrementales, incluidas las dos de archivado de catálogos y protección del historial de pedidos.
-- No existe un directorio/configuración `supabase/` en el workspace; la única historia versionada aquí es `catalog-api/prisma/migrations/`. No confirma qué mecanismo se usó en el servicio remoto.
-- Estado de producción comunicado por el responsable el 2026-10-24: main en `5bebe7a`, las 12 migraciones aplicadas en Supabase, `archivedAt` y la FK con RESTRICT verificadas, y 31 pruebas aprobadas. No se volvió a consultar producción en este bloque. Las referencias a 10 migraciones y 28/29 pruebas más abajo describen únicamente la verificación local histórica del 2026-10-23.
-- `prisma migrate status` con la URL remota ya había devuelto `Error: Schema engine error:` sin detalle. Con `DEBUG="*"` y una URL loopback deliberadamente no disponible, Prisma imprimió el stack de `Schema engine error` pero no la causa nativa; además registró un `EPERM` independiente al abrir su caché de telemetría bajo el perfil de Windows. Por tanto, el error original del destino remoto no se puede atribuir a una causa única sin consultar una base no productiva con conectividad válida. No se usa la URL remota para esta depuración.
+El historial versionado contiene 13 migraciones y cinco CHECK SQL. No es una consulta al ledger remoto. Prisma recibe DATABASE_URL del proceso y puede cargar el archivo local como respaldo: confirmar siempre el destino sin imprimir credenciales.
+
+Las comunicaciones de despliegue y comprobaciones anteriores están en el [historial](historial/README.md); no sustituyen una verificación nueva. No hay una segunda historia de migraciones Supabase versionada en este repositorio.
 
 ## Consistencia entre migraciones y schema.prisma
 
-La inspección y los diagnósticos siguientes corresponden al bloque histórico de idempotencia del 2026-10-23. El error remoto registrado entonces no describe el estado actual comunicado de producción. Después se añadieron las dos migraciones de archivado; su verificación en producción fue comunicada por el responsable, no repetida en este bloque.
-
-La inspección estática histórica de `prisma/schema.prisma` y los SQL versionados encontró la secuencia esperada para usuarios, catálogos, productos, promociones, imágenes, reseñas, pedidos y plantillas. La conversión de `CatalogTemplate` a `TEXT` coincide con `Catalog.template String`. La migración `20261023150000_order_idempotency_key` corresponde a `Order.idempotencyKey String?` y `@@unique([catalogId, idempotencyKey])`.
-
-Hay restricciones SQL que son más estrictas que el modelo Prisma y no están declaradas en `schema.prisma`: `products_promotion_valid_check`, `product_reviews_rating_check` y `product_reviews_comment_length_check`. Se mantienen en sus migraciones SQL: el proyecto instala Prisma ORM 6.19.3 y Prisma v6 documenta CHECK como una función no soportada/introspectable desde PSL; añadir una sintaxis `@@check` no es válido para esta versión ([guía de Prisma v6 sobre CHECK](https://www.prisma.io/docs/orm/v6/more/troubleshooting/check-constraints), [funciones no soportadas por introspección](https://www.prisma.io/docs/orm/v6/prisma-schema/introspection)). No se deben quitar ni editar esas sentencias. Una reconstrucción basada solo en `schema.prisma` las perdería; deben revisarse y preservarse explícitamente en cualquier reconstrucción o baseline. Esta decisión deberá reevaluarse por separado si el proyecto migra a una versión Prisma cuya sintaxis PSL estable cubra CHECK constraints. Una inspección estática no certifica el estado real de Supabase ni demuestra que toda la cadena se aplique sin diferencias en una base vacía.
-
-La telemetría de Prisma falló al abrir su caché de checkpoint bajo el perfil de Windows (`EPERM`, operación `open`). En la ejecución diagnóstica Prisma siguió leyendo la configuración e iniciando el motor; por tanto ese `EPERM` de caché es ruido de telemetría y no explica por sí mismo el error de conexión `Schema engine error`. La causa del error remoto sigue sin determinarse porque no se volvió a conectar a ese destino. Para silenciar el checkpoint solo en una sesión PowerShell, el usuario puede ejecutar `$env:CHECKPOINT_DISABLE = '1'` antes de sus comandos Prisma y luego `Remove-Item Env:CHECKPOINT_DISABLE`. No se cambió ninguna preferencia del sistema. Prisma documenta esa variable para desactivar telemetría del CLI v6 ([documentación](https://www.prisma.io/docs/orm/v6/tools/prisma-cli)).
+Hay cinco restricciones CHECK SQL que no están declaradas en `schema.prisma`: `products_promotion_valid_check`, `product_reviews_rating_check`, `product_reviews_comment_length_check`, `catalogs_quotationCounter_check` y `orders_quotationNumber_check`. Las dos últimas llegaron con cotizaciones. Se mantienen en sus migraciones SQL: el proyecto usa Prisma ORM 6 y estas CHECK no están representadas por PSL ([guía de Prisma v6 sobre CHECK](https://www.prisma.io/docs/orm/v6/more/troubleshooting/check-constraints)). Una reconstrucción basada solo en el modelo las perdería; deben inspeccionarse y preservarse en reconstrucciones o baseline. No modificar migraciones aplicadas. Una inspección estática no certifica el esquema remoto ni la reproducción completa en una base vacía.
 
 ## Orden del despliegue
 
@@ -47,43 +37,9 @@ El health check `/api/health` ejecuta `SELECT 1`: verifica respuesta de la API y
 
 El cambio local del YAML solo tendrá efecto cuando se incorpore a la configuración efectiva del servicio. Confirmar manualmente en Render que Start Command sea `npm start` y que no haya otro ejecutor de migraciones. Este bloque no cambia el panel ni realiza despliegues.
 
-## Render: configuración de compilación y arranque
+## Configuración de Render
 
-En Settings → Build & Deploy del servicio, los valores deben ser:
-
-| Campo | Valor exacto |
-|---|---|
-| Root Directory | `catalog-api` |
-| Build Command | `npm ci && npx prisma generate && npm run build` |
-| Start Command | `npm start` |
-| Pre-Deploy Command | Vacío (sin comando) |
-
-La compilación instala las dependencias del lockfile, genera Prisma Client y ejecuta TypeScript (`npm run build` es `tsc`). `npm start` ejecuta `node dist/server.js`: ponerlo en Build Command intenta arrancar el servidor en lugar de generar Prisma Client y compilar. Puede fallar porque `dist/server.js` todavía no existe o dejar un proceso que no termina como una compilación. Las migraciones siguen siendo un paso manual autorizado y separado, según el orden del despliegue anterior; no se añaden a estos comandos.
-
-`render.yaml` no aplica a un servicio que no está gestionado por Blueprint. En ese caso estos valores se cambian a mano en el panel: editar el YAML no corrige la configuración efectiva. Si existe Blueprint, comprobar su sincronización y mantener los valores coherentes con la fuente que lo gestiona. Esta documentación no cambia el panel ni autoriza despliegues.
-
-Para detectar fallos, revisar Events después de cada despliegue: un estado **Failed**, especialmente junto a una duración anormalmente corta (como los 13 segundos de la incidencia comunicada), requiere abrir los logs de ese evento y comprobar el comando ejecutado y el primer error. La duración sola no demuestra la causa ni confirma éxito. Verificar también la versión desplegada; que la versión anterior siga respondiendo no demuestra que la nueva haya sido publicada.
-
-## Render: Start Command efectivo y Blueprint
-
-Incidencia comunicada por el responsable: el log de arranque muestra `npm run prisma:migrate:deploy && npm start`, aunque el YAML ya define `npm start`. Por tanto, la separación de migraciones NO está aplicada en esa configuración efectiva: cada arranque sigue intentando migrar hasta que se corrija.
-
-Tener `render.yaml` en el repositorio no convierte automáticamente un servicio creado desde el panel en un recurso gestionado por Blueprint. Para comprobarlo, un operador debe abrir el servicio en Render Dashboard y buscar el icono/relación de Blueprint; revisar además la sección Blueprints del workspace y si el servicio pertenece a uno de ellos. Si pertenece, comprobar repositorio, rama, Blueprint Path, Auto Sync y último sync aplicado. La discrepancia del log, por sí sola, también puede deberse a un Blueprint sin sincronizar o a un cambio manual posterior; no prueba que nunca haya existido esa asociación.
-
-Antes del siguiente reinicio o despliegue, el responsable debe hacer este ajuste manual:
-
-1. Render Dashboard → servicio `catalog-api` → Settings → Build & Deploy → Start Command → Edit.
-2. Sustituir el comando completo por este valor exacto:
-
-   ```text
-   npm start
-   ```
-
-3. Guardar el cambio de acuerdo con la ventana de despliegue autorizada; guardar configuración puede iniciar un despliegue. No ejecutar ninguna migración para este ajuste.
-4. Si el recurso tiene Blueprint, mantener el YAML con ese mismo valor y reconciliar su sync: un sync posterior puede sobrescribir cambios manuales del panel.
-5. Comprobar en los logs del siguiente arranque que aparece `Running 'npm start'`, sin `prisma:migrate:deploy`. Verificar `/api/health` y los flujos de login, catálogo, productos y categorías por separado.
-
-Cambiar el YAML o hacer un push de código no sustituye este paso cuando el servicio no consume ese Blueprint. No se ha accedido al panel desde este bloque. La referencia oficial explica el icono de recursos gestionados y la sobrescritura de cambios manuales al sincronizar: [Render Blueprints](https://render.com/docs/infrastructure-as-code).
+Los valores exactos de Build, Start, Pre-Deploy y Root Directory, el alcance de Blueprint y la deteccion de despliegues fallidos viven en [despliegue](despliegue.md#render). No hay migraciones en build, pre-deploy ni arranque. El [incidente anterior](historial/2026-10-25-render.md) se conserva como historial, no como configuración vigente.
 
 ## Proxy de Render y limitación de solicitudes
 
@@ -169,29 +125,7 @@ $env:SHADOW_DATABASE_URL = 'postgresql://postgres:<CLAVE_LOCAL>@127.0.0.1:5432/c
 
 Reemplaza `<CLAVE_LOCAL>` por la contraseña del usuario PostgreSQL local; no uses credenciales de Supabase. No escribas la clave en un archivo versionado. Si `createdb` pide contraseña, usa la solicitada por el instalador o el administrador local. La URL debe señalar `127.0.0.1` y las bases `catalogo_test`/`catalogo_shadow`.
 
-En este equipo el paquete se instaló con el comando interactivo siguiente (PostgreSQL 17.11-5). En el asistente se mantuvo el puerto predeterminado 5432 y se configuró la clave solo para la base local:
-
-```powershell
-winget install --exact --id PostgreSQL.PostgreSQL.17 --interactive --accept-source-agreements --accept-package-agreements
-```
-
-El instalador creó el servicio `postgresql-x64-17` con inicio automático. No pude cambiarlo a inicio manual porque Windows devolvió `Acceso denegado`. Para cambiarlo desde PowerShell **ejecutada como administrador** y mantenerlo activo durante la sesión:
-
-```powershell
-Set-Service -Name postgresql-x64-17 -StartupType Manual
-```
-
-Arranque y parada cuando el servicio quede en inicio manual (puede requerir permisos de administrador):
-
-```powershell
-Start-Service -Name postgresql-x64-17
-Stop-Service -Name postgresql-x64-17
-Get-Service -Name postgresql-x64-17
-```
-
-Mientras el inicio siga como `Automatic`, `Stop-Service` lo detiene hasta que vuelva a iniciarse Windows. La configuración a `Manual` anterior no se logró aplicar desde esta sesión.
-
-Los ejecutables del equipo actual están en `C:\Program Files\PostgreSQL\17\bin`; si `psql`, `createdb` o `dropdb` no están en `PATH`, usa sus rutas completas. La instalación no agregó ese directorio al PATH.
+Si los ejecutables PostgreSQL no están en PATH, usa la ruta de instalación local verificada. El detalle de instalación del equipo anterior se conserva en el [historial de operación](historial/2026-10-24-operacion.md).
 
 **Con Docker Desktop:** en PowerShell inicia un contenedor efímero sin volumen persistente, publicado en el puerto 5433 para reducir conflictos con un PostgreSQL instalado:
 
@@ -226,7 +160,7 @@ Para comparar el estado recreado por las migraciones con el modelo Prisma sin a�
 npm.cmd exec prisma -- migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url $env:SHADOW_DATABASE_URL --exit-code
 ```
 
-Código de salida `0` significa sin diferencias detectables por Prisma; `2` indica diferencia; otros errores son fallo de ejecución/conexión. Nunca configures ambas variables con la misma base. Esta comparación no sustituye la inspección de restricciones no soportadas por PSL: verifica expresamente que sigan existiendo los tres CHECK descritos arriba. Prisma documenta el uso de shadow DB al comparar un directorio de migraciones.
+Código de salida `0` significa sin diferencias detectables por Prisma; `2` indica diferencia; otros errores son fallo de ejecución/conexión. Nunca configures ambas variables con la misma base. Esta comparación no sustituye la inspección de restricciones no soportadas por PSL: verifica expresamente las cinco CHECK descritas arriba.
 
 En el PostgreSQL de prueba (SQL Editor del proyecto de prueba o `psql` local), comprueba dichas constraints y la unicidad idempotente:
 
@@ -236,7 +170,9 @@ FROM pg_constraint
 WHERE conname IN (
   'products_promotion_valid_check',
   'product_reviews_rating_check',
-  'product_reviews_comment_length_check'
+  'product_reviews_comment_length_check',
+  'catalogs_quotationCounter_check',
+  'orders_quotationNumber_check'
 )
 ORDER BY conname;
 
@@ -249,21 +185,11 @@ WHERE schemaname = 'public'
 
 El índice esperado debe contener `("catalogId", "idempotencyKey")`; la columna permite `NULL` para órdenes históricas. Esta consulta es de solo lectura.
 
-### Resultado histórico ejecutado en el PostgreSQL local (2026-10-23)
+### Resultados históricos
 
-Se verificó lo siguiente exclusivamente contra `127.0.0.1:5432/catalogo_test`:
+El ensayo del 2026-10-23 esta en [historial de idempotencia](historial/2026-10-23-idempotencia.md), sin modificar sus cifras de diez migraciones, tres CHECK y 28/29 pruebas. El verificador actual incluye cotizaciones y requiere el esquema actual; aquel resultado no acredita su ejecución actual.
 
-- `npm.cmd run prisma:migrate:deploy`: aplicó en orden las 10 migraciones, incluida `20261023150000_order_idempotency_key`.
-- `prisma migrate status`: `Database schema is up to date!`.
-- `prisma validate`: el modelo Prisma es válido.
-- `prisma migrate diff --from-migrations ... --to-schema-datamodel ... --shadow-database-url ... --exit-code`: `No difference detected.` No detecta por sí solo las CHECK que PSL no expresa; se consultaron aparte.
-- La consulta a `pg_constraint` encontró las tres CHECK y sus condiciones. `information_schema.columns` mostró `idempotencyKey` nullable. `pg_indexes` confirmó el índice único `orders_catalogId_idempotencyKey_key` sobre `("catalogId", "idempotencyKey")`.
-- La prueba HTTP real envió dos POST simultáneos con la misma clave al API local. Ambas respuestas fueron HTTP 201 con el mismo `order.id` (`331b2705-befe-4f56-a554-0b23b5e70b0a`) y PostgreSQL guardó 1 fila. El reintento secuencial devolvió el mismo recibo. Dos claves distintas en el mismo catálogo produjeron 2 filas. La misma clave en dos catálogos produjo 2 IDs y 2 filas. Sin clave se crearon dos pedidos distintos. Se envió `total: 1` desde el cliente y el servidor devolvió 2500, calculado desde los precios persistidos.
-- Tras la prueba se verificaron 0 usuarios, 0 catálogos y 0 pedidos de fixture; el ledger local tiene 10 migraciones completas.
-- `npm.cmd test` sin el script de integración adicional: 28/28 pruebas aprobadas. `npm.cmd run build` y `prisma validate`: correctos. Al incluir el script de integración, el runner informó 29/29 pruebas aprobadas (las 28 habituales más el caso de integración local).
-- Ensayo de restauración local: `pg_dump -Fc` creó `%TEMP%\catalogo-test-restore-20261023.dump` (23,643 bytes) desde la base local vacía de fixtures; `pg_restore --exit-on-error` restauró en la nueva `catalogo_restore_test` sin error. La copia restaurada contiene las 10 migraciones, las tres CHECK y el índice único idempotente. Esto valida la restauración lógica local del esquema, no un respaldo de producción/Supabase.
-
-Para repetir la integración, `src/scripts/verify-order-idempotency-postgres.ts` solo admite `DATABASE_URL` con host loopback y base `/catalogo_test`; falla si el destino no cumple esas condiciones. Usa el API, Prisma y PostgreSQL existentes, sin dependencias nuevas. Ejecuta las pruebas unitarias más esta verificación con:
+Para repetir la integración, [catalog-api/src/scripts/verify-order-idempotency-postgres.ts](../catalog-api/src/scripts/verify-order-idempotency-postgres.ts) solo admite `DATABASE_URL` con host loopback y base `/catalogo_test`; falla si el destino no cumple esas condiciones. Usa el API, Prisma y PostgreSQL existentes, sin dependencias nuevas. Con el esquema actual ya preparado en esa base aislada, ejecuta desde `catalog-api` la suite más esta verificación con:
 
 ```powershell
 $env:DATABASE_URL = 'postgresql://postgres:<CLAVE_LOCAL_URL_ENCODED>@127.0.0.1:5432/catalogo_test?schema=public'
@@ -352,13 +278,13 @@ Haz este ensayo solo en otro proyecto Supabase desechable o base PostgreSQL loca
 1. Confirma que existen los archivos y el método correspondiente: Supabase Dashboard **Database → Backups** para un respaldo descargable, o los archivos lógicos `roles.sql`, `schema.sql`, `data.sql` generados con el procedimiento de respaldo anterior. Supabase Free no garantiza que haya un backup descargable tipo Dashboard/PITR; verifica lo que el panel ofrece para ese proyecto. El respaldo de SQL lógico requiere tener `psql`; el comando de dump de Supabase CLI requiere además Docker.
 2. Crea un proyecto Supabase nuevo para la restauración o una base local nueva, y valida su referencia/host antes de restaurar. La restauración reemplaza/crea objetos en ese destino. No cambies el destino a producción para “probar”.
 3. Para los tres SQL de `supabase db dump`, sigue la restauración oficial con `psql --single-transaction --variable ON_ERROR_STOP=1 --file roles.sql --file schema.sql --command 'SET session_replication_role = replica' --file data.sql --dbname <URI-PRUEBA>`. Si Supabase informa permisos de owner/roles, aplica solo las correcciones específicas de su guía y deja registro; no elimines líneas al azar. Un archivo `.backup` del Dashboard requiere la ruta de restauración compatible con ese formato según el panel/documentación, no se restaura como SQL con `-f`.
-4. Comprueba que restauró tablas/filas esperadas, conteos acordados, extensiones, triggers/RLS personalizados y las tres constraints SQL. Si la restauración no termina limpia, el respaldo no está validado: no uses ese respaldo como requisito de seguridad para la migración.
+4. Comprueba que restauró tablas/filas esperadas, conteos acordados, extensiones, triggers/RLS personalizados y las cinco CHECK SQL actuales. Si la restauración no termina limpia, el respaldo no está validado: no uses ese respaldo como requisito de seguridad para la migración.
 
    La disponibilidad de proyectos Free y sus límites pueden cambiar; al momento de esta guía Supabase indica dos proyectos Free por organización. Verifica el plan/cupo antes de crear uno.
 
 ## Validación en una base de prueba
 
-Los pasos concretos para proyecto Supabase de prueba, PostgreSQL local en Windows, comparación de esquema, concurrencia y restauración de respaldo se describen en [Cómo verificar antes de aplicar](#cómo-verificar-antes-de-aplicar). La concurrencia real y la restauración local sí se verificaron el 2026-10-23, según el resultado histórico anterior; ese ensayo con 10 migraciones no acredita una restauración de producción ni una repetición de la cadena actual de 12 migraciones. No se repitieron aquí.
+Los pasos para base aislada, comparación de esquema, concurrencia y restauración se describen en [Cómo verificar antes de aplicar](#cómo-verificar-antes-de-aplicar). El ensayo histórico del 2026-10-23 con 10 migraciones y tres CHECK no acredita una restauración de producción ni la repetición de la cadena actual de 13 migraciones y cinco CHECK. No se repitió aquí.
 
 ## Qué hacer si no existe `_prisma_migrations`
 
@@ -381,7 +307,7 @@ Después de una prueba satisfactoria y un respaldo restaurable:
 
 La migración de idempotencia es expansiva: añade una columna nullable y crea un índice único compuesto. No elimina datos. La reversión SQL estructural sería `DROP INDEX "orders_catalogId_idempotencyKey_key"; ALTER TABLE "orders" DROP COLUMN "idempotencyKey";`, pero perdería las claves ya guardadas y permitiría duplicados en reintentos posteriores. Por eso no hay rollback automático: si la API ya usó claves, hacer corrección hacia adelante; solo considerar la reversión manual si se confirma que perderlas es aceptable, con respaldo previo y en coordinación con API/frontend. Restaurar un backup completo implica perder escrituras posteriores a ese backup y no es una reversión inocua.
 
-En el bloque de separación de migraciones del arranque no se ejecutaron respaldos, restauraciones, baseline, migraciones, pruebas contra PostgreSQL ni despliegues. Los resultados locales anteriores corresponden al bloque histórico indicado.
+El historial registra comprobaciones anteriores; esta consolidación documental no ejecuta migraciones ni consultas remotas.
 
 ## Consultas y comprobaciones manuales previas
 

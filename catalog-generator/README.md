@@ -6,12 +6,12 @@ Panel de vendedores y páginas públicas de catálogo con pedidos por WhatsApp.
 
 1. Copia `.env.example` como `.env.local`. El Client ID de Google se configura en Google Cloud Console como OAuth Client ID Web y también en el `.env` de `catalog-api`.
 2. En `catalog-api`, configura su `.env`, aplica la migración y ejecuta `npm run dev`.
-3. En esta carpeta ejecuta `npm install` y `npm run dev` para desarrollo (`http://localhost:3001`). Para producción local, ejecuta `npm run build` y `npm start` (`http://localhost:3002`).
+3. En esta carpeta ejecuta `npm ci` y `npm run dev` para desarrollo (`http://localhost:3001`). Para producción local, ejecuta `npm run build` y `npm start` (`http://localhost:3002`). Usa Node.js `24.x`, según `engines.node`.
 4. Las rutas privadas usan el proxy same-origin; el JWT queda en cookie `HttpOnly`, nunca en `localStorage`.
 
 ### Variables para Vercel
 
-`.env.production.example` es la lista de variables que debes agregar en **Project Settings > Environment Variables** de Vercel, con ámbito **Production**. Como el dominio del back aún no existe, crea primero el proyecto de Vercel y copia el dominio HTTPS asignado; úsalo en `CORS_ORIGINS` de Render. Después de crear el servicio en Render, reemplaza `your-api-domain.example` en las dos URL por el dominio HTTPS que Render asigne y redepliega el front. `NEXT_PUBLIC_*` es público y queda incorporado al build; nunca pongas credenciales ni claves Supabase allí. No subas `.env.local` ni archivos `.env` reales.
+`.env.production.example` enumera las variables para **Project Settings > Environment Variables** de Vercel, con ámbito **Production**. Los dominios de ejemplo son marcadores: usa los valores efectivos del servicio autorizado. `NEXT_PUBLIC_*` es público y queda incorporado al build; nunca pongas credenciales ni claves Supabase allí. No subas archivos de entorno reales. El orden de publicación, las variables y las comprobaciones viven en la [guía de despliegue](../docs/despliegue.md).
 
 En producción configura `CATALOG_API_URL` como URL HTTPS de servidor y `NEXT_PUBLIC_CATALOG_API_URL` como URL HTTPS pública de la API. `CORS_ORIGINS` en la API debe incluir el origen exacto del front-end. Los valores `NEXT_PUBLIC_*` son públicos y quedan incorporados al build; no coloques credenciales ni claves Supabase allí.
 
@@ -36,4 +36,4 @@ npm run lint
 npm run build
 ```
 
-No hay un ejecutor de pruebas de frontend configurado actualmente. Queda pendiente añadir cobertura automatizada para confirmar que el pedido se muestra como registrado antes de abrir WhatsApp y que la interfaz comunica que la disponibilidad debe confirmarse; no se instaló infraestructura de pruebas en este cambio.
+Hay verificaciones automatizadas del lector, proxy, flujo y navegador del importador: `npm.cmd test`, `npm.cmd run test:import-flow` y `npm.cmd run test:import-browser`. No equivalen a una prueba E2E completa de compra. Consulta la [matriz de pruebas](../docs/testing.md).

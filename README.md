@@ -1,71 +1,71 @@
 # Catalogo
 
-Plataforma para que un negocio administre productos y comparta un catálogo público con pedidos que se pueden continuar por WhatsApp. El repositorio contiene dos aplicaciones desplegadas por separado.
+Plataforma para que un negocio administre productos, publique un catálogo y reciba solicitudes de compra que puede atender por WhatsApp. El pedido se registra antes de abrir WhatsApp; precios y totales se calculan en el servidor. No procesa pagos ni reserva inventario.
 
-## Arquitectura
+## Funcionalidades
+
+El repositorio implementa autenticación propia y Google Sign-In, catálogos y diseños, productos/categorías/imágenes, pedidos idempotentes, archivado sin destruir pedidos, SEO/Open Graph, cotizaciones PDF desacopladas de la compra e importación Excel con plantilla, vista previa y reporte por fila. Incluye las mejoras de formato del importador y Zod 4.6.6.
+
+El responsable comunica esos bloques cerrados y desplegados. [Estado actual](docs/estado.md) distingue esa comunicación de lo implementado y de las verificaciones locales; no se infiere el estado remoto del código.
+
+## Arquitectura resumida
 
 ```mermaid
 flowchart LR
-  Browser[ Navegador ] --> Web[ catalog-generator · Next.js ]
-  Web -->|sesión y operaciones privadas| Proxy[Proxy same-origin]
-  Proxy --> API[catalog-api · Express]
-  Web -->|lectura de catálogos públicos| API
-  API --> DB[(PostgreSQL · Prisma)]
-  API --> Storage[Supabase Storage]
+  B[Navegador] --> F[Next.js / React / Tailwind]
+  F --> P[Proxy same-origin]
+  P --> A[Express / Zod]
+  F -->|lectura pública| A
+  A --> D[(PostgreSQL / Prisma)]
+  A --> S[Supabase Storage]
 ```
 
-- `catalog-generator/`: panel del vendedor, proxy same-origin y páginas públicas del catálogo.
-- `catalog-api/`: API Express, validación Zod, autenticación, acceso a PostgreSQL con Prisma y almacenamiento de imágenes.
-- `render.yaml`: servicio de API en Render. Vercel debe desplegar `catalog-generator/` como raíz del proyecto.
-- Cada aplicación conserva su propio `package.json` y `package-lock.json` para instalar y desplegarse por separado.
+Frontend en `catalog-generator/` y API en `catalog-api/`, cada uno con su manifiesto y lockfile. Vercel y Render son los destinos comunicados. El JWT queda en cookie HttpOnly; `catalogo-session` en localStorage solo aporta metadata visual y no autoriza. El PDF admite acceso por token. Consulta [arquitectura y flujo de compra](docs/arquitectura.md) y [decisiones](docs/decisiones.md).
 
-## Requisitos
+## Arranque rápido
 
-- Node.js compatible con Next.js 16 y npm.
-- PostgreSQL accesible desde la API.
-- Un proyecto Supabase para almacenamiento de imágenes.
-- Google OAuth es opcional; solo se necesita si se habilita el inicio de sesión con Google.
+Requisitos: Node.js `24.x` según `engines.node`, npm, PostgreSQL de desarrollo aislado y configuración Storage. Configura tus archivos locales a partir de las plantillas de ejemplo siguiendo los [README de API](catalog-api/README.md#desarrollo-local) y [frontend](catalog-generator/README.md#desarrollo-local). No uses credenciales ni datos de producción.
 
-## Desarrollo local
+En PowerShell, dentro de `catalog-api`, ejecuta cada comando por separado y detente si falla:
 
-Configura primero `catalog-api/.env` a partir de `catalog-api/.env.example`. Define `DATABASE_URL`, `JWT_SECRET`, `SUPABASE_URL` y `SUPABASE_SECRET_KEY`; Google y CORS se describen en el README de la API.
-
-En una terminal:
-
-```bash
-cd catalog-api
-npm ci
-npm run prisma:generate
-npm run prisma:migrate
-npm run dev
+```powershell
+npm.cmd ci
+npm.cmd run prisma:generate
+# Solo tras confirmar que DATABASE_URL apunta a desarrollo aislado:
+npm.cmd run prisma:migrate
+npm.cmd run dev
 ```
 
-La API escucha en `http://localhost:3000`. En otra terminal, configura `catalog-generator/.env.local` desde su `.env.example` y ejecuta:
+La API escucha por defecto en `http://localhost:3000`. En otra terminal, dentro de `catalog-generator`:
 
-```bash
-cd catalog-generator
-npm ci
-npm run dev
+```powershell
+npm.cmd ci
+npm.cmd run dev
 ```
 
-El frontend escucha en `http://localhost:3001`. Consulta los README de cada módulo para variables, configuración OAuth, pruebas y despliegue.
+El frontend de desarrollo escucha en `http://localhost:3001`. Google OAuth es opcional. Para instalar versiones ya registradas usa `npm ci`; cambiar dependencias requiere otro trabajo y actualizar el lockfile deliberadamente.
 
-## Validaciones antes de publicar
+## Despliegue
 
-```bash
-cd catalog-api
-npm run build
-npm test
+Orden coordinado: migración cuando sea necesaria → push autorizado → API → frontend. Las migraciones se aplican por separado del arranque. Render usa `catalog-api` como raíz y Vercel `catalog-generator`; la configuración efectiva depende del panel o del Blueprint que realmente gestione el servicio.
 
-cd ../catalog-generator
-npm run lint
-npm run build
-```
+Los comandos exactos, variables de build, comprobación del commit publicado y recuperación están en [despliegue](docs/despliegue.md). Para cambios de esquema, seguir además [migraciones y respaldo](docs/migrations.md). Tener un health check correcto no acredita versión ni esquema actualizado.
 
-Para cambios de Prisma, valida el esquema, regenera el cliente y revisa la migración antes de aplicarla. No incluyas archivos `.env`, `.env.local`, credenciales ni claves en commits.
+## Comprobaciones
 
-## Documentación del proyecto
+Consulta la [matriz de pruebas](docs/testing.md): reúne comandos por paquete, prerrequisitos y límites de las verificaciones con dobles, HTTP local, navegador o PostgreSQL real. Los builds incluyen TypeScript; no hay scripts independientes `typecheck`, y la API no tiene `lint`.
 
-- [API: desarrollo, despliegue y datos](catalog-api/README.md)
-- [Frontend: desarrollo, variables y módulos](catalog-generator/README.md)
-- [Proceso para añadir diseños de catálogo](catalog-generator/docs/agregar-disenos-de-catalogo.md)
+## Documentación
+
+| Necesidad | Lectura |
+|---|---|
+| Retomar el proyecto | [Estado](docs/estado.md), [decisiones](docs/decisiones.md), [arquitectura](docs/arquitectura.md) |
+| Publicar una versión | [Despliegue](docs/despliegue.md), [migraciones](docs/migrations.md) |
+| Comprobar un cambio | [Matriz de pruebas](docs/testing.md), [workaround Windows de API](catalog-api/docs/testing.md) |
+| Trabajar en un módulo | [API](catalog-api/README.md), [frontend](catalog-generator/README.md) |
+| Pedidos y PDF | [Idempotencia](catalog-api/docs/order-idempotency.md), [cotizaciones](docs/quotations.md) |
+| Importar Excel | [Contrato API](docs/product-import.md), [lector/plantilla](catalog-generator/docs/product-import-reader.md), [flujo UI](catalog-generator/docs/product-import-ui.md) |
+| Publicación y diseños | [SEO/OG](catalog-generator/docs/public-seo.md), [añadir diseños](catalog-generator/docs/agregar-disenos-de-catalogo.md) |
+| Consultar verificaciones anteriores | [Historial fechado](docs/historial/README.md), incluido el parche Zod |
+
+La documentación generada OpenAPI tiene cobertura parcial; los contratos de importación y cotizaciones se describen en sus documentos funcionales. Las reglas de colaboración permanecen en [Agents.md](Agents.md).

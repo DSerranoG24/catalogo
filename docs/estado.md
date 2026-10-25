@@ -1,130 +1,48 @@
 # Estado del proyecto Catalogo
 
-Última actualización: 2026-10-23
+Fecha de corte: **25 de octubre de 2026**. Este documento separa implementación, evidencia local y despliegue comunicado. No presupone configuración remota a partir de YAML ni sustituye los procedimientos de [despliegue](despliegue.md) y [pruebas](testing.md).
 
-## Contexto
+## Implementado en el repositorio
 
-Aplicación de catálogos para vendedores con pedidos por WhatsApp.
+- Pedidos con precios del servidor, instantáneas e idempotencia opcional por catálogo.
+- Archivado/reactivación de catálogos y protección del historial mediante rechazo de borrado con pedidos y FK RESTRICT.
+- Migraciones separadas del arranque de API. Trece migraciones versionadas y cinco CHECK SQL; no es un conteo del ledger remoto.
+- SEO de servidor, canonical, Open Graph y noindex de rutas administrativas/carrito. Sitemap pendiente.
+- Cotizaciones PDF con numeración por catálogo, instantánea al emitir y acceso por token; pedido y emisión desacoplados.
+- Importador Excel: backend JSON, vista previa firmada, confirmación, lector seguro, plantilla, interfaz, reporte parcial y aviso de formato.
+- Zod 4.6.6 en API y resolución transitiva del frontend.
+- Búsqueda, filtros y paginación en cliente del catálogo público; no equivalen a paginación de servidor.
+- Suites frontend de lector/proxy, flujo y navegador, además de pruebas API y verificación SEO por HTTP.
 
-- Frontend: Next.js, React, TypeScript y Tailwind.
-- Backend: Express, TypeScript, Prisma 6 y PostgreSQL.
-- Almacenamiento de imágenes: Supabase Storage.
-- Frontend desplegado en Vercel.
-- API desplegada en Render.
-- Base de datos: Supabase, plan gratuito, sin datos críticos.
-- Autenticación propia (bcrypt) más Google Sign-In.
-- JWT en cookie HttpOnly mediante proxy same-origin.
+Contratos y motivos: [decisiones](decisiones.md), [arquitectura](arquitectura.md) y [mapa documental raíz](../README.md#documentación).
 
-Repositorio: [github.com](https://github.com/DSerranoG24/catalogo)
-Último commit relevante: 6ddf3a2
+## Verificado localmente y método
 
-## Cómo trabajar en este proyecto
+| Evidencia disponible al corte | Método y límite |
+|---|---|
+| Bloque previo de mejoras: API 81/81, lector 17 grupos, flujo 22 y navegador aprobados; builds API/frontend correctos. | Suite API con dobles y HTTP loopback; lector real; flujo simulado; Chromium con worker/proxy reales y API simulada. No certifica PostgreSQL real. |
+| Lint del frontend: cero errores y ocho advertencias de imágenes en archivos ajenos al importador. | Análisis estático del bloque previo; no auditoría de accesibilidad o rendimiento. |
+| Idempotencia y restauración del 23 de octubre. | PostgreSQL local real, diez migraciones y tres CHECK de aquel momento. Resultado histórico, no reproducción de las trece actuales. |
+| Backend de importación: seis escenarios cerrados antes del lector, según registro del bloque. | PostgreSQL local real, concurrencia, edición manual y rollback por fila; no repetidos en este bloque documental ni disponibles como script dedicado versionado. |
+| Cotizaciones desacopladas. | Suite con dobles transaccionales y HTTP; el documento funcional no acredita ejecución del verificador PostgreSQL ampliado. |
 
-1. Inspecciona el código y el estado de Git antes de modificar.
-2. No sobrescribas cambios locales sin confirmar.
-3. No apliques migraciones ni despliegues sin autorización explícita.
-4. No leas ni muestres `.env`, secretos ni credenciales.
-5. No añadas dependencias sin justificar que no hay alternativa.
-6. No mezcles correcciones de seguridad con refactorizaciones o cambios visuales.
-7. Verifica con las comprobaciones existentes: `npm test`, `npm run build`, `npm run lint`.
+Esta tabla conserva la procedencia de las evidencias. En el bloque documental del 25 de octubre se repitieron los builds frontend/API, la suite API (81/81), lint frontend (cero errores, ocho advertencias de imágenes) y la suite de lector/proxy (17 grupos). No se repitieron flujo, Chromium, SEO ni ensayos PostgreSQL. Véanse [matriz y prerrequisitos](testing.md) y [resultados históricos](historial/README.md).
 
-## Decisiones de dominio ya tomadas
+## Desplegado según el responsable
 
-No revertir estas decisiones sin autorización explícita.
+El responsable comunica que los doce bloques funcionales están cerrados y desplegados: idempotencia, archivado, separación de migraciones del arranque, SEO/OG, cotizaciones, desacoplamiento pedido/cotización, importación backend/lector/plantilla/interfaz, mejoras del importador y parche Zod.
 
-1. Inventario: `Product.stock` es informativo para el flujo de pedidos. No se
-   reserva ni se descuenta automáticamente. El pedido es una solicitud sujeta a
-   confirmación por WhatsApp. La interfaz indica "disponibilidad por confirmar".
+Frontend en Vercel, API en Render y datos/Storage en Supabase, según ese contexto. No se consultaron esos servicios durante este bloque; no se verificaron remotamente SHA publicado, versión Node, configuración efectiva de comandos, Blueprint, ledger o logs. El estado histórico de doce migraciones comunicado el 24 de octubre se conserva fechado, no como estado vigente del repositorio.
 
-2. Historial de pedidos: debe conservarse. Un catálogo con pedidos no debe
-   poder eliminarse físicamente. El archivado es el mecanismo previsto.
+## Pendientes y límites
 
-3. Retención de datos personales: provisionalmente 12 meses desde la última
-   actualización del pedido, con posterior anonimización conservando
-   información transaccional no identificable. Pendiente de revisión jurídica.
+- Retención/anonimización: revisión jurídica de la política provisional y automatización; incluir instantáneas y enlaces PDF.
+- Sitemap y política de descubrimiento; opción individual de indexación por catálogo.
+- E2E completa de compra en entorno aislado y verificación de cotizaciones con PostgreSQL real en su implementación actual.
+- Auditoría WCAG y pruebas con lectores de pantalla, navegadores y dispositivos físicos.
+- Paginación/filtrado de servidor y mejoras del panel; la búsqueda pública en cliente ya existe.
+- Limpieza de objetos huérfanos Storage y optimización de imágenes.
+- Ampliar cobertura de OpenAPI y respuestas; la generación parcial existe y no reemplaza los contratos funcionales de importación/cotizaciones.
+- Revisar los pendientes históricos de revocación JWT, CSP, reseñas, enumeración de correos, observabilidad general, CI y staging antes de priorizarlos; no se reauditaron en este bloque. Hay requestId y logs seguros en flujos concretos, lo que no acredita observabilidad completa.
 
-4. WhatsApp: la aplicación confirma que el pedido quedó registrado. No puede
-   afirmar que el mensaje fue enviado, porque abrir el enlace no lo demuestra.
-
-5. Idempotencia de pedidos: la clave es opcional, única por catálogo
-   (`catalogId + idempotencyKey`). Un reintento devuelve el mismo recibo, no
-   un error. Implementado y verificado contra PostgreSQL local.
-
-## Implementado y verificado
-
-- Autenticación: JWT en cookie HttpOnly, bcrypt, Google Sign-In validado en servidor.
-- Autorización: las consultas privadas filtran por propietario.
-- Proxy same-origin: valida Origin en mutaciones, limita tamaño, restringe rutas.
-- Precios: calculados exclusivamente en el servidor, con instantánea por línea de pedido.
-- CORS con lista explícita, Helmet y límite de JSON.
-- Imágenes: límite de tamaño, validación de MIME y firma, rutas aleatorias en Supabase.
-- Rate limiting con express-rate-limit.
-- Validación con Zod en cuerpos, parámetros y variables.
-- Suite de pruebas: 29 pruebas, incluida verificación de concurrencia real.
-- Entorno local: PostgreSQL 17.11, 10 migraciones aplicadas limpiamente.
-- `prisma migrate diff` sin diferencias entre migraciones y esquema.
-
-## Pendiente, por prioridad
-
-### P1 — Integridad y operación
-
-1. Archivado de catálogos: sustituir el borrado en cascada que destruye el
-   historial de pedidos. Requiere decisión de dominio sobre qué pasa con un
-   catálogo archivado y si sus productos siguen públicos.
-2. Política de inventario: formalizar en el modelo y la interfaz.
-3. Retención y anonimización: implementar el job y el mecanismo de borrado.
-4. Limpieza de objetos huérfanos en Supabase Storage: hoy borrar un producto
-   no elimina su imagen.
-5. Migraciones fuera del `startCommand` de Render: hoy cada instancia compite
-   por migrar al arrancar.
-6. Fijar Node 24 en Vercel y Render: declarado en el repositorio, no confirmado
-   en los servicios.
-7. Regla de orden: migración antes de despliegue. Desplegar código que depende
-   de una migración no aplicada rompe producción.
-
-### P2 — Seguridad y calidad
-
-8. Revocación de JWT: un token robado sigue válido 7 días.
-9. Paginación por cursor en pedidos, productos y reseñas.
-10. Límite de transiciones de reseñas: hoy se acepta cualquier estado sin
-    comprobar el anterior.
-11. Pruebas de autorización multiusuario con dos usuarios.
-12. Runner de pruebas de frontend: no hay ninguno configurado.
-13. Pruebas E2E del flujo completo de compra.
-14. CSP en el frontend: hay cabeceras de seguridad, no política de contenido.
-15. Enumeración de correos en registro.
-16. Documentar que las tres CHECK (`products_promotion_valid_check`,
-    `product_reviews_rating_check`, `product_reviews_comment_length_check`)
-    viven en SQL y no en el schema de Prisma; reconstruir desde el modelo las
-    perdería.
-
-### P2 — Producto y UX
-
-17. Accesibilidad WCAG 2.2 AA: sin auditar.
-18. SEO: metadata por ruta, Open Graph, noindex en panel, sitemap.
-19. Compresión, miniaturas y formatos modernos en imágenes.
-20. Búsqueda y filtros en catálogo público y panel.
-21. Historial de estados de pedido visible para el vendedor.
-
-### P3 — Escalabilidad y mantenimiento
-
-22. Contratos compartidos u OpenAPI para eliminar tipos duplicados.
-23. Reorganización como monorepo con workspaces.
-24. Observabilidad: logs estructurados, request ID, redacción de PII.
-25. CI/CD con lint, typecheck, test, build y auditoría en cada PR.
-26. Entorno de staging separado de producción.
-27. Dependabot o Renovate.
-28. Licencia, CONTRIBUTING.md, SECURITY.md, ADRs.
-
-## Configuración del entorno local
-
-- PostgreSQL 17.11 en `127.0.0.1:5432`, bases `catalogo_test` y `catalogo_shadow`.
-- La suite requiere `npm.cmd test` en Windows por bloqueo de scripts en PowerShell.
-- El script `catalog-api/scripts/test.cjs` gestiona un fallo conocido de
-  `os.userInfo` en este equipo Windows; está documentado en `docs/testing.md`.
-
-## Archivos de referencia
-
-- `docs/migrations.md`: procedimiento de migración, verificación y respaldo.
-- `docs/testing.md`: reproducibilidad de la suite.
-- `docs/order-idempotency.md`: contrato de idempotencia.
+Las decisiones de inventario e historial ya están tomadas; no figuran como funcionalidades por decidir. Las reglas de trabajo siguen en [Agents.md](../Agents.md).

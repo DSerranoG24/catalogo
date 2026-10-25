@@ -1,6 +1,6 @@
 # Importación de productos: contrato del backend
 
-Este bloque implementa únicamente JSON, validación, vista previa, confirmación y pruebas. No hay interfaz, lector Excel ni archivos subidos al servidor. La fase 3 deberá admitir solo `.xlsx` sin macros ni contraseña; rechazar `.xls`, `.xlsm` y formatos no soportados. No se instaló ninguna dependencia. No hay migración ni variables nuevas.
+La API recibe únicamente JSON para validar, previsualizar y confirmar. El frontend ya dispone de lector, plantilla e interfaz; solo admite `.xlsx` sin macros ni contraseña y rechaza `.xls`, `.xlsm` y formatos no soportados. El archivo no se sube al servidor. El backend de importación no requiere migraciones ni variables nuevas.
 
 ## Rutas y límites
 
@@ -29,7 +29,7 @@ Solicitud:
 }
 ```
 
-Cada petición contiene de 1 a 50 filas. `totalRows` es el número de filas de datos del archivo, entre 1 y 500. `rowNumber` conserva el número de fila Excel (desde 2, después de la cabecera); no puede repetirse en una petición. Hay un límite de 2 MiB exclusivamente en estas rutas, después de autenticar. El parser JSON global permanece en 32 KB. Solo se acepta `application/json`: el archivo nunca se transmite.
+Cada petición contiene de 1 a 50 filas. En la API, `totalRows` es el total de filas incluidas en el plan, entre 1 y 500: excluye filas rechazadas localmente y debe mantenerse igual en todos sus lotes. En el resultado del lector, `totalRows` cuenta todas las filas no vacías del archivo, incluidas las rechazadas; no se copia directamente al plan. `rowNumber` conserva el número de fila Excel (desde 2, después de la cabecera); no puede repetirse en una petición. Hay un límite de 2 MiB exclusivamente en estas rutas, después de autenticar. El parser JSON global permanece en 32 KB. Solo se acepta `application/json`: el archivo nunca se transmite.
 
 La respuesta contiene `requestId`, `rows` (acción, código, motivo, campos inválidos si procede y producto afectado) y `summary` con `new`, `updates`, `errors`, `notProcessed`. HTTP 200 significa que se devuelve el reporte, no que todas las filas se escribieron. Envelope inválido o más de 50 filas: 400; catálogo ajeno/inexistente: 404; archivado o vista previa inválida/caducada: 409; exceso de tráfico: 429; contenido incorrecto: 415; exceso de bytes: 413. Un fallo general antes de procesar devuelve 503 sin detalles internos.
 
@@ -72,7 +72,7 @@ Celda vacía significa campo omitido, `null`, cadena vacía o texto compuesto so
 | `salePrice`, `saleStartsAt`, `saleEndsAt` | Vacío: sin promoción; si hay oferta se exige el conjunto válido | Conservar cada valor existente y validar el resultado combinado |
 | `saleEnabled` | Ausente: deducir de los datos de promoción; `true` exige oferta válida | Vacío: no cambiar. `false` sin datos de oferta tampoco borra la promoción existente |
 
-`saleEnabled: false` junto con valores de oferta es contradictorio y produce error. Desactivar o vaciar una promoción existente se hace desde el panel, no mediante celdas vacías. `saleEnabled: true` sin oferta completa nueva o existente es error. Fechas: ISO 8601 con zona/offset; la UI futura debe convertir explícitamente las fechas de Excel antes de enviar JSON, sin depender de interpretaciones ambiguas de formato o zona horaria. Precio, oferta e inventario no superan el máximo INTEGER de PostgreSQL (2147483647).
+`saleEnabled: false` junto con valores de oferta es contradictorio y produce error. Desactivar o vaciar una promoción existente se hace desde el panel, no mediante celdas vacías. `saleEnabled: true` sin oferta completa nueva o existente es error. Fechas: texto ISO 8601 con zona/offset. El lector rechaza fechas numéricas y no las convierte automáticamente, evitando interpretaciones ambiguas de formato o zona horaria. Precio, oferta e inventario no superan el máximo INTEGER de PostgreSQL (2147483647).
 
 No se aceptan `id`, `catalogId`, `userId`, `slug`, `active`, `specs`, archivos, imágenes ni columnas extra. `saleEnabled` es el control del formulario y no se almacena. Los productos inactivos pueden actualizarse, pero no se reactivan. Un catálogo inactivo no archivado puede editarse como en el panel privado; un catálogo archivado rechaza importación. Nada en este flujo borra productos, categorías o imágenes.
 
@@ -94,12 +94,12 @@ Un error de validación o escritura revierte únicamente la fila actual y se inf
 
 No hay registro durable de ejecución ni promesa de recibo idempotente de importación. Si se pierde la conexión, puede haber filas confirmadas aunque el navegador no reciba su reporte. No reenviar ciegamente el mismo comprobante: las versiones/acciones ya cambiadas se rechazan sin crear duplicados. Volver a previsualizar las filas cuyo resultado se desconoce antes de confirmar de nuevo. La nueva clasificación encontrará los productos creados en lugar de duplicarlos.
 
-## Abuso y fase 3 pendiente
+## Abuso e integración con el frontend
 
 Además del límite global, ambas rutas comparten 60 peticiones por 15 minutos y usuario/catálogo, una petición activa por usuario y hasta cuatro activas por instancia. El cupo no se libera por desconexión del cliente mientras el trabajo del handler sigue activo. Son límites de proceso como los limitadores existentes; la seguridad de concurrencia entre instancias proviene del bloqueo PostgreSQL. Los errores nuevos se registran solo con evento, requestId y código seguro, nunca filas, tokens, URLs o excepciones Prisma completas.
 
 La fase 3A incorpora el lector local `.xlsx` con cuotas, plantilla y excepción de 2 MiB en las dos rutas exactas POST JSON del proxy. El resto de JSON del proxy conserva 64 KiB y Origin se comprueba antes de leer. Las dependencias autorizadas están fijadas: `read-excel-file: 9.3.12` y `fflate: 0.8.3`. El contrato de lectura, los límites y las comprobaciones están en `catalog-generator/docs/product-import-reader.md` (desde la raíz del repositorio).
 
-La fase 3B incorpora la interfaz en el workspace, previsualización secuencial, propagación de `invalidatedRows`, reporte por fila y confirmación explícita. El comportamiento de detención, resultados desconocidos, reintentos y accesibilidad está documentado en `catalog-generator/docs/product-import-ui.md` (desde la raíz del repositorio). No modifica el backend ni el lector de 3A.
+La interfaz del workspace incluye previsualización secuencial, propagación de `invalidatedRows`, reporte por fila y confirmación explícita. Detención, resultados desconocidos, reintentos, accesibilidad y aviso previo de formato están documentados en [interfaz](../catalog-generator/docs/product-import-ui.md). La mejora posterior amplía solo el contrato local del lector con `rejectedRows`, sin cambiar este contrato de API.
 
-La documentación OpenAPI generada quedó intacta por restricción. Este documento describe el contrato nuevo. La suite usa HTTP loopback y dobles transaccionales; la verificación adicional del backend contra PostgreSQL local fue cerrada con los seis escenarios aprobados antes de la fase 3A, incluida concurrencia, edición manual y rollback por fila. La fase 3A no accede a esa base ni a producción y no aplica migraciones.
+La documentación OpenAPI generada tiene cobertura parcial: el contrato de estas rutas vive aqui. El cierre previo de la verificación PostgreSQL del backend se conserva en el [historial](historial/2026-10-25-verificaciones.md). Comandos y límites actuales: [matriz de pruebas](testing.md).

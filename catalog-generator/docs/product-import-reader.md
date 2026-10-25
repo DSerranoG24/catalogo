@@ -1,8 +1,8 @@
 # Importación de productos: fase 3A
 
-Este bloque aporta lector local, plantilla y excepción del proxy. No agrega interfaz, botones, envíos a la API ni flujo de confirmación. El contrato del backend está en `../../docs/product-import.md`.
+Este módulo aporta lector local, plantilla y excepción del proxy. La interfaz y confirmación se describen en [flujo UI](product-import-ui.md); el [contrato del backend](../../docs/product-import.md) recibe solo JSON.
 
-## Uso futuro
+## Uso del lector
 
 ```ts
 import { readProductImport } from "@/lib/product-import/reader";
@@ -21,9 +21,10 @@ No hay efectos automáticos de descarga, red ni persistencia. El archivo generad
 - `totalRows`: filas de datos no vacías, incluidas las rechazadas localmente.
 - `rows`: solo filas normalizadas sin errores locales, con su `rowNumber` original. Cadenas recortadas/NFC, vacíos omitidos, números sin coerción y Sí/No convertido a booleano.
 - `errors`: número de fila, campo y código. No se devuelve ni registra la excepción original del parser.
+- `rejectedRows`: identificación parcial de las filas con error, exclusivamente para el reporte; véase la sección final.
 - `bytes`: bytes comprimidos, realmente expandidos y número de entradas.
 
-La fase 3B deberá agrupar `rows` en lotes de 50, usar **`rows.length`** como `totalRows` del plan del backend y combinar sus reportes con los errores locales. Una fila rechazada localmente nunca se envía con SKU vacío como sustituto. Si no hay filas válidas, no hay solicitud al backend. Nombre/precio requeridos, límites comerciales, categorías, promociones, propiedad y emparejamiento se validan de nuevo en la API; el lector no sustituye esas reglas.
+El flujo agrupa las filas elegibles en lotes de hasta 50 y usa su total como `totalRows` del plan del backend, excluyendo rechazos locales y filas demasiado grandes para JSON. Combina los reportes con los errores locales. Una fila rechazada nunca se envía con SKU vacío como sustituto. Si no hay filas válidas, no hay solicitud al backend. Nombre/precio requeridos, límites comerciales, categorías, promociones, propiedad y emparejamiento se validan de nuevo en la API; el lector no sustituye esas reglas.
 
 SKU numérico (también con formato visual 00000), fecha numérica/regional, booleanos diferentes de Sí/No y texto donde corresponde un número producen errores locales de tipo. No se reconstruyen ceros, fechas o códigos perdidos. Las fórmulas con resultado legible se reportan como error de fila; fórmulas sin resultado almacenado pueden hacer que el lector rechace el libro completo. Las cabeceras deben coincidir exactamente con las 12 de la plantilla y la hoja se llama `Productos`.
 
@@ -68,11 +69,11 @@ Las fechas son texto ISO 8601 con zona, por ejemplo `2026-11-01T09:00:00-05:00`.
 
 Solo POST JSON de `products/catalog/<UUID>/import/preview` y `.../confirm`, con exactamente cinco segmentos, reciben 2 MiB. El resto de JSON conserva 64 KiB y multipart conserva su límite anterior. Origin se comprueba antes de leer; Content-Length y el conteo del stream aplican el mismo límite seleccionado.
 
-`npm.cmd test` ejecuta 16 grupos de comprobaciones con el runner local y TypeScript ya instalado: plantilla/roundtrip real con read-excel-file, formatos/notas, SKU numérico, filas válidas junto a inválidas, cuotas con longitudes ZIP falsificadas, coordenadas enormes, ZIP inválido/cifrado/ZIP64, CRC, descriptores, límite previo a lectura, terminación real de workers ocupados (manual y a 10 segundos), y handler real de Next con Origin y ambos límites de cuerpo. El transporte de cancelación se prueba con worker_threads; la integración interactiva de navegador de la fase 3B se documenta en `product-import-ui.md`.
+`npm.cmd test` ejecuta 17 grupos de comprobaciones con el runner local y TypeScript ya instalado: plantilla/roundtrip real con read-excel-file, formatos/notas, SKU numérico, identificación parcial sin coerción, filas válidas junto a inválidas, cuotas con longitudes ZIP falsificadas, coordenadas enormes, ZIP inválido/cifrado/ZIP64, CRC, descriptores, límite previo a lectura, terminación real de workers ocupados (manual y a 10 segundos), y handler real de Next con Origin y ambos límites de cuerpo. El bloque inicial tenía 16 grupos; la identificación parcial añadió uno. El transporte de cancelación se prueba con worker_threads; la integración interactiva de navegador se documenta en [product-import-ui.md](product-import-ui.md).
 
-La plantilla se abrió también con openpyxl ya instalado, como comprobación independiente de hojas, celda B2/B501 en Texto, fechas Texto, cuatro validaciones, doce notas y cero valores de datos. No se instaló openpyxl ni se automatizó Excel de escritorio.
+La comprobacion independiente anterior de la plantilla se conserva en el [historial](../../docs/historial/2026-10-25-verificaciones.md).
 
-La fase 3B conecta selector y descarga, cancelación accesible, presentación de errores/resumen, lotes de vista previa, invalidatedRows, confirmación, reportes parciales, sesión expirada y reintentos. Su contrato y verificación interactiva se describen en `product-import-ui.md`. El lector de este documento se conserva sin cambios; no hay variables ni migraciones nuevas.
+La interfaz conecta selector y descarga, cancelación accesible, presentación de errores/resumen, lotes de vista previa, invalidatedRows, confirmación, reportes parciales, sesión expirada y reintentos. Su contrato y verificación interactiva se describen en [product-import-ui.md](product-import-ui.md). La mejora posterior amplió el contrato local con `rejectedRows`; no cambió el contrato de la API ni añadió variables o migraciones.
 
 ## Mejora de identificación de errores
 

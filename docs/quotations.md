@@ -48,7 +48,7 @@ La ruta admite 30 descargas por 15 minutos/IP, además del límite global de API
 
 ## Logo y PDFKit
 
-Se usa únicamente PDFKit 0.20.2 y sus dependencias transitivas. No se instala un navegador ni una biblioteca de conversión. Como el paquete no incluye tipos, `src/types/pdfkit.d.ts` declara estrictamente el subconjunto utilizado, sin instalar otra dependencia.
+Se usa únicamente PDFKit 0.20.2 y sus dependencias transitivas. No se instala un navegador ni una biblioteca de conversión. Como el paquete no incluye tipos, [catalog-api/src/types/pdfkit.d.ts](../catalog-api/src/types/pdfkit.d.ts) declara estrictamente el subconjunto utilizado, sin instalar otra dependencia.
 
 Se descarga el objeto actual directamente de Storage autenticado y se incrustan los bytes en el PDF. El destino procede de `SUPABASE_URL` y se limita a HTTPS de proyectos `*.supabase.co`; la ruta debe pertenecer a `catalogId/branding/` en el bucket existente `product-images`. No se aceptan rutas arbitrarias ni redirecciones. No se crea ni se conserva una URL firmada.
 
@@ -73,10 +73,8 @@ Antes de desplegar, el responsable debe:
 
 Rollback de aplicación: volver al código anterior puede dejar las columnas aditivas en su sitio; no borrar números, tokens o instantáneas ya emitidos. No hay migración inversa automática. Si se vuelve temporalmente a una API antigua, los pedidos creados allí no tendrán cotización; no deben reconstruirse como originales.
 
-## Verificación disponible
+## Verificación y alcance
 
-`npm.cmd test` conserva las pruebas de archivado, idempotencia, consulta protegida, cabeceras, cancelación, validación, PDF real y logo. Las expectativas de la transacción principal se ajustaron: ahora se exige que no toque campos de cotización. Las diez nuevas pruebas cubren fallo de emisión, configuración ausente, reintento del mismo pedido, fallo del logger/formato, emisión concurrente única, rollback tras incremento o actualización fallida, recuperación sin renumerar y cancelación/pertenencia. Los servidores de pruebas son loopback; no se lee ni modifica una base de datos ni se contacta Storage real.
+La [matriz de pruebas](testing.md) distingue suite con dobles, HTTP loopback e integración optativa con PostgreSQL real. Los resultados y exclusiones anteriores se conservan en el [historial](historial/2026-10-25-verificaciones.md); no acreditan una nueva ejecución del verificador de cotizaciones.
 
-El verificador optativo `src/scripts/verify-order-idempotency-postgres.ts` quedó preparado para comprobar números distintos en solicitudes concurrentes, mismo enlace en reintentos y rechazo de pedidos archivados sin incrementar contador. Fija la URL de la API al servidor loopback del ensayo y limpia únicamente sus fixtures, eliminando pedidos antes de catálogos por RESTRICT. Solo admite la base local `catalogo_test`. **No se ejecutó**: requiere primero la migración en esa base bajo autorización separada. Tampoco ejecuta migraciones por su cuenta.
-
-Fuera de alcance: editor avanzado de condiciones, emisión al confirmar, cambios de inventario, numeración retroactiva, conversión de WebP, firma digital y factura electrónica. La documentación OpenAPI generada quedó intacta por restricción; el contrato nuevo se describe aquí.
+Fuera de alcance: editor avanzado de condiciones, emisión al confirmar, cambios de inventario, numeración retroactiva, conversión de WebP, firma digital y factura electronica. OpenAPI tiene cobertura parcial; este documento mantiene el contrato funcional.
