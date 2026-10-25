@@ -261,7 +261,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
     return (
       <main className="mx-auto w-full max-w-6xl px-5 py-12 sm:px-8">
         <p role="alert" className="rounded-md bg-[#fff1ec] px-4 py-3 text-sm text-[#a5432a]">{error || "No se encontró el catálogo."}</p>
-        <Link href="/" className="mt-5 inline-block text-sm font-semibold text-[#17665c]">Volver a catálogos</Link>
+        <Link href="/" className="mt-5 inline-block text-sm font-semibold text-[var(--brand-emerald)]">Volver a catálogos</Link>
       </main>
     );
   }
@@ -272,7 +272,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
       <section className="relative overflow-hidden rounded-3xl border border-[#e2e8e0] bg-white p-6 shadow-[0_18px_54px_-44px_rgba(36,63,47,0.45)] sm:p-8">
         <div className="pointer-events-none absolute -right-16 -top-24 size-64 rounded-full border border-[#eaf0e8]" /><div className="pointer-events-none absolute -right-3 -top-12 size-40 rounded-full border border-[#eaf0e8]" />
         <div className="relative flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
-          <div className="min-w-0"><p className="inline-flex items-center gap-2 rounded-full bg-[#edf4ed] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#52725e]"><Store className="size-3.5" aria-hidden="true" /> Panel de tienda <span className="text-[#a5b5a7]">·</span> /{catalog.slug}</p><h1 className="mt-3 truncate text-3xl font-semibold tracking-tight text-[#202b27] sm:text-4xl">{catalog.name}</h1>{catalog.description && <p className="mt-2 max-w-2xl text-sm leading-6 text-[#68756e]">{catalog.description}</p>}</div>
+          <div className="min-w-0"><p className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-emerald-soft)] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#52725e]"><Store className="size-3.5" aria-hidden="true" /> Panel de tienda <span className="text-[#a5b5a7]">·</span> /{catalog.slug}</p><h1 className="mt-3 truncate text-3xl font-semibold tracking-tight text-[#202b27] sm:text-4xl">{catalog.name}</h1>{catalog.description && <p className="mt-2 max-w-2xl text-sm leading-6 text-[#68756e]">{catalog.description}</p>}</div>
           <div className="flex items-center gap-3 self-start rounded-2xl border border-[#edf1ec] bg-[#fafbf9] px-4 py-3 sm:self-auto"><span className="grid size-9 place-items-center rounded-xl bg-white text-[#557a62]"><LayoutGrid className="size-4" aria-hidden="true" /></span><div><p className="text-lg font-semibold leading-none text-[#263b31]">{products.length}</p><p className="mt-1 text-[10px] uppercase tracking-[0.1em] text-[#849087]">{products.length === 1 ? "producto" : "productos"}</p></div></div>
         </div>
       </section>
@@ -286,7 +286,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
           ["reviews", "Reseñas", MessageSquareText],
           ["settings", "Tienda y diseño", Settings2],
         ] as const).map(([tab, label, Icon]) => (
-          <button key={tab} type="button" disabled={importActive && activeTab !== tab} onClick={() => setActiveTab(tab)} aria-current={activeTab === tab ? "page" : undefined} className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-xs font-semibold transition disabled:opacity-50 sm:px-4 sm:text-sm ${activeTab === tab ? "bg-[#245c4c] text-white shadow-sm" : "text-[#68756e] hover:bg-[#f0f4ee] hover:text-[#202b27]"}`}>
+          <button key={tab} type="button" disabled={importActive && activeTab !== tab} onClick={() => setActiveTab(tab)} aria-current={activeTab === tab ? "page" : undefined} className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-xs font-semibold transition disabled:opacity-50 sm:px-4 sm:text-sm ${activeTab === tab ? "bg-[var(--brand-emerald)] text-white shadow-sm" : "text-[#68756e] hover:bg-[#f0f4ee] hover:text-[#202b27]"}`}>
             <Icon className="size-4" aria-hidden="true" /> {label}
           </button>
         ))}

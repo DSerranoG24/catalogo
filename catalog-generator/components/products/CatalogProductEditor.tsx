@@ -102,7 +102,7 @@ export default function CatalogProductEditor({
     <section className="rounded-3xl border border-[#e2e8e0] bg-white p-5 shadow-[0_16px_44px_-38px_rgba(36,63,47,0.35)] sm:p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#a46d52]">{editing ? "Edición" : "Inventario"}</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--brand-coral-text)]">{editing ? "Edición" : "Inventario"}</p>
           <h2 className="mt-1 text-lg font-semibold tracking-tight text-[#202b27]">{editing ? "Actualizar producto" : "Añadir producto"}</h2>
         </div>
         {editing && <button type="button" onClick={onCancel} className="text-sm font-medium text-[#68756e] hover:text-[#202b27]">Cancelar</button>}
@@ -113,7 +113,7 @@ export default function CatalogProductEditor({
           <p className="mt-1 text-xs leading-5 text-[#718076]">Consulta códigos EAN, UPC o GTIN para sugerir nombre y descripción.</p>
           <div className="mt-3 flex gap-2">
             <input id="product-barcode-search" inputMode="numeric" autoComplete="off" value={barcodeQuery} onChange={(event) => setBarcodeQuery(event.target.value.replace(/\D/g, "").slice(0, 14))} placeholder="Ej. 7701234567890" className="min-h-10 min-w-0 flex-1 rounded-xl border border-[#d6dfd7] bg-white px-3.5 py-2 outline-none focus:border-[#5a886c] focus:ring-4 focus:ring-[#5a886c]/10" />
-            <button type="submit" disabled={barcodeLoading || !/^\d{8,14}$/.test(barcodeQuery)} className="shrink-0 rounded-xl bg-[#245c4c] px-3.5 text-xs font-semibold text-white transition hover:bg-[#17665c] disabled:cursor-not-allowed disabled:opacity-50">{barcodeLoading ? "Buscando…" : "Buscar código"}</button>
+            <button type="submit" disabled={barcodeLoading || !/^\d{8,14}$/.test(barcodeQuery)} className="shrink-0 rounded-xl bg-[var(--brand-emerald)] px-3.5 text-xs font-semibold text-white transition hover:bg-[var(--brand-emerald)] disabled:cursor-not-allowed disabled:opacity-50">{barcodeLoading ? "Buscando…" : "Buscar código"}</button>
           </div>
           {barcodeMessage && <p role="status" className="mt-2 text-xs leading-5 text-[#52725e]">{barcodeMessage}</p>}
           <p className="mt-2 text-[11px] leading-4 text-[#849087]">La consulta usa un servicio externo gratuito con límite de solicitudes. Verifica los datos antes de guardar; los precios e inventario nunca se importan.</p>
@@ -123,7 +123,7 @@ export default function CatalogProductEditor({
         <p className="mt-1 text-xs leading-5 text-[#718076]">Busca por nombre, marca, modelo o código. Se copiarán solo los datos descriptivos.</p>
         <input id="product-source-search" type="search" value={sourceQuery} onChange={(event) => setSourceQuery(event.target.value)} placeholder="Ej. audífonos, Acme o ABC-123" autoComplete="off" className="mt-3 min-h-10 w-full rounded-xl border border-[#d6dfd7] bg-white px-3.5 py-2 outline-none focus:border-[#5a886c] focus:ring-4 focus:ring-[#5a886c]/10" />
         {sourceQuery.trim().length >= 2 && <div className="mt-2 space-y-1" aria-live="polite">
-          {matches.length ? matches.map((product) => <button key={product.id} type="button" onClick={() => applyProduct(product)} className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-[#eaf2e9]"><span className="min-w-0"><span className="block truncate font-medium text-[#263b31]">{product.name}</span><span className="block truncate text-xs text-[#718076]">{[product.brand, product.model, product.sku].filter(Boolean).join(" · ") || "Sin marca, modelo ni código"}</span></span><span className="shrink-0 text-xs font-semibold text-[#17665c]">Usar datos</span></button>) : <p className="px-3 py-2 text-xs text-[#718076]">No hay coincidencias en este catálogo.</p>}
+          {matches.length ? matches.map((product) => <button key={product.id} type="button" onClick={() => applyProduct(product)} className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-[var(--brand-emerald-soft)]"><span className="min-w-0"><span className="block truncate font-medium text-[#263b31]">{product.name}</span><span className="block truncate text-xs text-[#718076]">{[product.brand, product.model, product.sku].filter(Boolean).join(" · ") || "Sin marca, modelo ni código"}</span></span><span className="shrink-0 text-xs font-semibold text-[var(--brand-emerald)]">Usar datos</span></button>) : <p className="px-3 py-2 text-xs text-[#718076]">No hay coincidencias en este catálogo.</p>}
         </div>}
         </div>
       </div>}
@@ -194,10 +194,10 @@ export default function CatalogProductEditor({
               return;
             }
             onImageChange(file);
-          }} className="mt-2 block w-full text-sm text-[#68756e] file:mr-3 file:rounded-md file:border-0 file:bg-[#e8f0e8] file:px-3 file:py-2 file:text-xs file:font-semibold file:text-[#17665c]" />
-          {imageFile && <span className="mt-1 block text-xs font-normal text-[#17665c]">{imageFile.name}</span>}
+          }} className="mt-2 block w-full text-sm text-[#68756e] file:mr-3 file:rounded-md file:border-0 file:bg-[#e8f0e8] file:px-3 file:py-2 file:text-xs file:font-semibold file:text-[var(--brand-emerald)]" />
+          {imageFile && <span className="mt-1 block text-xs font-normal text-[var(--brand-emerald)]">{imageFile.name}</span>}
         </label>
-        <button type="submit" disabled={saving} className="w-full rounded-md bg-[#17665c] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#10554c] disabled:cursor-wait disabled:opacity-60">
+        <button type="submit" disabled={saving} className="w-full rounded-md bg-[var(--brand-emerald)] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[var(--brand-emerald-hover)] disabled:cursor-wait disabled:opacity-60">
           {saving ? "Guardando..." : editing ? "Guardar cambios" : "Guardar producto"}
         </button>
       </form>

@@ -163,10 +163,10 @@ export default function Home() {
     <main className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-12">
       <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs font-medium text-[#7b8780]"><LayoutDashboard className="size-4" aria-hidden="true" /><span>Panel de control</span><span className="text-[#c2cbc3]">/</span><span className="text-[#35473d]">Catálogos</span></div>
-        <button type="button" onClick={() => { void signOut(); }} disabled={busy || signingOut} className="min-h-11 rounded-xl border border-[#d6dfd7] px-4 py-2 text-sm font-semibold text-[#435047] transition hover:bg-[#f4f7f2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#245c4c] disabled:opacity-60">{signingOut ? "Cerrando sesión…" : "Cerrar sesión"}</button>
+        <button type="button" onClick={() => { void signOut(); }} disabled={busy || signingOut} className="min-h-11 rounded-xl border border-[#d6dfd7] px-4 py-2 text-sm font-semibold text-[#435047] transition hover:bg-[#f4f7f2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)] disabled:opacity-60">{signingOut ? "Cerrando sesión…" : "Cerrar sesión"}</button>
       </div>
 
-      <section className="relative overflow-hidden rounded-3xl bg-[#173f36] px-6 py-8 text-white shadow-[0_24px_60px_-38px_rgba(18,55,45,0.8)] sm:px-9 sm:py-10">
+      <section className="relative overflow-hidden rounded-3xl bg-[var(--brand-forest)] px-6 py-8 text-white shadow-[0_24px_60px_-38px_rgba(18,55,45,0.8)] sm:px-9 sm:py-10">
         <div className="pointer-events-none absolute -right-14 -top-24 size-72 rounded-full border border-white/10" /><div className="pointer-events-none absolute -right-2 -top-12 size-48 rounded-full border border-white/10" />
         <div className="relative flex flex-col justify-between gap-7 sm:flex-row sm:items-end">
           <div>
@@ -182,7 +182,7 @@ export default function Home() {
             >
               <RefreshCw className="size-4" aria-hidden="true" /> Actualizar
             </button>
-            <Link href="/dashboard/catalogos/nuevo" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#c3e5d4] px-4 text-sm font-semibold text-[#173f36] transition hover:bg-white">
+            <Link href="/dashboard/catalogos/nuevo" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#c3e5d4] px-4 text-sm font-semibold text-[var(--brand-forest)] transition hover:bg-white">
               <CirclePlus className="size-4" aria-hidden="true" /> Nuevo catálogo
             </Link>
           </div>
@@ -190,9 +190,9 @@ export default function Home() {
       </section>
 
       <div className="mt-7 grid gap-3 sm:grid-cols-3">
-        <div className="flex items-center gap-3 rounded-2xl border border-[#e2e8e0] bg-white/85 p-4"><span className="grid size-10 place-items-center rounded-xl bg-[#eaf2e9] text-[#315e4f]"><Store className="size-4" aria-hidden="true" /></span><div><p className="text-xl font-semibold tracking-tight text-[#263b31]">{catalogs.length}</p><p className="text-xs text-[#78847d]">{catalogs.length === 1 ? "catálogo creado" : "catálogos creados"}</p></div></div>
+        <div className="flex items-center gap-3 rounded-2xl border border-[#e2e8e0] bg-white/85 p-4"><span className="grid size-10 place-items-center rounded-xl bg-[var(--brand-emerald-soft)] text-[#315e4f]"><Store className="size-4" aria-hidden="true" /></span><div><p className="text-xl font-semibold tracking-tight text-[#263b31]">{catalogs.length}</p><p className="text-xs text-[#78847d]">{catalogs.length === 1 ? "catálogo creado" : "catálogos creados"}</p></div></div>
         <div className="flex items-center gap-3 rounded-2xl border border-[#e2e8e0] bg-white/85 p-4"><span className="grid size-10 place-items-center rounded-xl bg-[#f4eee5] text-[#99734c]"><Box className="size-4" aria-hidden="true" /></span><div><p className="text-sm font-semibold text-[#263b31]">Todo organizado</p><p className="text-xs text-[#78847d]">Productos y pedidos en un lugar</p></div></div>
-        <div className="flex items-center gap-3 rounded-2xl border border-[#e2e8e0] bg-white/85 p-4"><span className="grid size-10 place-items-center rounded-xl bg-[#f9ece8] text-[#a95f4c]"><ExternalLink className="size-4" aria-hidden="true" /></span><div><p className="text-sm font-semibold text-[#263b31]">Listo para compartir</p><p className="text-xs text-[#78847d]">Cada tienda tiene su propio enlace</p></div></div>
+        <div className="flex items-center gap-3 rounded-2xl border border-[#e2e8e0] bg-white/85 p-4"><span className="grid size-10 place-items-center rounded-xl bg-[#f9ece8] text-[var(--brand-coral-text)]"><ExternalLink className="size-4" aria-hidden="true" /></span><div><p className="text-sm font-semibold text-[#263b31]">Listo para compartir</p><p className="text-xs text-[#78847d]">Cada tienda tiene su propio enlace</p></div></div>
       </div>
 
       {error && (
@@ -210,7 +210,7 @@ export default function Home() {
       )}
 
       <div className="mt-10 flex items-end justify-between border-b border-[#dce4dc] pb-4">
-        <div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#a46d52]">Activos</p><h2 className="mt-1 text-lg font-semibold tracking-tight text-[#263b31]">Mis catálogos</h2></div>
+        <div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--brand-coral-text)]">Activos</p><h2 className="mt-1 text-lg font-semibold tracking-tight text-[#263b31]">Mis catálogos</h2></div>
         <span className="rounded-full bg-white px-3 py-1.5 text-xs font-medium tabular-nums text-[#66756b]">{activeCatalogs.length} {activeCatalogs.length === 1 ? "catálogo" : "catálogos"}</span>
       </div>
 
@@ -219,7 +219,7 @@ export default function Home() {
           <span className="grid size-14 place-items-center rounded-2xl bg-[#e7f0e8] text-[#315e4f]"><CirclePlus className="size-6" aria-hidden="true" /></span>
           <h2 className="mt-5 text-xl font-semibold tracking-tight text-[#263b31]">Tu primer catálogo empieza aquí</h2>
           <p className="mt-2 max-w-sm text-sm leading-6 text-[#68756e]">Crea un espacio para tus productos y empieza a prepararlo para compartir.</p>
-          <Link href="/dashboard/catalogos/nuevo" className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#245c4c] px-5 text-sm font-semibold text-white transition hover:bg-[#173f36]">Crear catálogo <ArrowUpRight className="size-4" aria-hidden="true" /></Link>
+          <Link href="/dashboard/catalogos/nuevo" className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[var(--brand-emerald)] px-5 text-sm font-semibold text-white transition hover:bg-[var(--brand-emerald-hover)]">Crear catálogo <ArrowUpRight className="size-4" aria-hidden="true" /></Link>
         </section>
       ) : (
         <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -236,7 +236,7 @@ export default function Home() {
                     onClick={() => openArchiveConfirm(catalog)}
                     aria-label={`Archivar ${catalog.name}`}
                     title="Archivar catálogo"
-                    className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-[#52675b] transition hover:bg-[#edf3ec] hover:text-[#17665c]"
+                    className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-[#52675b] transition hover:bg-[#edf3ec] hover:text-[var(--brand-emerald)]"
                   >
                     <Archive className="size-3.5" aria-hidden="true" /> Archivar
                   </button>
@@ -251,7 +251,7 @@ export default function Home() {
                   </button>
                 </div>
               </div>
-              <p className="mt-5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#a46d52]">Tienda en línea</p><h3 className="mt-1 text-lg font-semibold tracking-tight text-[#202b27]">{catalog.name}</h3>
+              <p className="mt-5 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--brand-coral-text)]">Tienda en línea</p><h3 className="mt-1 text-lg font-semibold tracking-tight text-[#202b27]">{catalog.name}</h3>
               <p className="mt-1 line-clamp-2 min-h-10 text-sm leading-5 text-[#68756e]">{catalog.description || `/${catalog.slug}`}</p>
               <Link href={`/dashboard/catalogos/${catalog.id}`} className="mt-auto flex min-h-11 items-center justify-between border-t border-[#edf1ec] pt-3 text-sm font-semibold text-[#315e4f]">
                 Abrir panel <ArrowUpRight className="size-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden="true" />
@@ -264,7 +264,7 @@ export default function Home() {
       {archivedCatalogs.length > 0 && (
         <>
           <div className="mt-12 flex items-end justify-between border-b border-[#dce4dc] pb-4">
-            <div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#a46d52]">Archivados</p><h2 className="mt-1 text-lg font-semibold tracking-tight text-[#263b31]">Catálogos archivados</h2></div>
+            <div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--brand-coral-text)]">Archivados</p><h2 className="mt-1 text-lg font-semibold tracking-tight text-[#263b31]">Catálogos archivados</h2></div>
             <span className="rounded-full bg-white px-3 py-1.5 text-xs font-medium tabular-nums text-[#66756b]">{archivedCatalogs.length} {archivedCatalogs.length === 1 ? "archivado" : "archivados"}</span>
           </div>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[#68756e]">Los catálogos archivados no son visibles para tus clientes. Sus productos y pedidos se conservan.</p>
@@ -282,7 +282,7 @@ export default function Home() {
                       onClick={() => reactivateCatalog(catalog)}
                       aria-label={`Reactivar ${catalog.name}`}
                       title="Reactivar catálogo"
-                      className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-[#17665c] transition hover:bg-[#e8f0e6] hover:text-[#10554c]"
+                      className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-[var(--brand-emerald)] transition hover:bg-[#e8f0e6] hover:text-[var(--brand-emerald-hover)]"
                     >
                       <RotateCcw className="size-3.5" aria-hidden="true" /> Reactivar
                     </button>
@@ -297,7 +297,7 @@ export default function Home() {
                     </button>
                   </div>
                 </div>
-                <p className="mt-5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#a46d52]">Archivado</p>
+                <p className="mt-5 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--brand-coral-text)]">Archivado</p>
                 <h3 className="mt-1 text-lg font-semibold tracking-tight text-[#5d6a63] line-through decoration-[#b9c4bb]">{catalog.name}</h3>
                 <p className="mt-1 line-clamp-2 min-h-10 text-sm leading-5 text-[#68756e]">{catalog.description || `/${catalog.slug}`}</p>
                 <Link href={`/dashboard/catalogos/${catalog.id}`} className="mt-auto flex min-h-11 items-center justify-between border-t border-[#edf1ec] pt-3 text-sm font-semibold text-[#52675b]">
@@ -318,7 +318,7 @@ export default function Home() {
             </p>
             <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
               <button type="button" onClick={closeModal} disabled={busy} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#d7e0d8] px-4 text-sm font-semibold text-[#4c5a52] transition hover:bg-[#f4f7f4]">Cancelar</button>
-              <button type="button" onClick={confirmArchive} disabled={busy} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#245c4c] px-4 text-sm font-semibold text-white transition hover:bg-[#173f36] disabled:opacity-60">{busy ? "Archivando…" : "Archivar"}</button>
+              <button type="button" onClick={confirmArchive} disabled={busy} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[var(--brand-emerald)] px-4 text-sm font-semibold text-white transition hover:bg-[var(--brand-emerald-hover)] disabled:opacity-60">{busy ? "Archivando…" : "Archivar"}</button>
             </div>
           </div>
         </div>

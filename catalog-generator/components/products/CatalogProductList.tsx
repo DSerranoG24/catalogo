@@ -30,10 +30,10 @@ export default function CatalogProductList({
     <section>
       <div className="flex items-end justify-between rounded-2xl border border-[#e2e8e0] bg-white px-5 py-4 shadow-[0_14px_36px_-34px_rgba(36,63,47,0.5)]">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#a46d52]">Inventario</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--brand-coral-text)]">Inventario</p>
           <h2 className="mt-1 text-lg font-semibold tracking-tight text-[#202b27]">Productos</h2>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-3"><span className="text-xs tabular-nums text-[#52655a]">{products.length} en total</span><button ref={importButtonRef} type="button" onClick={onImport} disabled={importDisabled} aria-expanded={importOpen} aria-controls="product-import-panel" className="min-h-11 rounded-lg bg-[#245c4c] px-3 py-2 text-sm font-semibold text-white hover:bg-[#194638] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#245c4c] disabled:cursor-not-allowed disabled:opacity-50">Importar Excel</button></div>
+        <div className="flex flex-wrap items-center justify-end gap-3"><span className="text-xs tabular-nums text-[#52655a]">{products.length} en total</span><button ref={importButtonRef} type="button" onClick={onImport} disabled={importDisabled} aria-expanded={importOpen} aria-controls="product-import-panel" className="min-h-11 rounded-lg bg-[var(--brand-emerald)] px-3 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-emerald-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)] disabled:cursor-not-allowed disabled:opacity-50">Importar Excel</button></div>
       </div>
       {loading ? <div role="status" aria-label="Cargando productos" className="mt-4 grid grid-cols-2 gap-3 animate-pulse xl:grid-cols-3">{[0, 1, 2, 3, 4, 5].map((item) => <div key={item} className="overflow-hidden rounded-2xl border border-[#e2e8e0] bg-white"><div className="aspect-square bg-[#e8eee5]" /><div className="space-y-2 p-3"><div className="h-3 w-3/4 rounded-full bg-[#e8eee5]" /><div className="h-3 w-1/2 rounded-full bg-[#f0f3ee]" /><div className="h-3 w-1/3 rounded-full bg-[#f0f3ee]" /></div></div>)}</div> : products.length === 0 ? (
         <div className="mt-4 rounded-2xl border border-dashed border-[#cbd7cc] bg-white/70 px-5 py-10 text-center">
@@ -58,7 +58,7 @@ export default function CatalogProductList({
                 {product.description && <p className="mt-1 line-clamp-2 min-h-8 text-[10px] leading-4 text-[#68756e]">{product.description}</p>}
                 {!product.description && <span className="min-h-8" aria-hidden="true" />}
                 <div className="mt-auto flex gap-2 border-t border-[#edf1ec] pt-2.5 text-[10px] font-semibold">
-                  <button type="button" disabled={mutationDisabled} onClick={() => onEdit(product)} className="min-h-8 flex-1 rounded-lg bg-[#edf4ed] px-2 text-[#315e4f] transition hover:bg-[#e1ece1] disabled:opacity-50">Editar</button>
+                  <button type="button" disabled={mutationDisabled} onClick={() => onEdit(product)} className="min-h-8 flex-1 rounded-lg bg-[var(--brand-emerald-soft)] px-2 text-[#315e4f] transition hover:bg-[#e1ece1] disabled:opacity-50">Editar</button>
                   <button type="button" disabled={mutationDisabled} onClick={() => onDelete(product)} className="min-h-8 rounded-lg px-2 text-[#ad4d35] transition hover:bg-[#fff1ec] disabled:opacity-50">Eliminar</button>
                 </div>
               </div>

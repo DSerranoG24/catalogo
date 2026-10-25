@@ -72,7 +72,7 @@ export default function OrdersPanel({ catalogId }: { catalogId: string }) {
     <section>
       <div className="flex items-end justify-between rounded-3xl border border-[#e2e8e0] bg-white p-5 shadow-[0_16px_44px_-38px_rgba(36,63,47,0.35)] sm:p-6">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#a46d52]">Solicitudes de clientes</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--brand-coral-text)]">Solicitudes de clientes</p>
           <h2 className="mt-1 text-lg font-semibold tracking-tight text-[#202b27]">Órdenes recibidas</h2>
         </div>
         <button type="button" onClick={() => { setLoading(true); setReloadKey((key) => key + 1); }} className="min-h-10 rounded-xl border border-[#dce7dc] px-3.5 text-xs font-semibold text-[#315e4f] transition hover:bg-[#f1f5ef]">Actualizar</button>
@@ -95,7 +95,7 @@ export default function OrdersPanel({ catalogId }: { catalogId: string }) {
                   </div>
                   <p className="mt-1 text-xs text-[#68756e]">{new Date(order.createdAt).toLocaleString("es-CO")}</p>
                   <p className="mt-1 text-xs text-[#68756e]">{order.quotationNumber != null ? `COT-${String(order.quotationNumber).padStart(6, "0")}` : "Sin cotización"}</p>
-                  <a href={`tel:${order.customerPhone}`} className="mt-2 inline-block text-sm font-medium text-[#17665c]">{order.customerPhone}</a>
+                  <a href={`tel:${order.customerPhone}`} className="mt-2 inline-block text-sm font-medium text-[var(--brand-emerald)]">{order.customerPhone}</a>
                   {order.customerEmail && <p className="mt-1 text-xs text-[#68756e]">{order.customerEmail}</p>}
                 </div>
                 <p className="text-lg font-semibold tabular-nums text-[#202b27]">${order.total.toLocaleString("es-CO")}</p>
@@ -109,8 +109,8 @@ export default function OrdersPanel({ catalogId }: { catalogId: string }) {
               {order.notes && <p className="mt-2 text-xs leading-5 text-[#68756e]">Nota: {order.notes}</p>}
               {order.status !== "COMPLETED" && order.status !== "CANCELLED" && (
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {order.status === "PENDING" && <button disabled={updatingId === order.id} onClick={() => void changeStatus(order, "CONFIRMED")} className="rounded-md bg-[#17665c] px-3 py-2 text-xs font-semibold text-white disabled:opacity-60">Confirmar</button>}
-                  {order.status === "CONFIRMED" && <button disabled={updatingId === order.id} onClick={() => void changeStatus(order, "COMPLETED")} className="rounded-md bg-[#17665c] px-3 py-2 text-xs font-semibold text-white disabled:opacity-60">Marcar completada</button>}
+                  {order.status === "PENDING" && <button disabled={updatingId === order.id} onClick={() => void changeStatus(order, "CONFIRMED")} className="rounded-md bg-[var(--brand-emerald)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-60">Confirmar</button>}
+                  {order.status === "CONFIRMED" && <button disabled={updatingId === order.id} onClick={() => void changeStatus(order, "COMPLETED")} className="rounded-md bg-[var(--brand-emerald)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-60">Marcar completada</button>}
                   <button disabled={updatingId === order.id} onClick={() => void changeStatus(order, "CANCELLED")} className="rounded-md border border-[#e6c7bc] px-3 py-2 text-xs font-semibold text-[#a5432a] disabled:opacity-60">Cancelar orden</button>
                 </div>
               )}

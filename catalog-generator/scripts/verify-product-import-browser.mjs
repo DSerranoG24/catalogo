@@ -137,15 +137,34 @@ try {
   socket.addEventListener("message", event => { const message = JSON.parse(event.data); if (message.id) { const item = pending.get(message.id); pending.delete(message.id); if (message.error) item?.reject(new Error("CDP_FAILED")); else item?.resolve(message.result); } else if (message.method === "Runtime.exceptionThrown") browserErrors.push(message.params.exceptionDetails.exception?.description?.split("\n")[0] ?? message.params.exceptionDetails.text); else if (message.method === "Network.responseReceived" && message.params.response.url.includes("/import/")) importResponses.push({ requestId: message.params.requestId, status: message.params.response.status }); });
   socket.addEventListener("message", event => { const message = JSON.parse(event.data); if (message.method === "Page.fileChooserOpened") fileChoosers.push(message.params); });
   await command("Page.enable"); await command("Runtime.enable"); await command("Network.enable");
-  await command("Network.setBlockedURLs", { urls: ["*accounts.google.com/*"] });
+  await command("Network.setBlockedURLs", { urls: ["*accounts.google.com/*", "*fonts.googleapis.com/*", "*fonts.gstatic.com/*"] });
   await command("Page.addScriptToEvaluateOnNewDocument", { source: `if(location.hostname==='localhost')localStorage.setItem('catalogo-session',JSON.stringify({user:{id:'test-user',email:'test@example.invalid',name:null}}))` });
   step("login-layout");
   await command("Page.navigate", { url: "http://localhost:4328/login" });
   await poll(() => evaluate(`Boolean(document.querySelector('button[type="submit"]'))`));
+  await evaluate(`document.fonts.ready.then(()=>true)`);
+  await command("DOM.enable"); await command("CSS.enable");
+  const loginDocument = await command("DOM.getDocument");
+  const loginHeading = await command("DOM.querySelector", { nodeId: loginDocument.root.nodeId, selector: "h1" });
+  const headingFonts = await command("CSS.getPlatformFontsForNode", { nodeId: loginHeading.nodeId });
+  assert.ok(headingFonts.fonts.some(font => font.isCustomFont && /Inter/i.test(font.familyName) && font.glyphCount > 0), "Inter is actually used to render heading glyphs");
+  assert.equal(await evaluate(`document.title`), "Vitrinaya | Panel de catálogos");
+  assert.ok(await evaluate(`(async()=>{const icons=[...document.querySelectorAll('link[rel="icon"]')];if(icons.length!==1||!icons[0].href.includes('/icon.svg')||document.documentElement.outerHTML.includes('/favicon.ico'))return false;const response=await fetch(icons[0].href);return response.ok&&response.headers.get('content-type')?.includes('image/svg+xml')})()`), "Single SVG favicon link resolves successfully with no ICO reference");
+  assert.ok(await evaluate(`[...document.querySelectorAll('a[href="/"]')].every(link=>link.querySelector('[role="img"][aria-label="Vitrinaya"]')&&link.textContent.includes('vitrinaya')&&!link.textContent.includes('Catalogo'))`));
+  await evaluate(`(()=>{const p=document.createElement('p');p.id='inter-character-probe';p.textContent='á é í ó ú ñ ü ¿ ¡ y Á É Í Ó Ú Ñ Ü';p.style.fontFamily='var(--font-app-sans)';document.body.append(p)})()`);
+  await evaluate(`(async()=>{const p=document.getElementById('inter-character-probe');await document.fonts.load('16px '+getComputedStyle(p).fontFamily,p.textContent);await document.fonts.ready;await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));return true})()`);
+  const characterDocument = await command("DOM.getDocument");
+  const characterProbe = await command("DOM.querySelector", { nodeId: characterDocument.root.nodeId, selector: "#inter-character-probe" });
+  const characterFonts = await command("CSS.getPlatformFontsForNode", { nodeId: characterProbe.nodeId });
+  assert.ok(characterFonts.fonts.length > 0 && characterFonts.fonts.every(font => font.isCustomFont && /Inter/i.test(font.familyName)), "Spanish characters and y render in local Inter without fallback");
+  await evaluate(`document.getElementById('inter-character-probe').remove()`);
+  summary.scenarios.push("Vitrinaya title and login brand; self-hosted Inter renders actual glyphs");
   for (const width of [320, 390, 1024, 1440]) {
     await command("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 600 });
+    await poll(() => evaluate(`[...document.querySelectorAll('[role="img"][aria-label="Vitrinaya"]')].filter(e=>e.getBoundingClientRect().width>0).every(e=>e.querySelector('img').naturalWidth>0)`));
     assert.ok(await evaluate(`(()=>{const buttons=[...document.querySelectorAll('button')];return document.documentElement.scrollWidth<=innerWidth+1&&buttons.every(b=>{const r=b.getBoundingClientRect();return b.scrollWidth<=b.clientWidth+1&&r.left>=0&&r.right<=innerWidth})})()`), `Login buttons fit at ${width}px`);
     assert.equal(await evaluate(`document.querySelector('button').textContent.trim()`), "Iniciar sesión");
+    assert.ok(await evaluate(`(()=>{const logos=[...document.querySelectorAll('[role="img"][aria-label="Vitrinaya"]')].filter(e=>e.getBoundingClientRect().width>0);return logos.length===1&&logos.every(e=>{const r=e.getBoundingClientRect(),img=e.querySelector('img');return r.left>=0&&r.right<=innerWidth&&img.complete&&img.naturalWidth>0&&e.dataset.theme===(innerWidth>=1024?'oscuro':'claro')})})()`), `Login logo fits at ${width}px`);
   }
   await command("Emulation.clearDeviceMetricsOverride");
   summary.scenarios.push("login labels and button bounds at 320, 390, 1024 and 1440px; Google network blocked");
@@ -154,6 +173,12 @@ try {
   await poll(() => evaluate(`Boolean(document.querySelector('a[href="/dashboard/catalogos/${catalogId}"]'))`));
   await evaluate(`document.querySelector('a[href="/dashboard/catalogos/${catalogId}"]').click()`);
   await poll(() => evaluate(`[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Importar Excel')`));
+  for (const width of [320, 390, 1024, 1440]) {
+    await command("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 600 });
+    assert.ok(await evaluate(`(()=>{const logo=document.querySelector('header [role="img"][aria-label="Vitrinaya"]');if(!logo)return false;const r=logo.getBoundingClientRect(),header=logo.closest('header');return logo.dataset.theme==='claro'&&r.left>=0&&r.right<=innerWidth&&header.scrollWidth<=innerWidth&&logo.querySelector('img').naturalWidth>0})()`), `Dashboard logo fits at ${width}px`);
+  }
+  await command("Emulation.clearDeviceMetricsOverride");
+  summary.scenarios.push("local Inter Spanish uppercase/lowercase, opening punctuation and y; login/dashboard logos fit 320/390/1024/1440px with correct themes");
   step("category-delete");
   const productCountBeforeDelete = products.size;
   await evaluate(`window.confirm=()=>false`);

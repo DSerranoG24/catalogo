@@ -74,6 +74,7 @@ try {
     assert.match(xml, /type="whole"[^>]*sqref="G2:G501"/);
     assert.match(xml, /sqref="I2:I501"><formula1>"Sí,No"/);
     assert.equal((strFromU8(baseFiles["xl/comments1.xml"]).match(/<comment ref=/g) || []).length, 12);
+    assert.ok(strFromU8(baseFiles["xl/comments1.xml"]).includes("<author>Vitrinaya</author>"));
     for (const [name, data] of Object.entries(baseFiles)) if (/\.(xml|rels|vml)$/.test(name)) inspectXml(data);
   });
   await check("read only sanitized STORE archive and only Productos; preserve string SKU and normalize NFC", async () => {

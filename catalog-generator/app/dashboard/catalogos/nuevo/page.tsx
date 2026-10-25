@@ -33,7 +33,7 @@ export default function NuevoCatalogo() {
 
   return (
     <main className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-12">
-      <Link href="/" className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-[#52675c] transition hover:text-[#173f36]"><ArrowLeft className="size-4" aria-hidden="true" /> Volver a catálogos</Link>
+      <Link href="/" className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-[#52675c] transition hover:text-[var(--brand-forest)]"><ArrowLeft className="size-4" aria-hidden="true" /> Volver a catálogos</Link>
       <div className="mt-7 grid items-start gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)] lg:gap-10">
       <div>
         <div className="inline-flex items-center gap-2 rounded-full border border-[#dce7dc] bg-white/70 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-[#597565]"><Sparkles className="size-3.5" aria-hidden="true" /> Nuevo espacio</div>
@@ -47,7 +47,7 @@ export default function NuevoCatalogo() {
         </div>
 
       <form onSubmit={submit} className="mt-5 space-y-5 rounded-3xl border border-[#e1e8e0] bg-white p-5 shadow-[0_22px_60px_-45px_rgba(36,63,47,0.38)] sm:p-8">
-        <div className="flex items-center gap-3 border-b border-[#edf1ec] pb-4"><span className="grid size-10 place-items-center rounded-xl bg-[#eaf2e9] text-[#315e4f]"><Store className="size-4" aria-hidden="true" /></span><div><h2 className="text-sm font-semibold text-[#263b31]">Identidad de tu tienda</h2><p className="mt-0.5 text-xs text-[#829087]">Puedes cambiar estos datos después.</p></div></div>
+        <div className="flex items-center gap-3 border-b border-[#edf1ec] pb-4"><span className="grid size-10 place-items-center rounded-xl bg-[var(--brand-emerald-soft)] text-[#315e4f]"><Store className="size-4" aria-hidden="true" /></span><div><h2 className="text-sm font-semibold text-[#263b31]">Identidad de tu tienda</h2><p className="mt-0.5 text-xs text-[#829087]">Puedes cambiar estos datos después.</p></div></div>
         <label className="block text-sm font-medium text-[#37443d]">
           Nombre del catálogo
           <input
@@ -95,7 +95,7 @@ export default function NuevoCatalogo() {
         {error && <p role="alert" className="rounded-md bg-[#fff1ec] px-3.5 py-3 text-sm text-[#a5432a]">{error}</p>}
         <div className="flex flex-col-reverse justify-end gap-3 border-t border-[#edf1ec] pt-5 sm:flex-row">
           <Link href="/" className="inline-flex min-h-12 items-center justify-center rounded-xl px-5 text-sm font-semibold text-[#68756e] transition hover:bg-[#f4f7f2]">Cancelar</Link>
-          <button type="submit" disabled={busy} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#245c4c] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#173f36] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#5a886c]/20 disabled:cursor-wait disabled:opacity-60">
+          <button type="submit" disabled={busy} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[var(--brand-emerald)] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--brand-emerald-hover)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#5a886c]/20 disabled:cursor-wait disabled:opacity-60">
             {busy ? "Creando..." : <>Crear catálogo <ArrowRight className="size-4" aria-hidden="true" /></>}
           </button>
         </div>
@@ -106,11 +106,11 @@ export default function NuevoCatalogo() {
         <div className="bg-[#f3f5ef] p-5 sm:p-6">
           <div className="overflow-hidden rounded-2xl border border-[#e5e8df] bg-white shadow-sm">
             <div className="flex items-center gap-1.5 border-b border-[#eef0eb] px-3 py-2"><span className="size-1.5 rounded-full bg-[#edb6a6]" /><span className="size-1.5 rounded-full bg-[#e9d79c]" /><span className="size-1.5 rounded-full bg-[#b8d1bd]" /><span className="ml-2 h-2 w-1/2 rounded-full bg-[#f0f2ed]" /></div>
-            <div className="p-5"><div className="flex items-center gap-2 border-b border-[#edf1ec] pb-3"><span className="grid size-8 place-items-center rounded-lg bg-[#edf3ec] text-[#315e4f]"><Store className="size-4" /></span><span className="truncate text-sm font-semibold text-[#263b31]">{name.trim() || "Nombre de tu tienda"}</span></div><div className="py-7 text-center"><span className="mx-auto grid size-10 place-items-center rounded-full bg-[#edf3ec] text-[#557a62]"><PackagePlus className="size-5" /></span><div className="mx-auto mt-3 h-3 w-2/3 rounded-full bg-[#dce5dc]" /><div className="mx-auto mt-2 h-2 w-1/2 rounded-full bg-[#edf1ec]" /><div className="mx-auto mt-4 h-8 w-28 rounded-full bg-[#245c4c]" /></div><div className="border-t border-[#edf1ec] pt-3 text-[10px] text-[#89958b]">{slug ? "Tu enlace seguro estará listo al crear la tienda" : "Tu enlace aparecerá aquí"}</div></div>
+            <div className="p-5"><div className="flex items-center gap-2 border-b border-[#edf1ec] pb-3"><span className="grid size-8 place-items-center rounded-lg bg-[#edf3ec] text-[#315e4f]"><Store className="size-4" /></span><span className="truncate text-sm font-semibold text-[#263b31]">{name.trim() || "Nombre de tu tienda"}</span></div><div className="py-7 text-center"><span className="mx-auto grid size-10 place-items-center rounded-full bg-[#edf3ec] text-[#557a62]"><PackagePlus className="size-5" /></span><div className="mx-auto mt-3 h-3 w-2/3 rounded-full bg-[#dce5dc]" /><div className="mx-auto mt-2 h-2 w-1/2 rounded-full bg-[#edf1ec]" /><div className="mx-auto mt-4 h-8 w-28 rounded-full bg-[var(--brand-emerald)]" /></div><div className="border-t border-[#edf1ec] pt-3 text-[10px] text-[#89958b]">{slug ? "Tu enlace seguro estará listo al crear la tienda" : "Tu enlace aparecerá aquí"}</div></div>
           </div>
           <div className="mt-4 flex items-start gap-2 rounded-xl bg-white/75 p-3 text-xs leading-5 text-[#68756e]"><CircleHelp className="mt-0.5 size-4 shrink-0 text-[#73917c]" aria-hidden="true" /><p>El nombre y la dirección son visibles para tus clientes. La descripción ayuda a presentar tu negocio.</p></div>
         </div>
-        <div className="space-y-3 px-5 py-5"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#a46d52]">Después podrás</p><p className="flex items-center gap-2 text-xs text-[#526157]"><Check className="size-4 text-[#508260]" /> Elegir entre tres estilos de tienda</p><p className="flex items-center gap-2 text-xs text-[#526157]"><Check className="size-4 text-[#508260]" /> Añadir productos y categorías</p><p className="flex items-center gap-2 text-xs text-[#526157]"><Check className="size-4 text-[#508260]" /> Compartir tu catálogo por enlace</p></div>
+        <div className="space-y-3 px-5 py-5"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--brand-coral-text)]">Después podrás</p><p className="flex items-center gap-2 text-xs text-[#526157]"><Check className="size-4 text-[#508260]" /> Elegir entre tres estilos de tienda</p><p className="flex items-center gap-2 text-xs text-[#526157]"><Check className="size-4 text-[#508260]" /> Añadir productos y categorías</p><p className="flex items-center gap-2 text-xs text-[#526157]"><Check className="size-4 text-[#508260]" /> Compartir tu catálogo por enlace</p></div>
       </aside>
       </div>
     </main>

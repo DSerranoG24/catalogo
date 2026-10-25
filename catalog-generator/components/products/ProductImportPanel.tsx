@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { importTextHelp, importBusy, importCounts, importFieldLabel, type ImportFlowState, type ProductImportFlow, type RowStatus } from "@/lib/product-import-flow";
 
-const button = "min-h-11 rounded-lg border border-[#bccdbf] px-4 py-2 text-sm font-semibold text-[#245c4c] transition hover:bg-[#edf4ed] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#245c4c] disabled:cursor-not-allowed disabled:opacity-50";
+const button = "min-h-11 rounded-lg border border-[#bccdbf] px-4 py-2 text-sm font-semibold text-[var(--brand-emerald)] transition hover:bg-[var(--brand-emerald-soft)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)] disabled:cursor-not-allowed disabled:opacity-50";
 const statusLabels: Record<RowStatus, string> = { waiting: "Sin clasificar", new: "Nueva", update: "Actualizar", created: "Creada", updated: "Actualizada", error: "Con error", not_processed: "No procesada", unknown: "Resultado desconocido" };
 const phaseLabels = { idle: "Selecciona un archivo", reading: "Leyendo archivo…", previewing: "Generando vista previa", ready: "Lista para revisar", writing: "Importando productos", stopped: "Operación detenida", completed: "Reporte final", error: "La operación necesita atención" };
 
@@ -44,11 +44,11 @@ export default function ProductImportPanel({ flow, state, archived, onClose }: {
     </div>
     {busy && <p id="import-close-help" className="mt-2 text-sm text-[#52655a]">El cierre está bloqueado mientras hay trabajo activo. Usa la acción de cancelar o detener que aparece abajo.</p>}
     {archived && <p role="alert" className="mt-4 text-sm text-[#963b23]">Este catálogo está archivado y no admite importaciones.</p>}
-    <p className="mt-5 text-sm text-[#52655a]">¿Primera vez? <a href="/templates/productos.xlsx" download="plantilla-productos.xlsx" className="font-semibold text-[#245c4c] underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#245c4c]">Descargar plantilla</a> con las columnas correctas.</p>
+    <p className="mt-5 text-sm text-[#52655a]">¿Primera vez? <a href="/templates/productos.xlsx" download="plantilla-productos.xlsx" className="font-semibold text-[var(--brand-emerald)] underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)]">Descargar plantilla</a> con las columnas correctas.</p>
     <div className="mt-4 flex min-w-0 items-center gap-3">
       <div className="relative shrink-0">
         <input id="product-import-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-describedby={`product-import-file-name product-import-rules${fileDisabledReason ? " product-import-file-help" : ""}`} disabled={Boolean(fileDisabledReason)} className="peer sr-only" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) { setPage(0); void flow.select(file); } }} />
-        <label htmlFor="product-import-file" aria-disabled={Boolean(fileDisabledReason)} className={`${button} inline-flex cursor-pointer items-center peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#245c4c] peer-disabled:cursor-not-allowed peer-disabled:opacity-50`}>Seleccionar archivo<span className="sr-only"> Excel</span></label>
+        <label htmlFor="product-import-file" aria-disabled={Boolean(fileDisabledReason)} className={`${button} inline-flex cursor-pointer items-center peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[var(--brand-emerald)] peer-disabled:cursor-not-allowed peer-disabled:opacity-50`}>Seleccionar archivo<span className="sr-only"> Excel</span></label>
       </div>
       <span id="product-import-file-name" aria-live="polite" aria-atomic="true" className="flex min-h-11 min-w-0 flex-1 items-center break-all text-sm text-[#52655a]">{state.fileName || "Ningún archivo seleccionado"}</span>
     </div>
@@ -59,7 +59,7 @@ export default function ProductImportPanel({ flow, state, archived, onClose }: {
       {(state.phase === "previewing" || state.phase === "writing") && <p className="mt-2">Lote {state.progress.batch} de {state.progress.batches}. Respuesta recibida para {state.progress.received} de {state.progress.total} filas.</p>}
       {state.phase === "reading" && <p className="mt-2">Tiempo máximo de lectura: 10 segundos. No hay progreso porcentual disponible.</p>}
     </div>
-    {(state.phase === "previewing" || state.phase === "writing") && <progress aria-label={state.phase === "writing" ? "Filas con resultado recibido" : "Filas previsualizadas"} max={Math.max(1, state.progress.total)} value={state.progress.received} className="mt-3 h-3 w-full accent-[#245c4c]" />}
+    {(state.phase === "previewing" || state.phase === "writing") && <progress aria-label={state.phase === "writing" ? "Filas con resultado recibido" : "Filas previsualizadas"} max={Math.max(1, state.progress.total)} value={state.progress.received} className="mt-3 h-3 w-full accent-[var(--brand-emerald)]" />}
     {state.formatWarning && <div role="status" className="mt-4 rounded-lg border border-[#bccdbf] p-4 text-sm text-[#35473d]">
       <p>{state.formatWarning.affected} de {state.formatWarning.total} filas no tienen SKU o Modelo guardados como texto.</p>
       <p className="mt-2">{importTextHelp}</p>
@@ -74,7 +74,7 @@ export default function ProductImportPanel({ flow, state, archived, onClose }: {
     <div className="mt-4 flex flex-wrap gap-3">
       {(state.phase === "reading" || state.phase === "previewing") && <button type="button" className={button} onClick={() => flow.cancel()}>{state.phase === "reading" ? "Cancelar lectura" : "Cancelar vista previa"}</button>}
       {state.phase === "writing" && <button type="button" className={button} onClick={() => flow.stop()} disabled={state.stopRequested}>{state.stopRequested ? "Detención solicitada: esperando el lote actual" : "Detener después del lote actual"}</button>}
-      {state.phase === "ready" && <button type="button" className={`${button} bg-[#245c4c] text-white hover:bg-[#194638]`} disabled={!eligible || expired || archived} onClick={() => { void flow.confirm(); }}>Importar {eligible} productos</button>}
+      {state.phase === "ready" && <button type="button" className={`${button} bg-[var(--brand-emerald)] text-white hover:bg-[var(--brand-emerald-hover)]`} disabled={!eligible || expired || archived} onClick={() => { void flow.confirm(); }}>Importar {eligible} productos</button>}
       {state.failure?.retryable && !busy && <button type="button" className={button} disabled={retrySeconds > 0 || archived || (state.failure.stage === "confirm" && expired)} onClick={() => { void flow.retry(); }}>Reintentar {state.failure.stage === "preview" ? "vista previa" : "lote rechazado"}</button>}
       {!busy && state.report.some(row => !row.local && row.status !== "created" && row.status !== "updated") && state.phase !== "idle" && <button type="button" className={button} disabled={archived || state.failure?.status === 401 || retrySeconds > 0} onClick={() => { void flow.startPreview(); }}>Nueva vista previa de filas sin confirmar</button>}
       {retrySeconds > 0 && <span aria-live="off" className="self-center text-sm text-[#52655a]">Podrás reintentar en {retrySeconds} s.</span>}
@@ -86,7 +86,7 @@ export default function ProductImportPanel({ flow, state, archived, onClose }: {
     </dl>
     <p className="mt-3 text-sm text-[#52655a]">Cada fila cuenta una sola vez, aunque tenga varios errores. Corrige el archivo y vuelve a leerlo para cambiar datos. Una nueva vista previa excluye las filas que este reporte ya confirma como guardadas.</p>
     {state.report.length > 0 && <>
-      <div role="region" aria-label="Detalle de filas de la importación" tabIndex={0} className="mt-4 overflow-x-auto rounded-lg border border-[#e2e8e0] focus-visible:outline-2 focus-visible:outline-[#245c4c]">
+      <div role="region" aria-label="Detalle de filas de la importación" tabIndex={0} className="mt-4 overflow-x-auto rounded-lg border border-[#e2e8e0] focus-visible:outline-2 focus-visible:outline-[var(--brand-emerald)]">
         <table className="w-full min-w-[760px] text-left text-sm">
           <caption ref={tableTitle} tabIndex={-1} className="p-3 text-left font-semibold text-[#202b27]">Detalle por fila de Excel · Página {currentPage + 1} de {pages}</caption>
           <thead className="bg-[#f2f6f0] text-[#35473d]"><tr>{["Fila", "Nombre", "SKU", "Acción", "Motivo y referencia"].map(header => <th key={header} scope="col" className="px-3 py-3">{header}</th>)}</tr></thead>

@@ -85,7 +85,7 @@ export default function CatalogCategories({
 
   return (
     <section className="rounded-3xl border border-[#e2e8e0] bg-white p-5 shadow-[0_16px_44px_-38px_rgba(36,63,47,0.35)] sm:p-6">
-      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#a46d52]">Organización</p>
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--brand-coral-text)]">Organización</p>
       <h2 className="mt-1 text-lg font-semibold tracking-tight text-[#202b27]">Categorías</h2>
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
         {categories.length ? categories.map((category) => (
@@ -95,7 +95,7 @@ export default function CatalogCategories({
             </div>
             <div className="flex items-center justify-between gap-2 px-2.5 py-2">
               <span className="min-w-0 truncate text-xs font-medium text-[#426257]">{category.name}</span>
-              <label title={`Cambiar imagen de ${category.name}`} className="grid size-8 shrink-0 cursor-pointer place-items-center text-[#17665c] hover:bg-[#edf3ec]">
+              <label title={`Cambiar imagen de ${category.name}`} className="grid size-8 shrink-0 cursor-pointer place-items-center text-[var(--brand-emerald)] hover:bg-[#edf3ec]">
                 <ImagePlus aria-hidden="true" size={16} />
                 <input type="file" accept="image/jpeg,image/png,image/webp" aria-label={`Cambiar imagen de ${category.name}`} className="sr-only" onChange={async (event) => {
                   const file = readImage(event.target.files?.[0]);
@@ -129,8 +129,8 @@ export default function CatalogCategories({
         )) : <p className="text-sm text-[#849087]">Todavía no hay categorías.</p>}
       </div>
       <form onSubmit={submit} className="mt-5 flex gap-2 border-t border-[#edf1ec] pt-4">
-        <input required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="Nueva categoría" aria-label="Nombre de la nueva categoría" className="min-w-0 flex-1 rounded-md border border-[#d6dfd7] px-3 py-2.5 text-sm outline-none focus:border-[#17665c]" />
-        <button type="submit" disabled={busy} className="rounded-md border border-[#bdd0c1] px-3 py-2.5 text-sm font-semibold text-[#17665c] transition hover:bg-[#edf3ec] disabled:opacity-60">Añadir</button>
+        <input required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="Nueva categoría" aria-label="Nombre de la nueva categoría" className="min-w-0 flex-1 rounded-md border border-[#d6dfd7] px-3 py-2.5 text-sm outline-none focus:border-[var(--brand-emerald)]" />
+        <button type="submit" disabled={busy} className="rounded-md border border-[#bdd0c1] px-3 py-2.5 text-sm font-semibold text-[var(--brand-emerald)] transition hover:bg-[#edf3ec] disabled:opacity-60">Añadir</button>
       </form>
       <label className="mt-3 flex min-h-10 cursor-pointer items-center gap-2 text-xs font-medium text-[#52675b]">
         <ImagePlus aria-hidden="true" size={16} />

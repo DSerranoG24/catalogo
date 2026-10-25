@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { clearSession, useStoredSession } from "@/lib/api";
+import BrandLogo from "@/components/brand/BrandLogo";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -27,8 +28,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <header className="border-b border-[#dce4dc] bg-white/90">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
           <Link href="/" className="inline-flex items-center gap-3">
-            <span className="grid size-9 place-items-center rounded-md bg-[#17665c] text-sm font-bold text-white">C</span>
-            <span className="text-sm font-semibold text-[#202b27]">Catalogo</span>
+            <BrandLogo variant="horizontal" theme="claro" iconSize={36} nameRatio={14 / 36} gapSize={12} />
           </Link>
           <div className="flex min-w-0 items-center gap-4">
             <span className="hidden max-w-56 truncate text-sm text-[#68756e] sm:block">{session.user.name || session.user.email}</span>
