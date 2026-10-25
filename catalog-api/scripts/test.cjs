@@ -16,6 +16,8 @@ const testFiles = [
   "src/repositories/order-quotation.test.ts",
   "src/controllers/quotation.controller.test.ts",
   "src/schemas/quotation-fields.test.ts",
+  "src/controllers/public-order-resilience.test.ts",
+  "src/repositories/quotation-issue.test.ts",
 ];
 
 function isUserInfoSystemError(error) {

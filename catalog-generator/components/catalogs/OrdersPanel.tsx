@@ -15,6 +15,7 @@ type CustomerOrder = {
   status: OrderStatus;
   total: number;
   createdAt: string;
+  quotationNumber: number | null;
   items: OrderItem[];
 };
 
@@ -93,6 +94,7 @@ export default function OrdersPanel({ catalogId }: { catalogId: string }) {
                     <span className="rounded-sm bg-[#edf3ec] px-2 py-1 text-[10px] font-semibold uppercase text-[#426257]">{labels[order.status]}</span>
                   </div>
                   <p className="mt-1 text-xs text-[#68756e]">{new Date(order.createdAt).toLocaleString("es-CO")}</p>
+                  <p className="mt-1 text-xs text-[#68756e]">{order.quotationNumber != null ? `COT-${String(order.quotationNumber).padStart(6, "0")}` : "Sin cotización"}</p>
                   <a href={`tel:${order.customerPhone}`} className="mt-2 inline-block text-sm font-medium text-[#17665c]">{order.customerPhone}</a>
                   {order.customerEmail && <p className="mt-1 text-xs text-[#68756e]">{order.customerEmail}</p>}
                 </div>

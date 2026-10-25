@@ -6,6 +6,8 @@ import { createProductImageSignedUrl } from "../services/storage.service";
 import { getCurrentProductPricing } from "../services/product-pricing";
 import { signCategoryImage } from "../services/category.service";
 import { quotationBaseUrl, quotationLabel, quotationUrl } from "../services/quotation-data";
+import { issueQuotation } from "../repositories/quotation-issue.repository";
+import { logQuotationFailure, quotationErrorCode, quotationRequestId } from "../services/quotation-errors";
 
 export async function getPublicCatalogController(req: Request, res: Response) {
   try {
@@ -34,33 +36,50 @@ export async function getPublicCatalogController(req: Request, res: Response) {
   }
 }
 
-export async function createPublicOrderController(req: Request, res: Response) {
-  const parsed = createPublicOrderSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ success: false, message: "Revisa los datos de la orden" });
-  }
+export function makePublicOrderController(deps = {
+  create: createPublicOrder, issue: issueQuotation, base: quotationBaseUrl, log: logQuotationFailure,
+}) {
+  return async (req: Request, res: Response) => {
+    const parsed = createPublicOrderSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, message: "Revisa los datos de la orden" });
+    }
 
-  try {
-    // Validate configuration before persisting; a missing URL must not create an orphan receipt.
-    const base = quotationBaseUrl();
-    const order = await createPublicOrder(req.params.publicId as string, parsed.data);
-    const { quotationToken, ...receipt } = order;
-    return res.set("Cache-Control", "private, no-store").status(201).json({ success: true, order: {
-      ...receipt,
-      quotationNumber: order.quotationNumber === null ? null : quotationLabel(order.quotationNumber),
-      quotationUrl: quotationToken && order.quotationNumber !== null
-        ? quotationUrl(base, req.params.publicId as string, order.id, quotationToken) : null,
-    } });
-  } catch (error) {
-    if (error instanceof Error && error.message === "CATALOG_NOT_FOUND") {
-      return res.status(404).json({ success: false, message: "Catálogo no encontrado" });
+    let order: Awaited<ReturnType<typeof createPublicOrder>>;
+    try {
+      order = await deps.create(req.params.publicId as string, parsed.data);
+    } catch (error) {
+      if (error instanceof Error && error.message === "CATALOG_NOT_FOUND") {
+        return res.status(404).json({ success: false, message: "Catálogo no encontrado" });
+      }
+      if (error instanceof Error && error.message === "PRODUCTS_UNAVAILABLE") {
+        return res.status(409).json({ success: false, message: "Uno o más productos ya no están disponibles" });
+      }
+      if (error instanceof Error && error.message === "ORDER_TOTAL_INVALID") {
+        return res.status(400).json({ success: false, message: "El importe de la orden supera el límite permitido" });
+      }
+      return res.status(500).json({ success: false, message: "No se pudo guardar la orden" });
     }
-    if (error instanceof Error && error.message === "PRODUCTS_UNAVAILABLE") {
-      return res.status(409).json({ success: false, message: "Uno o más productos ya no están disponibles" });
+    // The commit is complete. Quotation/configuration/formatting/log failures cannot undo the order.
+    const requestId = quotationRequestId();
+    let quotation: { quotationNumber: string | null; quotationUrl: string | null; quotationIssuedAt: Date | null } = {
+      quotationNumber: null, quotationUrl: null, quotationIssuedAt: null,
+    };
+    try {
+      const base = deps.base();
+      const issued = await deps.issue(req.params.publicId as string, order.id);
+      if (issued) quotation = {
+        quotationNumber: quotationLabel(issued.quotationNumber),
+        quotationUrl: quotationUrl(base, req.params.publicId as string, order.id, issued.quotationToken),
+        quotationIssuedAt: issued.quotationIssuedAt,
+      };
+    } catch (error) {
+      try { deps.log({ event: "quotation_issue_failed", requestId, errorCode: quotationErrorCode(error) }); }
+      catch { /* A logging transport failure must not turn a committed purchase into an HTTP error. */ }
     }
-    if (error instanceof Error && error.message === "ORDER_TOTAL_INVALID") {
-      return res.status(400).json({ success: false, message: "El importe de la orden supera el límite permitido" });
-    }
-    return res.status(500).json({ success: false, message: "No se pudo guardar la orden" });
-  }
+    return res.set({ "Cache-Control": "private, no-store", "X-Request-ID": requestId }).status(201)
+      .json({ success: true, requestId, order: { ...order, ...quotation } });
+  };
 }
+
+export const createPublicOrderController = makePublicOrderController();

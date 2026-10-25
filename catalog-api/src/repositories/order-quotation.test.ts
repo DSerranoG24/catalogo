@@ -31,40 +31,26 @@ test("archived catalog cannot create an order or allocate a quotation number", a
   await assert.rejects(createPublicOrder("archived-catalog", input, database), /CATALOG_NOT_FOUND/);
 });
 
-test("new order persists an atomic increment, frozen seller, issue date and random token inside its transaction", async () => {
-  const increment = mock.fn(async (args: Prisma.CatalogUpdateManyArgs) => {
-    assert.deepEqual(args.data.quotationCounter, { increment: 1 });
-    assert.equal(args.where?.archivedAt, null);
-    return { count: 1 };
-  });
+test("core transaction persists prices and lines without any quotation operations", async () => {
   const database = databaseFixture({
     catalog: {
-      findFirst: async () => ({ id: "catalog" }), updateMany: increment,
-      findUniqueOrThrow: async () => ({ quotationCounter: 123, name: "Vendedor inicial", nit: null,
-        phone: null, whatsappPhone: null, address: null, businessHours: null, email: null,
-        instagramUrl: null, facebookUrl: null, tiktokUrl: null, quotationTerms: "Garantia inicial" }),
+      findFirst: async () => ({ id: "catalog" }),
     },
     product: { findMany: async () => [{ id: "product", name: "Nombre original", price: 2000, salePrice: null, saleStartsAt: null, saleEndsAt: null }] },
     order: { create: async (args: Prisma.OrderCreateArgs) => {
-      assert.equal(increment.mock.callCount(), 1);
-      assert.equal(args.data.quotationNumber, 123);
-      assert.ok(args.data.quotationIssuedAt instanceof Date);
-      assert.match(String(args.data.quotationToken), /^[0-9a-f]{64}$/);
       assert.equal(args.data.total, 4000);
-      const snapshot = args.data.quotationSellerSnapshot;
-      assert.ok(snapshot && typeof snapshot === "object" && "name" in snapshot);
-      assert.equal(snapshot.name, "Vendedor inicial");
-      assert.ok("quotationTerms" in snapshot);
-      assert.equal(snapshot.quotationTerms, "Garantia inicial");
-      assert.ok(!("logoUrl" in snapshot));
+      assert.ok(args.data.items);
+      for (const key of ["quotationNumber", "quotationToken", "quotationIssuedAt", "quotationSellerSnapshot"]) {
+        assert.ok(!(key in args.data), "Quotation state must not participate in the purchase transaction");
+      }
       return { id: "created" };
     } },
   });
   await createPublicOrder("catalog-public", input, database);
 });
 
-test("idempotent retry returns the persisted quotation without allocating another number", async () => {
-  const receipt = { id: "original", quotationNumber: 5, quotationToken: "a".repeat(64) };
+test("idempotent retry returns the persisted order without allocating a quotation number", async () => {
+  const receipt = { id: "original", total: 4000 };
   const database = databaseFixture({
     catalog: { findFirst: async () => ({ id: "catalog" }) },
     order: { findUnique: async () => receipt },

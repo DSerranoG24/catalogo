@@ -7,6 +7,8 @@ services:
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
+      - key: PUBLIC_API_URL
+        sync: false
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
