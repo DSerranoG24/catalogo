@@ -316,7 +316,10 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
             onCancel={resetProductForm}
           />
 
-          <CatalogCategories catalogId={catalogId} categories={categories} onCreated={() => setReloadKey((key) => key + 1)} />
+          <CatalogCategories catalogId={catalogId} categories={categories} onCreated={() => setReloadKey((key) => key + 1)} onDeleted={(categoryId) => {
+            setForm(current => current.categoryId === categoryId ? { ...current, categoryId: "" } : current);
+            setReloadKey(key => key + 1);
+          }} />
         </fieldset>
 
         <CatalogProductList products={products} loading={loading} onEdit={editProduct} onDelete={removeProduct}

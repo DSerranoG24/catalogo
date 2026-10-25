@@ -19,6 +19,9 @@ const folder = fs.mkdtempSync(path.join(os.tmpdir(), "catalogo-import-browser-")
 const catalogId = "11111111-1111-4111-8111-111111111111";
 const catalog = { id: catalogId, publicId: catalogId, name: "Catálogo ficticio", slug: "prueba-local", active: true, archivedAt: null, template: "TECH", description: null, logoUrl: null };
 const products = new Map();
+let categoryPresent = true, categoryDeletes = 0, categoryDeleteFails = false;
+const categoryId = "22222222-2222-4222-8222-222222222222";
+const category = { id: categoryId, name: "Manos Libres", slug: "manos-libres", imageUrl: null, position: 0 };
 const product = (name, sku) => ({ id: `product-${sku}`, catalogId, name, slug: sku.toLowerCase(), sku, price: 100, stock: 0, active: true, category: null, categoryId: null, description: null, brand: null, model: null, salePrice: null, saleStartsAt: null, saleEndsAt: null, images: [] });
 products.set("EXISTENTE", product("Existente", "EXISTENTE"));
 let mode = "normal", seen = 0, round = 0, confirms = 0, expectedToken, previewCalls = [], confirmBodies = [];
@@ -87,9 +90,15 @@ try {
       if (mode === "auth" && confirms > 0) return reply({ success: false, error: "AUTH_REQUIRED" }, 401);
       if (req.url === "/api/catalogs") return reply({ catalogs: [catalog] });
       if (req.url === `/api/catalogs/${catalogId}`) return reply({ catalog });
-      if (req.url === `/api/categories/catalog/${catalogId}`) return reply({ categories: [] });
+      if (req.url === `/api/categories/catalog/${catalogId}`) return reply({ categories: categoryPresent ? [category] : [] });
       if (req.url === `/api/products/catalog/${catalogId}`) return reply({ products: [...products.values()] });
       if (req.url.startsWith("/api/product-images/product/")) return reply({ images: [] });
+    }
+    if (req.method === "DELETE" && req.url === `/api/categories/${categoryId}`) {
+      categoryDeletes++;
+      if (categoryDeleteFails) return reply({ message: "No se pudo eliminar la categoría" }, 500);
+      categoryPresent = false;
+      return reply({ success: true });
     }
     if (req.method !== "POST" || !req.url.startsWith(`/api/products/catalog/${catalogId}/import/`)) return reply({ success: false }, 404);
     const chunks = []; for await (const chunk of req) chunks.push(chunk);
@@ -128,12 +137,35 @@ try {
   socket.addEventListener("message", event => { const message = JSON.parse(event.data); if (message.id) { const item = pending.get(message.id); pending.delete(message.id); if (message.error) item?.reject(new Error("CDP_FAILED")); else item?.resolve(message.result); } else if (message.method === "Runtime.exceptionThrown") browserErrors.push(message.params.exceptionDetails.exception?.description?.split("\n")[0] ?? message.params.exceptionDetails.text); else if (message.method === "Network.responseReceived" && message.params.response.url.includes("/import/")) importResponses.push({ requestId: message.params.requestId, status: message.params.response.status }); });
   socket.addEventListener("message", event => { const message = JSON.parse(event.data); if (message.method === "Page.fileChooserOpened") fileChoosers.push(message.params); });
   await command("Page.enable"); await command("Runtime.enable"); await command("Network.enable");
+  await command("Network.setBlockedURLs", { urls: ["*accounts.google.com/*"] });
   await command("Page.addScriptToEvaluateOnNewDocument", { source: `if(location.hostname==='localhost')localStorage.setItem('catalogo-session',JSON.stringify({user:{id:'test-user',email:'test@example.invalid',name:null}}))` });
+  step("login-layout");
+  await command("Page.navigate", { url: "http://localhost:4328/login" });
+  await poll(() => evaluate(`Boolean(document.querySelector('button[type="submit"]'))`));
+  for (const width of [320, 390, 1024, 1440]) {
+    await command("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 600 });
+    assert.ok(await evaluate(`(()=>{const buttons=[...document.querySelectorAll('button')];return document.documentElement.scrollWidth<=innerWidth+1&&buttons.every(b=>{const r=b.getBoundingClientRect();return b.scrollWidth<=b.clientWidth+1&&r.left>=0&&r.right<=innerWidth})})()`), `Login buttons fit at ${width}px`);
+    assert.equal(await evaluate(`document.querySelector('button').textContent.trim()`), "Iniciar sesión");
+  }
+  await command("Emulation.clearDeviceMetricsOverride");
+  summary.scenarios.push("login labels and button bounds at 320, 390, 1024 and 1440px; Google network blocked");
   await command("Page.navigate", { url: "http://localhost:4328/" });
   step("workspace");
   await poll(() => evaluate(`Boolean(document.querySelector('a[href="/dashboard/catalogos/${catalogId}"]'))`));
   await evaluate(`document.querySelector('a[href="/dashboard/catalogos/${catalogId}"]').click()`);
   await poll(() => evaluate(`[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Importar Excel')`));
+  step("category-delete");
+  const productCountBeforeDelete = products.size;
+  await evaluate(`window.confirm=()=>false`);
+  await click("Eliminar categoría"); assert.equal(categoryDeletes, 0);
+  await evaluate(`window.confirm=message=>{window.categoryConfirmation=message;return true}`);
+  categoryDeleteFails = true; await click("Eliminar categoría");
+  await poll(() => evaluate(`document.querySelector('[role="alert"]')?.textContent.includes('No se pudo eliminar la categoría')`));
+  assert.ok(await evaluate(`window.categoryConfirmation.includes('quedarán sin categoría')&&window.categoryConfirmation.includes('Los pedidos se conservan')`));
+  categoryDeleteFails = false; await click("Eliminar categoría");
+  await poll(() => evaluate(`![...document.querySelectorAll('button')].some(b=>b.getAttribute('aria-label')==='Eliminar categoría Manos Libres')`));
+  assert.equal(categoryDeletes, 2); assert.equal(products.size, productCountBeforeDelete);
+  summary.scenarios.push("category deletion: cancel, explanation, visible API error and success without deleting products (simulated API)");
   await evaluate(`(()=>{const e=document.querySelector('input[placeholder="Ej. Lámpara de mesa"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'Borrador conservado');e.dispatchEvent(new Event('input',{bubbles:true}))})()`);
   assert.equal(await click("Importar Excel"), true);
   await poll(() => evaluate(`document.activeElement?.id==='product-import-title'`));
@@ -245,8 +277,27 @@ try {
   assert.equal(await click("Cerrar importación"), true);
   assert.equal(await evaluate(`document.activeElement?.textContent`), "Importar Excel");
   summary.scenarios.push("401 retains report and close restores trigger focus");
+  step("main-panel-logout"); reset("normal");
+  await command("Page.navigate", { url: "http://localhost:4328/" });
+  await poll(() => evaluate(`[...document.querySelectorAll('button')].some(b=>b.textContent==='Cerrar sesión')`));
+  await command("Network.setCookie", { name: "catalogo_session", value: "synthetic-browser-session", url: "http://localhost:4328/", httpOnly: true, secure: true, path: "/" });
+  assert.ok((await command("Network.getCookies", { urls: ["http://localhost:4328/"] })).cookies.some(cookie => cookie.name === "catalogo_session" && cookie.httpOnly));
+  await command("Network.setBlockedURLs", { urls: ["*accounts.google.com/*", "*/api/backend/auth/logout"] });
+  await click("Cerrar sesión");
+  await poll(() => evaluate(`document.querySelector('[role="alert"]')?.textContent.includes('No se pudo cerrar la sesión del servidor')`));
+  assert.equal(await evaluate(`location.pathname`), "/");
+  await command("Network.setBlockedURLs", { urls: ["*accounts.google.com/*"] });
+  step("main-panel-logout-keyboard");
+  await command("Page.bringToFront");
+  await evaluate(`document.querySelectorAll('button')[0].focus()`);
+  assert.equal(await evaluate(`document.activeElement.textContent`), "Cerrar sesión");
+  await command("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" });
+  await command("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" });
+  await poll(() => evaluate(`location.pathname==='/login'&&localStorage.getItem('catalogo-session')===null`));
+  assert.ok(!(await command("Network.getCookies", { urls: ["http://localhost:4328/"] })).cookies.some(cookie => cookie.name === "catalogo_session"));
+  summary.scenarios.push("main-panel keyboard logout clears local metadata and redirects after same-origin logout");
   summary.passed = true;
-} catch (error) { summary.failure = error instanceof Error ? error.message : "BROWSER_CHECK_FAILED"; summary.failedStage = stage; summary.browserErrors = browserErrors; summary.apiReadCount = apiReads.length; summary.previewBatches = previewCalls; if (socket?.readyState === WebSocket.OPEN) { try { summary.importResponses = []; for (const response of importResponses) { const data = await command("Network.getResponseBody", { requestId: response.requestId }); const body = JSON.parse(data.body); summary.importResponses.push({ status: response.status, success: body.success, errorCode: body.error, ready: body.ready, hasToken: Boolean(body.previewToken), rows: body.rows?.map(row=>({rowNumber:row.rowNumber,action:row.action})) }); } summary.visibleStatus = await status(); summary.visibleAlert = await evaluate(`document.querySelector('[role="alert"]')?.textContent||''`); summary.pageHeading = await evaluate(`document.querySelector('h1')?.textContent||''`); } catch { /* Browser may already be closed. */ } } process.exitCode = 1; }
+} catch (error) { summary.failure = error instanceof Error ? error.message : "BROWSER_CHECK_FAILED"; summary.failedStage = stage; summary.browserErrors = browserErrors; summary.apiReadCount = apiReads.length; summary.previewBatches = previewCalls; if (socket?.readyState === WebSocket.OPEN) { try { summary.pageState = await evaluate(`({path:location.pathname,hasVisualSession:localStorage.getItem('catalogo-session')!==null})`); summary.importResponses = []; for (const response of importResponses) { const data = await command("Network.getResponseBody", { requestId: response.requestId }); const body = JSON.parse(data.body); summary.importResponses.push({ status: response.status, success: body.success, errorCode: body.error, ready: body.ready, hasToken: Boolean(body.previewToken), rows: body.rows?.map(row=>({rowNumber:row.rowNumber,action:row.action})) }); } summary.visibleStatus = await status(); summary.visibleAlert = await evaluate(`document.querySelector('[role="alert"]')?.textContent||''`); summary.pageHeading = await evaluate(`document.querySelector('h1')?.textContent||''`); } catch { /* Browser may already be closed. */ } } process.exitCode = 1; }
 finally {
   if (socket?.readyState === WebSocket.OPEN) { try { await command("Browser.close"); } catch { /* Chrome may close its connection before replying. */ } socket.close(); }
   if (chrome && chrome.exitCode === null) chrome.kill();

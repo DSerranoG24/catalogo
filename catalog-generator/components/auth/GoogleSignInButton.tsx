@@ -56,7 +56,7 @@ export default function GoogleSignInButton({
 
   return (
     <>
-      <div ref={container} className="mt-5 flex min-h-10 justify-center" />
+      <div ref={container} className="mt-5 flex min-h-10 w-full min-w-0 justify-center" />
       <Script
         src="https://accounts.google.com/gsi/client"
         strategy="afterInteractive"

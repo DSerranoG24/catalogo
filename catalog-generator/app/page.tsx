@@ -21,6 +21,20 @@ export default function Home() {
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [confirmChecked, setConfirmChecked] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function signOut() {
+    if (signingOut || busy) return;
+    setSigningOut(true);
+    setError("");
+    if (await clearSession()) {
+      router.replace("/login");
+      router.refresh();
+    } else {
+      setError("No se pudo cerrar la sesión del servidor. Comprueba tu conexión y vuelve a intentarlo.");
+      setSigningOut(false);
+    }
+  }
 
   useEffect(() => {
     const session = getSession();
@@ -147,7 +161,10 @@ export default function Home() {
 
   return (
     <main className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-12">
-      <div className="mb-8 flex items-center gap-2 text-xs font-medium text-[#7b8780]"><LayoutDashboard className="size-4" aria-hidden="true" /><span>Panel de control</span><span className="text-[#c2cbc3]">/</span><span className="text-[#35473d]">Catálogos</span></div>
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs font-medium text-[#7b8780]"><LayoutDashboard className="size-4" aria-hidden="true" /><span>Panel de control</span><span className="text-[#c2cbc3]">/</span><span className="text-[#35473d]">Catálogos</span></div>
+        <button type="button" onClick={() => { void signOut(); }} disabled={busy || signingOut} className="min-h-11 rounded-xl border border-[#d6dfd7] px-4 py-2 text-sm font-semibold text-[#435047] transition hover:bg-[#f4f7f2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#245c4c] disabled:opacity-60">{signingOut ? "Cerrando sesión…" : "Cerrar sesión"}</button>
+      </div>
 
       <section className="relative overflow-hidden rounded-3xl bg-[#173f36] px-6 py-8 text-white shadow-[0_24px_60px_-38px_rgba(18,55,45,0.8)] sm:px-9 sm:py-10">
         <div className="pointer-events-none absolute -right-14 -top-24 size-72 rounded-full border border-white/10" /><div className="pointer-events-none absolute -right-2 -top-12 size-48 rounded-full border border-white/10" />

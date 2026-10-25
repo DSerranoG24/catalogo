@@ -71,7 +71,7 @@ export default function LoginPage() {
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-8 sm:px-8 sm:py-12">
       <div className="pointer-events-none absolute -left-28 top-20 size-72 rounded-full border border-[#dce7dc]" /><div className="pointer-events-none absolute -bottom-40 right-0 size-[28rem] rounded-full border border-[#dce7dc]" />
-      <div className="relative w-full max-w-5xl overflow-hidden rounded-[2rem] border border-[#e3e9e1] bg-white shadow-[0_35px_100px_-55px_rgba(25,57,42,0.45)] lg:grid lg:grid-cols-[0.9fr_1.1fr]">
+      <div className="relative w-full max-w-5xl overflow-hidden rounded-[2rem] border border-[#e3e9e1] bg-white shadow-[0_35px_100px_-55px_rgba(25,57,42,0.45)] lg:grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <aside className="relative hidden min-h-[650px] flex-col justify-between overflow-hidden bg-[#173f36] p-10 text-white lg:flex xl:p-12">
           <div className="pointer-events-none absolute -right-32 top-12 size-96 rounded-full border border-white/10" /><div className="pointer-events-none absolute -right-16 top-28 size-64 rounded-full border border-white/10" /><div className="pointer-events-none absolute bottom-24 left-16 size-36 rounded-full bg-[#b8dec8]/10 blur-2xl" />
           <Link href="/" className="relative inline-flex items-center gap-3"><span className="grid size-11 place-items-center rounded-2xl bg-[#c3e5d4] text-[#173f36]"><Store className="size-5" aria-hidden="true" /></span><span className="text-lg font-semibold tracking-tight">Catalogo</span></Link>
@@ -81,7 +81,7 @@ export default function LoginPage() {
           <p className="relative text-xs text-white/45">Tu espacio de trabajo, siempre disponible.</p>
         </aside>
 
-        <section className="p-6 sm:p-10 lg:px-12 lg:py-12">
+        <section className="min-w-0 p-6 sm:p-10 lg:px-12 lg:py-12">
           <Link href="/" className="mb-8 inline-flex items-center gap-2 text-sm font-semibold text-[#315e4f] lg:hidden"><span className="grid size-9 place-items-center rounded-xl bg-[#eaf2e9]"><Store className="size-4" /></span>Catalogo</Link>
           <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#a46d52]">
             Tu espacio de trabajo
@@ -104,7 +104,7 @@ export default function LoginPage() {
                   setMode(authMode);
                   setError("");
                 }}
-                className={`min-h-10 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${
+                className={`min-h-11 min-w-0 whitespace-normal rounded-lg px-2 py-2.5 text-sm font-semibold leading-5 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#245c4c] ${
                   mode === authMode
                     ? "bg-white text-[#202b27] shadow-sm"
                     : "text-[#68756e] hover:text-[#202b27]"

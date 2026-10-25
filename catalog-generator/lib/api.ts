@@ -210,8 +210,9 @@ export function saveSession(session: Session) {
 
 export function clearSession() {
   window.localStorage.removeItem("catalogo-session");
-  void fetch("/api/backend/auth/logout", { method: "POST", credentials: "same-origin" });
   window.dispatchEvent(new Event("catalogo-session-change"));
+  return fetch("/api/backend/auth/logout", { method: "POST", credentials: "same-origin" })
+    .then(response => response.ok, () => false);
 }
 
 export async function apiRequest<T>(

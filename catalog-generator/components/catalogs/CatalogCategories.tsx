@@ -9,15 +9,33 @@ export default function CatalogCategories({
   catalogId,
   categories,
   onCreated,
+  onDeleted,
 }: {
   catalogId: string;
   categories: Category[];
   onCreated: () => void;
+  onDeleted: (categoryId: string) => void;
 }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  async function removeCategory(category: Category) {
+    if (deleting) return;
+    if (!window.confirm(`¿Eliminar la categoría «${category.name}»? Los productos asociados se conservarán y quedarán sin categoría. Los pedidos se conservan. Esta acción no se puede deshacer.`)) return;
+    setDeleting(category.id);
+    setError("");
+    try {
+      await apiRequest(`/categories/${category.id}`, { method: "DELETE" });
+      onDeleted(category.id);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "No se pudo eliminar la categoría.");
+    } finally {
+      setDeleting(null);
+    }
+  }
 
   async function uploadImage(categoryId: string, file: File) {
     const formData = new FormData();
@@ -104,6 +122,9 @@ export default function CatalogCategories({
                 <Trash2 aria-hidden="true" size={15} />
               </button>}
             </div>
+            <button type="button" disabled={deleting !== null} onClick={() => { void removeCategory(category); }} aria-label={`Eliminar categoría ${category.name}`} className="flex min-h-11 w-full items-center justify-center gap-2 border-t border-[#e2e8e0] px-2 py-2 text-xs font-semibold text-[#a5432a] hover:bg-[#fff1ec] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#a5432a] disabled:opacity-60">
+              <Trash2 aria-hidden="true" size={15} />{deleting === category.id ? "Eliminando…" : "Eliminar categoría"}
+            </button>
           </article>
         )) : <p className="text-sm text-[#849087]">Todavía no hay categorías.</p>}
       </div>
