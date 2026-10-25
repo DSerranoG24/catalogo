@@ -47,6 +47,23 @@ El health check `/api/health` ejecuta `SELECT 1`: verifica respuesta de la API y
 
 El cambio local del YAML solo tendrá efecto cuando se incorpore a la configuración efectiva del servicio. Confirmar manualmente en Render que Start Command sea `npm start` y que no haya otro ejecutor de migraciones. Este bloque no cambia el panel ni realiza despliegues.
 
+## Render: configuración de compilación y arranque
+
+En Settings → Build & Deploy del servicio, los valores deben ser:
+
+| Campo | Valor exacto |
+|---|---|
+| Root Directory | `catalog-api` |
+| Build Command | `npm ci && npx prisma generate && npm run build` |
+| Start Command | `npm start` |
+| Pre-Deploy Command | Vacío (sin comando) |
+
+La compilación instala las dependencias del lockfile, genera Prisma Client y ejecuta TypeScript (`npm run build` es `tsc`). `npm start` ejecuta `node dist/server.js`: ponerlo en Build Command intenta arrancar el servidor en lugar de generar Prisma Client y compilar. Puede fallar porque `dist/server.js` todavía no existe o dejar un proceso que no termina como una compilación. Las migraciones siguen siendo un paso manual autorizado y separado, según el orden del despliegue anterior; no se añaden a estos comandos.
+
+`render.yaml` no aplica a un servicio que no está gestionado por Blueprint. En ese caso estos valores se cambian a mano en el panel: editar el YAML no corrige la configuración efectiva. Si existe Blueprint, comprobar su sincronización y mantener los valores coherentes con la fuente que lo gestiona. Esta documentación no cambia el panel ni autoriza despliegues.
+
+Para detectar fallos, revisar Events después de cada despliegue: un estado **Failed**, especialmente junto a una duración anormalmente corta (como los 13 segundos de la incidencia comunicada), requiere abrir los logs de ese evento y comprobar el comando ejecutado y el primer error. La duración sola no demuestra la causa ni confirma éxito. Verificar también la versión desplegada; que la versión anterior siga respondiendo no demuestra que la nueva haya sido publicada.
+
 ## Render: Start Command efectivo y Blueprint
 
 Incidencia comunicada por el responsable: el log de arranque muestra `npm run prisma:migrate:deploy && npm start`, aunque el YAML ya define `npm start`. Por tanto, la separación de migraciones NO está aplicada en esa configuración efectiva: cada arranque sigue intentando migrar hasta que se corrija.

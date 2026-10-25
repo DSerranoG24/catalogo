@@ -10,13 +10,13 @@ CatalogWorkspace crea ProductImportFlow y se suscribe con useSyncExternalStore. 
 
 Las fases explícitas son idle, reading, previewing, ready, writing, stopped, completed y error. open solo determina visibilidad; no sustituye la fase. El estado también incluye progreso por lote, reporte, aviso, fallo, vencimiento conservador de la vista previa y solicitud de detención.
 
-Cada fila tiene una identidad estable: rowNumber de Excel. Un Map por ese número integra errores locales, clasificaciones y resultados; el resumen cuenta estados de filas únicas, no cantidad de issues. Una fila con nombre y precio inválidos suma un error, mostrando ambos campos/motivos. Las filas locales rechazadas por 3A no traen sus datos originales; se muestran con su número, campos y motivos, sin inventar nombre o SKU ni enviar sustitutos a la API.
+Cada fila tiene una identidad estable: rowNumber de Excel. Un Map por ese número integra errores locales, clasificaciones y resultados; el resumen cuenta estados de filas únicas, no cantidad de issues. Una fila con nombre y precio inválidos suma un error, mostrando ambos campos/motivos. Las filas locales rechazadas conservan nombre y SKU legibles mediante rejectedRows, exclusivamente para el reporte. Un nombre vacío se muestra como Sin nombre; un campo ilegible, como No disponible. Estas filas no se envían a la API.
 
 Los estados de fila son sin clasificar, nueva, actualizar, creada, actualizada, error, no procesada y desconocida. Las dos primeras clasificaciones no se cuentan como escrituras exitosas. Todos los datos y tokens de plan permanecen solo en memoria; no se registran ni guardan en storage. Cambiar de archivo inicia un reporte nuevo; cerrar/reabrir conserva el actual. Una navegación completa pierde el reporte en memoria: no hay recibo durable de importación.
 
 ## Lotes y comprobante de vista previa
 
-El navegador usa el lector sin cambios. Excluye filas locales inválidas, y excluye como error local una fila que no pueda entrar en un JSON permitido. Los lotes llevan como máximo 50 filas y reservan 512 KiB para el token acumulado y margen para el envelope, manteniendo el límite de 2 MiB. El transporte comprueba también los bytes reales del JSON completo.
+El navegador usa el lector con identificación parcial separada de las filas importables. Excluye filas locales inválidas, y excluye como error local una fila que no pueda entrar en un JSON permitido. Los lotes llevan como máximo 50 filas y reservan 512 KiB para el token acumulado y margen para el envelope, manteniendo el límite de 2 MiB. El transporte comprueba también los bytes reales del JSON completo.
 
 La primera vista previa no envía previewToken. Cada respuesta válida aporta el token para la siguiente petición. Se conserva el último reconocido, nunca uno de una petición sin respuesta. Los lotes son secuenciales, de acuerdo con el cupo de una petición activa por usuario de la API. totalRows es el número de filas que se envían a ese plan, no los errores locales.
 
@@ -55,3 +55,7 @@ El disparador controla un contenedor con ID estable, incluso cerrado. Se enfoca 
 La comprobación de navegador usa el worker y lector reales y peticiones reales por el proxy, con respuestas simuladas. Cubre archivo mixto con SKU numérico, creación/actualización, refresco y borrador, tres lotes encadenados, stop mientras un lote sigue en curso, controles bloqueados, paginación/foco, respuesta perdida, 429 manual, 401 también al refrescar y cierre/reapertura con reporte. Incluye viewport de 390px sin desbordamiento del documento y una captura temporal. Los servicios/procesos temporales se cierran al finalizar.
 
 No se prueba contra la API real, PostgreSQL ni producción en este bloque. Tampoco sustituye pruebas manuales en Safari/Firefox, dispositivos físicos o tecnologías de asistencia. Sin dependencias, variables de despliegue o migraciones nuevas. Commit/push/despliegue requieren autorización.
+
+## Aviso de formato antes de consultar la API
+
+Si hay TEXT_REQUIRED en SKU o Modelo, select termina la lectura local y espera la decisión del vendedor antes de startPreview. El aviso cuenta números de fila únicos, aunque fallen ambos campos: «X de Y filas no tienen SKU o Modelo guardados como texto». Ofrece continuar exclusivamente con las filas válidas o corregir y volver a seleccionar el archivo. Sin filas válidas no ofrece continuar. Otros errores conservan el flujo automático anterior. La ayuda secundaria del reporte explica Texto previo, reescritura y apóstrofo; los tipos rechazados no se convierten. No cambia el contrato del backend.

@@ -88,9 +88,15 @@ try {
     assert.equal(result.rows[0].saleEnabled, true); assert.equal(result.rows[0].price, 25000);
     assert.equal(result.errors.length, 0);
   });
+  await check("rejected identities distinguish blank, unreadable and formula fields without coercion", async () => {
+    const result = await readVerifiedWorkbook(workbook(`<row r="2">${text("B2", "001")}${text("G2", "bad")}</row><row r="3">${numeric("A3", 123)}${text("B3", "002")}</row><row r="4"><c r="A4" t="str"><f>"cached"</f><v>cached</v></c>${text("B4", "003")}</row>`), readSheet);
+    assert.deepEqual(result.rejectedRows, [{ rowNumber: 2, name: "", sku: "001" }, { rowNumber: 3, sku: "002" }, { rowNumber: 4, sku: "003" }]);
+    assert.equal(result.rows.length, 0);
+  });
   await check("numeric SKU is a row error, never coerced or dropped; other valid rows survive", async () => {
     const input = workbook(`<row r="2">${text("A2", "Malo")}${numeric("B2", 123)}${numeric("G2", 10)}</row><row r="3">${text("A3", "Bueno")}${text("B3", "00123")}${numeric("G3", 10)}</row>`);
     const result = await readVerifiedWorkbook(input, readSheet);
+    assert.deepEqual(result.rejectedRows, [{ rowNumber: 2, name: "Malo" }]);
     assert.equal(result.totalRows, 2); assert.equal(result.rows.length, 1); assert.equal(result.rows[0].rowNumber, 3);
     assert.deepEqual(result.errors, [{ rowNumber: 2, field: "sku", code: "TEXT_REQUIRED" }]);
   });

@@ -3,11 +3,12 @@ import { ImportRequestError, type BatchReply, type ImportBatchBody, type ServerR
 
 export type ImportPhase = "idle" | "reading" | "previewing" | "ready" | "writing" | "stopped" | "completed" | "error";
 export type RowStatus = "waiting" | "new" | "update" | "created" | "updated" | "error" | "not_processed" | "unknown";
-export type ReportRow = { rowNumber: number; name: string; sku: string; status: RowStatus; reasons: string[]; fields: string[]; local: boolean; requestId?: string };
+export type ReportRow = { rowNumber: number; name: string; sku: string; status: RowStatus; reasons: string[]; fields: string[]; local: boolean; requestId?: string; textHelp?: boolean };
 type Failure = { stage: "read" | "preview" | "confirm"; status: number; message: string; requestId?: string; retryAt: number; retryable: boolean };
 export type ImportFlowState = {
   open: boolean; phase: ImportPhase; fileName: string; report: ReportRow[];
   progress: { batch: number; batches: number; received: number; total: number };
+  formatWarning?: { affected: number; total: number; canContinue: boolean };
   notice: string; failure?: Failure; expiresAt: number; stopRequested: boolean;
 };
 type Dependencies = {
@@ -16,7 +17,8 @@ type Dependencies = {
   refresh: () => void;
   now?: () => number;
 };
-const initial = (): ImportFlowState => ({ open: false, phase: "idle", fileName: "", report: [], progress: { batch: 0, batches: 0, received: 0, total: 0 }, notice: "", expiresAt: 0, stopRequested: false });
+const initial = (): ImportFlowState => ({ open: false, phase: "idle", fileName: "", report: [], progress: { batch: 0, batches: 0, received: 0, total: 0 }, formatWarning: undefined, notice: "", expiresAt: 0, stopRequested: false });
+export const importTextHelp = "Selecciona la columna, aplica formato Texto antes de escribir y reescribe los valores. Cambiar el formato después no convierte los existentes. También puedes escribir '1001 para guardar 1001 como texto.";
 export const importBusy = (phase: ImportPhase) => phase === "reading" || phase === "previewing" || phase === "writing";
 const written = (status: RowStatus) => status === "created" || status === "updated";
 const localReasons = { TEXT_REQUIRED: "Debe estar guardado como texto en Excel; no se convierten códigos ni fechas numéricas.", NUMBER_REQUIRED: "Debe ser una celda numérica.", BOOLEAN_REQUIRED: "Selecciona Sí, No o deja la celda vacía.", FORMULA_NOT_ALLOWED: "No se admiten fórmulas; introduce el valor directamente." };
@@ -92,12 +94,15 @@ export class ProductImportFlow {
         rows.set(row.rowNumber, { rowNumber: row.rowNumber, name: row.name, sku: row.sku ?? "", status: tooLarge ? "error" : "waiting", reasons: tooLarge ? ["Esta fila supera el tamaño permitido para una petición JSON."] : [], fields: [], local: tooLarge });
         if (!tooLarge) this.source.push(row);
       }
+      const rejected = new Map(result.rejectedRows.map(row => [row.rowNumber, row]));
       for (const issue of result.errors) {
         const previous = rows.get(issue.rowNumber);
-        rows.set(issue.rowNumber, { rowNumber: issue.rowNumber, name: previous?.name ?? "No disponible: fila rechazada por el lector", sku: previous?.sku ?? "", status: "error", reasons: [...(previous?.reasons ?? []), `${importFieldLabel(issue.field)}: ${localReasons[issue.code]}`], fields: [...new Set([...(previous?.fields ?? []), issue.field])], local: true });
+        rows.set(issue.rowNumber, { rowNumber: issue.rowNumber, name: previous?.name ?? rejected.get(issue.rowNumber)?.name ?? "No disponible", sku: previous?.sku ?? rejected.get(issue.rowNumber)?.sku ?? "No disponible", status: "error", reasons: [...(previous?.reasons ?? []), `${importFieldLabel(issue.field)}: ${localReasons[issue.code]}`], fields: [...new Set([...(previous?.fields ?? []), issue.field])], local: true, textHelp: previous?.textHelp || (issue.code === "TEXT_REQUIRED" && (issue.field === "sku" || issue.field === "model")) });
       }
       this.patch({ report: [...rows.values()].sort((a, b) => a.rowNumber - b.rowNumber), phase: "idle", notice: result.totalRows ? "Lectura terminada. Preparando la vista previa." : "El archivo no contiene filas de productos." });
-      if (this.source.length) await this.startPreview();
+      const affected = new Set(result.errors.filter(issue => issue.code === "TEXT_REQUIRED" && (issue.field === "sku" || issue.field === "model")).map(issue => issue.rowNumber)).size;
+      if (affected) this.patch({ phase: "idle", formatWarning: { affected, total: result.totalRows, canContinue: this.source.length > 0 }, notice: "Revisa el formato antes de continuar." });
+      else if (this.source.length) await this.startPreview();
       else this.patch({ phase: "completed", notice: "No hay filas válidas para enviar. Revisa los errores o completa la plantilla." });
     } catch (error) {
       if (controller.signal.aborted) this.cancelled();
@@ -115,7 +120,7 @@ export class ProductImportFlow {
     this.confirmation = undefined;
     this.preview = { batches: importBatches(eligible), index: 0, total: eligible.length };
     this.updateRows(rows => { for (const row of eligible) { const old = rows.get(row.rowNumber); if (old) rows.set(row.rowNumber, { ...old, status: "waiting", reasons: [], fields: [], requestId: undefined }); } });
-    this.patch({ expiresAt: this.now() + 30 * 60_000, failure: undefined });
+    this.patch({ expiresAt: this.now() + 30 * 60_000, failure: undefined, formatWarning: undefined });
     await this.runPreview();
   }
   async retry() {

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { importBusy, importCounts, importFieldLabel, type ImportFlowState, type ProductImportFlow, type RowStatus } from "@/lib/product-import-flow";
+import { importTextHelp, importBusy, importCounts, importFieldLabel, type ImportFlowState, type ProductImportFlow, type RowStatus } from "@/lib/product-import-flow";
 
 const button = "min-h-11 rounded-lg border border-[#bccdbf] px-4 py-2 text-sm font-semibold text-[#245c4c] transition hover:bg-[#edf4ed] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#245c4c] disabled:cursor-not-allowed disabled:opacity-50";
 const statusLabels: Record<RowStatus, string> = { waiting: "Sin clasificar", new: "Nueva", update: "Actualizar", created: "Creada", updated: "Actualizada", error: "Con error", not_processed: "No procesada", unknown: "Resultado desconocido" };
@@ -28,8 +28,8 @@ export default function ProductImportPanel({ flow, state, archived, onClose }: {
   useEffect(() => {
     const changed = previousPhase.current !== state.phase;
     previousPhase.current = state.phase;
-    if (changed && ["ready", "stopped", "completed", "error"].includes(state.phase)) summary.current?.focus();
-  }, [state.phase]);
+    if (changed && (["ready", "stopped", "completed", "error"].includes(state.phase) || Boolean(state.formatWarning))) summary.current?.focus();
+  }, [state.phase, state.formatWarning]);
   useEffect(() => {
     if (!state.expiresAt && !state.failure?.retryAt) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -60,6 +60,16 @@ export default function ProductImportPanel({ flow, state, archived, onClose }: {
       {state.phase === "reading" && <p className="mt-2">Tiempo máximo de lectura: 10 segundos. No hay progreso porcentual disponible.</p>}
     </div>
     {(state.phase === "previewing" || state.phase === "writing") && <progress aria-label={state.phase === "writing" ? "Filas con resultado recibido" : "Filas previsualizadas"} max={Math.max(1, state.progress.total)} value={state.progress.received} className="mt-3 h-3 w-full accent-[#245c4c]" />}
+    {state.formatWarning && <div role="status" className="mt-4 rounded-lg border border-[#bccdbf] p-4 text-sm text-[#35473d]">
+      <p>{state.formatWarning.affected} de {state.formatWarning.total} filas no tienen SKU o Modelo guardados como texto.</p>
+      <p className="mt-2">{importTextHelp}</p>
+      {!state.formatWarning.canContinue && <p className="mt-2">No hay filas válidas para continuar.</p>}
+      <div className="mt-3 flex flex-wrap gap-3">
+        {state.formatWarning.canContinue && <button type="button" className={button} disabled={archived || state.failure?.status === 401} onClick={() => { void flow.startPreview(); }}>Continuar con las filas válidas</button>}
+        <button type="button" className={button} onClick={() => { document.getElementById("product-import-file")?.focus(); }}>Corregir el archivo</button>
+      </div>
+      <p className="mt-2">Corrige el archivo en Excel y vuelve a seleccionarlo con el selector de arriba.</p>
+    </div>}
     {state.failure && <div role="alert" className="mt-4 rounded-lg border border-[#f0c8b9] bg-[#fff4ef] p-4 text-sm text-[#963b23]"><p>{state.failure.message}</p>{state.failure.requestId && <p className="mt-2 break-all">Referencia de soporte: {state.failure.requestId}</p>}{state.failure.status === 401 && !busy && <Link href="/login" className="mt-3 inline-block font-semibold underline focus-visible:outline-2">Volver a iniciar sesión</Link>}</div>}
     <div className="mt-4 flex flex-wrap gap-3">
       {(state.phase === "reading" || state.phase === "previewing") && <button type="button" className={button} onClick={() => flow.cancel()}>{state.phase === "reading" ? "Cancelar lectura" : "Cancelar vista previa"}</button>}
@@ -80,7 +90,7 @@ export default function ProductImportPanel({ flow, state, archived, onClose }: {
         <table className="w-full min-w-[760px] text-left text-sm">
           <caption ref={tableTitle} tabIndex={-1} className="p-3 text-left font-semibold text-[#202b27]">Detalle por fila de Excel · Página {currentPage + 1} de {pages}</caption>
           <thead className="bg-[#f2f6f0] text-[#35473d]"><tr>{["Fila", "Nombre", "SKU", "Acción", "Motivo y referencia"].map(header => <th key={header} scope="col" className="px-3 py-3">{header}</th>)}</tr></thead>
-          <tbody>{state.report.slice(currentPage * 25, currentPage * 25 + 25).map(row => <tr key={row.rowNumber} className="border-t border-[#e2e8e0] align-top text-[#35473d]"><th scope="row" className="px-3 py-3 tabular-nums">{row.rowNumber}</th><td className="max-w-56 break-words px-3 py-3">{row.name || "Sin nombre"}</td><td className="max-w-40 break-all px-3 py-3">{row.sku || "—"}</td><td className="px-3 py-3 font-semibold">{statusLabels[row.status]}</td><td className="max-w-md break-words px-3 py-3">{row.reasons.map((reason, index) => <p key={index} className="mb-1">{reason}</p>)}{row.fields.length > 0 && <p>Campos: {row.fields.map(importFieldLabel).join(", ")}.</p>}{row.requestId && <p className="mt-2 break-all text-xs">requestId: {row.requestId}</p>}</td></tr>)}</tbody>
+          <tbody>{state.report.slice(currentPage * 25, currentPage * 25 + 25).map(row => <tr key={row.rowNumber} className="border-t border-[#e2e8e0] align-top text-[#35473d]"><th scope="row" className="px-3 py-3 tabular-nums">{row.rowNumber}</th><td className="max-w-56 break-words px-3 py-3">{row.name || "Sin nombre"}</td><td className="max-w-40 break-all px-3 py-3">{row.sku || "—"}</td><td className="px-3 py-3 font-semibold">{statusLabels[row.status]}</td><td className="max-w-md break-words px-3 py-3">{row.reasons.map((reason, index) => <p key={index} className="mb-1">{reason}</p>)}{row.textHelp && <p className="mt-2 text-xs leading-5">Ayuda: {importTextHelp}</p>}{row.fields.length > 0 && <p>Campos: {row.fields.map(importFieldLabel).join(", ")}.</p>}{row.requestId && <p className="mt-2 break-all text-xs">requestId: {row.requestId}</p>}</td></tr>)}</tbody>
         </table>
       </div>
       <nav aria-label="Páginas del reporte de importación" className="mt-3 flex items-center gap-3"><button type="button" className={button} disabled={currentPage === 0} onClick={() => changePage(currentPage - 1)}>Anterior</button><span className="text-sm text-[#52655a]">{currentPage + 1} / {pages}</span><button type="button" className={button} disabled={currentPage === pages - 1} onClick={() => changePage(currentPage + 1)}>Siguiente</button></nav>

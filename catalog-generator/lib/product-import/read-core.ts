@@ -14,6 +14,7 @@ export async function readVerifiedWorkbook(bytes: Uint8Array, readSheet: SheetRe
   if (data.length > XLSX_LIMITS.rows + 1 || !data[0] || data[0].length !== IMPORT_COLUMNS.length ||
       IMPORT_COLUMNS.some(([header], column) => data[0][column] !== header)) throw new ImportReadError("SHEET_INVALID");
   const rows: ImportRow[] = [], errors: RowIssue[] = [];
+  const rejectedRows: ImportReadResult["rejectedRows"] = [];
   let totalRows = 0;
   for (let index = 1; index < data.length; index++) {
     const cells = data[index] ?? [];
@@ -35,7 +36,13 @@ export async function readVerifiedWorkbook(bytes: Uint8Array, readSheet: SheetRe
       } else if (typeof value !== "string") issues.push({ rowNumber: index + 1, field, code: "TEXT_REQUIRED" });
       else row[field] = value.trim().normalize("NFC");
     }
-    if (issues.length) errors.push(...issues); else rows.push(row);
+    if (issues.length) {
+      errors.push(...issues);
+      rejectedRows.push({ rowNumber: row.rowNumber,
+        ...(!issues.some(issue => issue.field === "name") ? { name: row.name } : {}),
+        ...(!issues.some(issue => issue.field === "sku") ? { sku: row.sku ?? "" } : {}),
+      });
+    } else rows.push(row);
   }
-  return { totalRows, rows, errors, bytes: { compressed: bytes.length, expanded: verified.expanded, entries: verified.entries } };
+  return { totalRows, rows, errors, rejectedRows, bytes: { compressed: bytes.length, expanded: verified.expanded, entries: verified.entries } };
 }

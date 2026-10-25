@@ -28,7 +28,7 @@ function fixture(count = 101, options = {}) {
     return { requestId: `request-${calls.length}`, rows: resultRows(body.rows) };
   };
   const flow = new ProductImportFlow("11111111-1111-4111-8111-111111111111", {
-    read: options.read ?? (async () => ({ rows, errors: options.errors ?? [], totalRows: rows.length + (options.errors?.length ? 1 : 0), bytes: { compressed: 100, expanded: 200, entries: 1 } })),
+    read: options.read ?? (async () => ({ rows, rejectedRows: options.rejectedRows ?? [], errors: options.errors ?? [], totalRows: rows.length + (options.errors?.length ? 1 : 0), bytes: { compressed: 100, expanded: 200, entries: 1 } })),
     request: server, refresh: () => { refreshed++; if (options.refreshThrows) throw new Error("refresh failed"); }, now: options.now,
   });
   return { flow, calls, refreshed: () => refreshed };
@@ -49,7 +49,29 @@ try {
     const { flow, calls } = fixture(1, { errors }); await flow.select(file);
     assert.equal(importCounts(flow.getSnapshot().report).errors, 1);
     assert.equal(flow.getSnapshot().report.find(row => row.rowNumber === 400).reasons.length, 2);
+    await flow.startPreview();
     assert.deepEqual(calls[0].body.rows.map(row => row.rowNumber), [2]); assert.equal(calls[0].body.totalRows, 1);
+  });
+  await check("format warning counts unique rows, preserves partial identity and continues only valid rows", async () => {
+    const errors = [{ rowNumber: 400, field: "sku", code: "TEXT_REQUIRED" }, { rowNumber: 400, field: "model", code: "TEXT_REQUIRED" }];
+    const { flow, calls } = fixture(1, { errors, rejectedRows: [{ rowNumber: 400, name: "Legible" }] });
+    await flow.select(file);
+    assert.deepEqual(flow.getSnapshot().formatWarning, { affected: 1, total: 2, canContinue: true });
+    assert.equal(calls.length, 0);
+    const rejected = flow.getSnapshot().report.find(row => row.rowNumber === 400);
+    assert.equal(rejected.name, "Legible"); assert.equal(rejected.sku, "No disponible"); assert.equal(rejected.textHelp, true);
+    await flow.startPreview(); assert.equal(flow.getSnapshot().formatWarning, undefined);
+    assert.equal(flow.getSnapshot().phase, "ready"); await flow.confirm();
+    assert.ok(calls.every(call => call.body.rows.every(row => row.rowNumber === 2)));
+  });
+  await check("all affected rows have no continuation; other errors do not trigger format warning", async () => {
+    const { flow, calls } = fixture(0, { errors: [{ rowNumber: 2, field: "model", code: "TEXT_REQUIRED" }] });
+    await flow.select(file); assert.equal(flow.getSnapshot().formatWarning.canContinue, false);
+    await flow.startPreview(); assert.equal(calls.length, 0);
+    const other = fixture(1, { errors: [{ rowNumber: 3, field: "name", code: "TEXT_REQUIRED" }], rejectedRows: [{ rowNumber: 3, sku: "001" }] });
+    await other.flow.select(file); assert.equal(other.flow.getSnapshot().formatWarning, undefined);
+    assert.equal(other.flow.getSnapshot().report[1].name, "No disponible");
+    assert.equal(other.flow.getSnapshot().report[1].sku, "001"); assert.equal(other.calls.length, 1);
   });
   await check("later-batch conflicts invalidate earlier rows and exclude both from confirmation", async () => {
     const { flow, calls } = fixture(101, { conflict: true }); await flow.select(file); await flow.confirm();

@@ -24,6 +24,7 @@ export type ImportReadResult = {
   totalRows: number;
   rows: ImportRow[];
   errors: RowIssue[];
+  rejectedRows: { rowNumber: number; name?: string; sku?: string }[];
   bytes: { compressed: number; expanded: number; entries: number };
 };
 

@@ -41,10 +41,11 @@ function fixture(name, count, numericSku = false) {
   let rows = "";
   for (let i = 0; i < count; i++) { const row = i + 2; rows += `<row r="${row}">${text(`A${row}`, `Producto ${i}`)}${text(`B${row}`, i === 0 && name === "mixed" ? "EXISTENTE" : `${name}-${i}`)}<c r="G${row}"><v>200</v></c></row>`; }
   if (numericSku) { const row = count + 2; rows += `<row r="${row}">${text(`A${row}`, "SKU numérico")}<c r="B${row}"><v>123</v></c><c r="G${row}"><v>100</v></c></row>`; }
+  if (name === "identities") rows = `<row r="2">${text("B2", "001")}<c r="G2" t="inlineStr"><is><t>bad</t></is></c></row><row r="3"><c r="A3"><v>123</v></c>${text("B3", "002")}</row>`;
   xml = xml.replace("</sheetData>", rows + "</sheetData>"); files["xl/worksheets/sheet1.xml"] = strToU8(xml);
   const target = path.join(folder, `${name}.xlsx`); fs.writeFileSync(target, zipSync(files)); return target;
 }
-const files = { mixed: fixture("mixed", 2, true), stop: fixture("stop", 101), lost: fixture("lost", 101), rate: fixture("rate", 2), auth: fixture("auth", 2) };
+const files = { identities: fixture("identities", 0), allInvalid: fixture("all-invalid", 0, true), mixed: fixture("mixed", 2, true), stop: fixture("stop", 101), lost: fixture("lost", 101), rate: fixture("rate", 2), auth: fixture("auth", 2) };
 const pending = new Map(); let sequence = 0;
 function command(method, params = {}) {
   const id = ++sequence;
@@ -176,7 +177,20 @@ try {
   await command("Emulation.clearDeviceMetricsOverride");
   await command("Page.setInterceptFileChooserDialog", { enabled: false });
   summary.scenarios.push("visible file label opens picker by pointer and Tab+Space; focus outline, 44px target, correct accept and no overlay");
+  step("partial-identities"); await select(files.identities);
+  await poll(async () => (await status()).includes("Reporte final"));
+  assert.deepEqual(await evaluate(`[...document.querySelectorAll('#product-import-panel tbody tr')].map(row=>[...row.querySelectorAll('td')].slice(0,2).map(cell=>cell.textContent))`), [["Sin nombre", "001"], ["No disponible", "002"]]);
+  assert.ok(!await evaluate(`document.getElementById('product-import-panel').textContent.includes('filas no tienen SKU o Modelo')`));
+  step("all-invalid-format-warning"); await select(files.allInvalid);
+  await poll(() => evaluate(`document.getElementById('product-import-panel').textContent.includes('No hay filas válidas para continuar.')`));
+  assert.equal(await click("Continuar con las filas válidas"), false);
+  assert.equal(previewCalls.length, 0);
   step("real-reader-and-mixed-preview"); await select(files.mixed);
+  await poll(() => evaluate(`document.getElementById('product-import-panel').textContent.includes('1 de 3 filas no tienen SKU o Modelo guardados como texto.')`));
+  assert.equal(previewCalls.length, 0);
+  assert.ok(await evaluate(`document.querySelector('tbody').textContent.includes('SKU numérico')`));
+  assert.ok(await evaluate(`document.querySelector('tbody').textContent.includes("Ayuda: Selecciona la columna, aplica formato Texto antes de escribir y reescribe los valores.")`));
+  assert.equal(await click("Continuar con las filas válidas"), true);
   await poll(async () => (await status()).includes("Lista para revisar"));
   assert.equal(await evaluate(`document.getElementById('product-import-file-name').textContent`), "mixed.xlsx");
   summary.selectedFileLayout = await selectionLayout();
@@ -232,7 +246,7 @@ try {
   assert.equal(await evaluate(`document.activeElement?.textContent`), "Importar Excel");
   summary.scenarios.push("401 retains report and close restores trigger focus");
   summary.passed = true;
-} catch { summary.failedStage = stage; summary.browserErrors = browserErrors; summary.apiReadCount = apiReads.length; summary.previewBatches = previewCalls; if (socket?.readyState === WebSocket.OPEN) { try { summary.importResponses = []; for (const response of importResponses) { const data = await command("Network.getResponseBody", { requestId: response.requestId }); const body = JSON.parse(data.body); summary.importResponses.push({ status: response.status, success: body.success, errorCode: body.error, ready: body.ready, hasToken: Boolean(body.previewToken), rows: body.rows?.map(row=>({rowNumber:row.rowNumber,action:row.action})) }); } summary.visibleStatus = await status(); summary.visibleAlert = await evaluate(`document.querySelector('[role="alert"]')?.textContent||''`); summary.pageHeading = await evaluate(`document.querySelector('h1')?.textContent||''`); } catch { /* Browser may already be closed. */ } } process.exitCode = 1; }
+} catch (error) { summary.failure = error instanceof Error ? error.message : "BROWSER_CHECK_FAILED"; summary.failedStage = stage; summary.browserErrors = browserErrors; summary.apiReadCount = apiReads.length; summary.previewBatches = previewCalls; if (socket?.readyState === WebSocket.OPEN) { try { summary.importResponses = []; for (const response of importResponses) { const data = await command("Network.getResponseBody", { requestId: response.requestId }); const body = JSON.parse(data.body); summary.importResponses.push({ status: response.status, success: body.success, errorCode: body.error, ready: body.ready, hasToken: Boolean(body.previewToken), rows: body.rows?.map(row=>({rowNumber:row.rowNumber,action:row.action})) }); } summary.visibleStatus = await status(); summary.visibleAlert = await evaluate(`document.querySelector('[role="alert"]')?.textContent||''`); summary.pageHeading = await evaluate(`document.querySelector('h1')?.textContent||''`); } catch { /* Browser may already be closed. */ } } process.exitCode = 1; }
 finally {
   if (socket?.readyState === WebSocket.OPEN) { try { await command("Browser.close"); } catch { /* Chrome may close its connection before replying. */ } socket.close(); }
   if (chrome && chrome.exitCode === null) chrome.kill();

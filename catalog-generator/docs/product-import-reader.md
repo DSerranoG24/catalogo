@@ -73,3 +73,7 @@ Solo POST JSON de `products/catalog/<UUID>/import/preview` y `.../confirm`, con 
 La plantilla se abrió también con openpyxl ya instalado, como comprobación independiente de hojas, celda B2/B501 en Texto, fechas Texto, cuatro validaciones, doce notas y cero valores de datos. No se instaló openpyxl ni se automatizó Excel de escritorio.
 
 La fase 3B conecta selector y descarga, cancelación accesible, presentación de errores/resumen, lotes de vista previa, invalidatedRows, confirmación, reportes parciales, sesión expirada y reintentos. Su contrato y verificación interactiva se describen en `product-import-ui.md`. El lector de este documento se conserva sin cambios; no hay variables ni migraciones nuevas.
+
+## Mejora de identificación de errores
+
+`ImportReadResult.rejectedRows` contiene únicamente `rowNumber` y los campos `name`/`sku` legibles de las filas rechazadas. Un texto vacío se conserva como cadena vacía; un campo con error de tipo o fórmula se omite. Esta colección es solo de presentación: `rows` sigue conteniendo exclusivamente filas sin errores locales. El worker transmite el resultado completo sin cambios de protocolo o lógica.
