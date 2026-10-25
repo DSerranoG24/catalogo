@@ -10,6 +10,9 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
   title: "Vitrinaya | Panel de catálogos",
   description: "Administra tus catálogos, categorías y productos.",
+  verification: {
+    google: "AllUwIjjEZhuta83RED_N4HAK_C_XRhCmUJMCChk6SI",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
