@@ -1,350 +1,123 @@
-"use client";
-
+import type { Metadata } from "next";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { apiRequest, Catalog, clearSession, getSession } from "@/lib/api";
-import { Archive, ArrowUpRight, Box, CirclePlus, ExternalLink, LayoutDashboard, RefreshCw, RotateCcw, Store, Trash2 } from "lucide-react";
+import { ArrowRight, Check, FileSpreadsheet, FileText, Link2, MessageCircle, Package, Store } from "lucide-react";
+import BrandLogo from "@/components/brand/BrandLogo";
 
-type PendingAction =
-  | { type: "archive"; catalog: Catalog }
-  | { type: "delete"; catalog: Catalog }
-  | null;
+const title = "Vitrinaya | Tu vitrina digital, lista para compartir.";
+const description = "Crea tu catálogo, compártelo con un enlace y recibe pedidos por WhatsApp. Sin página web propia, sin complicaciones.";
 
-export default function Home() {
-  const router = useRouter();
-  const [catalogs, setCatalogs] = useState<Catalog[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [reloadKey, setReloadKey] = useState(0);
-  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
-  const [confirmChecked, setConfirmChecked] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
+export const metadata: Metadata = {
+  title,
+  description,
+  robots: { index: true, follow: true },
+  alternates: { canonical: "/" },
+  openGraph: { title, description, url: "/", siteName: "Vitrinaya", type: "website", locale: "es_CO" },
+  twitter: { card: "summary", title, description },
+};
 
-  async function signOut() {
-    if (signingOut || busy) return;
-    setSigningOut(true);
-    setError("");
-    if (await clearSession()) {
-      router.replace("/login");
-      router.refresh();
-    } else {
-      setError("No se pudo cerrar la sesión del servidor. Comprueba tu conexión y vuelve a intentarlo.");
-      setSigningOut(false);
-    }
-  }
+const container = "mx-auto w-full max-w-6xl px-5 sm:px-8";
+const focus = "focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--brand-emerald)]";
+const primary = `inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[var(--brand-emerald)] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[var(--brand-emerald-hover)] ${focus}`;
+const secondary = `inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[var(--brand-emerald)] px-5 py-3 text-sm font-semibold text-[var(--brand-emerald)] transition hover:bg-[var(--brand-emerald-soft)] ${focus}`;
 
-  useEffect(() => {
-    const session = getSession();
-    if (!session) {
-      router.replace("/login");
-      return;
-    }
+const features = [
+  { icon: Store, title: "Catálogo con enlace propio", body: "Una dirección única para tu negocio. Elige entre varios diseños según tu estilo." },
+  { icon: MessageCircle, title: "Pedidos por WhatsApp", body: "Tus clientes envían su pedido y tú lo recibes con los datos completos." },
+  { icon: FileText, title: "Cotización en PDF", body: "Cuando se emite la cotización, obtienes un documento PDF con tus datos y condiciones. El pedido se conserva aunque la emisión falle." },
+  { icon: FileSpreadsheet, title: "Importar desde Excel", body: "Sube tus productos desde Excel y actualízalos cuando quieras. Hasta 500 filas por archivo." },
+];
 
-    let active = true;
-    apiRequest<{ catalogs: Catalog[] }>("/catalogs")
-      .then((result) => {
-        if (active) setCatalogs(result.catalogs);
-      })
-      .catch((requestError) => {
-        if (!active) return;
-        if (requestError instanceof Error && "status" in requestError && (requestError as { status: number }).status === 401) {
-          clearSession();
-          router.replace("/login");
-          return;
-        }
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : "No se pudieron cargar los catálogos."
-        );
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [reloadKey, router]);
-
-  const activeCatalogs = catalogs.filter((c) => !c.archivedAt);
-  const archivedCatalogs = catalogs.filter((c) => c.archivedAt);
-
-  function openArchiveConfirm(catalog: Catalog) {
-    setNotice("");
-    setPendingAction({ type: "archive", catalog });
-  }
-
-  function openDeleteConfirm(catalog: Catalog) {
-    setNotice("");
-    setPendingAction({ type: "delete", catalog });
-    setConfirmChecked(false);
-  }
-
-  function closeModal() {
-    if (busy) return;
-    setPendingAction(null);
-    setConfirmChecked(false);
-  }
-
-  async function confirmArchive() {
-    if (!pendingAction || pendingAction.type !== "archive") return;
-    const { catalog } = pendingAction;
-    setBusy(true);
-    try {
-      await apiRequest(`/catalogs/${catalog.id}/archive`, { method: "POST" });
-      setCatalogs((current) =>
-        current.map((item) =>
-          item.id === catalog.id ? { ...item, archivedAt: new Date().toISOString() } : item
-        )
-      );
-      setNotice("Catálogo archivado. Sus productos y pedidos se conservan.");
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "No se pudo archivar el catálogo."
-      );
-    } finally {
-      setBusy(false);
-      setPendingAction(null);
-    }
-  }
-
-  async function reactivateCatalog(catalog: Catalog) {
-    setNotice("");
-    setError("");
-    try {
-      await apiRequest(`/catalogs/${catalog.id}/reactivate`, { method: "POST" });
-      setCatalogs((current) =>
-        current.map((item) =>
-          item.id === catalog.id ? { ...item, archivedAt: null } : item
-        )
-      );
-      setNotice("Catálogo reactivado.");
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "No se pudo reactivar el catálogo."
-      );
-    }
-  }
-
-  async function confirmDelete() {
-    if (!pendingAction || pendingAction.type !== "delete" || !confirmChecked) return;
-    const { catalog } = pendingAction;
-    setBusy(true);
-    try {
-      await apiRequest(`/catalogs/${catalog.id}`, { method: "DELETE" });
-      setCatalogs((current) => current.filter((item) => item.id !== catalog.id));
-      setNotice("Catálogo eliminado.");
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "No se pudo eliminar el catálogo."
-      );
-    } finally {
-      setBusy(false);
-      setPendingAction(null);
-      setConfirmChecked(false);
-    }
-  }
-
-  if (loading && catalogs.length === 0) {
-    return <main role="status" aria-label="Cargando tus catálogos" className="mx-auto w-full max-w-6xl px-5 py-10 sm:px-8 sm:py-14"><div className="h-48 animate-pulse rounded-3xl bg-[#dce8dc]" /><div className="mt-7 grid gap-3 sm:grid-cols-3">{[0, 1, 2].map((item) => <div key={item} className="h-20 animate-pulse rounded-2xl border border-[#e2e8e0] bg-white/80" />)}</div><div className="mt-10 h-7 w-44 animate-pulse rounded-full bg-[#dce8dc]" /><div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{[0, 1, 2].map((item) => <div key={item} className="h-60 animate-pulse rounded-2xl border border-[#e2e8e0] bg-white/80" />)}</div></main>;
-  }
-
+export default function LandingPage() {
   return (
-    <main className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-12">
-      <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs font-medium text-[#7b8780]"><LayoutDashboard className="size-4" aria-hidden="true" /><span>Panel de control</span><span className="text-[#c2cbc3]">/</span><span className="text-[#35473d]">Catálogos</span></div>
-        <button type="button" onClick={() => { void signOut(); }} disabled={busy || signingOut} className="min-h-11 rounded-xl border border-[#d6dfd7] px-4 py-2 text-sm font-semibold text-[#435047] transition hover:bg-[#f4f7f2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)] disabled:opacity-60">{signingOut ? "Cerrando sesión…" : "Cerrar sesión"}</button>
-      </div>
+    <>
+      <a href="#contenido" className={`sr-only focus:not-sr-only focus:absolute focus:left-5 focus:top-3 focus:z-10 rounded-lg bg-white px-4 py-3 ${focus}`}>Saltar al contenido</a>
+      <header className="border-b border-[var(--brand-emerald)]/15 bg-white">
+        <div className={`${container} flex flex-wrap items-center justify-between gap-3 py-4`}>
+          <Link href="/" aria-label="Vitrinaya, inicio" className={focus}><BrandLogo variant="horizontal" theme="claro" iconSize={36} nameRatio={0.5} gapSize={8} /></Link>
+          <nav aria-label="Navegación principal" className="flex flex-wrap items-center gap-2 sm:gap-5">
+            <a href="#funciones" className={`hidden min-h-11 items-center text-sm text-[var(--brand-forest)] sm:inline-flex ${focus}`}>Funciones</a>
+            <a href="#precios" className={`hidden min-h-11 items-center text-sm text-[var(--brand-forest)] sm:inline-flex ${focus}`}>Precios</a>
+            <Link href="/login" className={`inline-flex min-h-11 items-center text-sm font-semibold text-[var(--brand-emerald)] ${focus}`}>Iniciar sesión</Link>
+          </nav>
+        </div>
+      </header>
 
-      <section className="relative overflow-hidden rounded-3xl bg-[var(--brand-forest)] px-6 py-8 text-white shadow-[0_24px_60px_-38px_rgba(18,55,45,0.8)] sm:px-9 sm:py-10">
-        <div className="pointer-events-none absolute -right-14 -top-24 size-72 rounded-full border border-white/10" /><div className="pointer-events-none absolute -right-2 -top-12 size-48 rounded-full border border-white/10" />
-        <div className="relative flex flex-col justify-between gap-7 sm:flex-row sm:items-end">
-          <div>
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#c3e5d4]"><Store className="size-3.5" aria-hidden="true" /> Espacio de trabajo</span>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">Tus catálogos, <span className="font-serif font-normal italic text-[#b8dec8]">a tu manera.</span></h1>
-            <p className="mt-3 max-w-lg text-sm leading-6 text-white/70">Organiza tus productos y comparte una tienda que represente tu negocio.</p>
+      <main id="contenido">
+        <section className={`${container} grid items-center gap-12 py-14 sm:py-20 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-16`} aria-labelledby="hero-title">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-widest text-[var(--brand-coral-text)]">Tu negocio ya tiene qué mostrar</p>
+            <h1 id="hero-title" className="mt-4 text-4xl font-semibold leading-tight tracking-tight text-[var(--brand-forest)] sm:text-5xl lg:text-6xl">Tu vitrina digital, <span className="text-[var(--brand-emerald)]">lista para compartir.</span></h1>
+            <p className="mt-6 max-w-xl text-base leading-7 text-[var(--foreground)]">{description}</p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link href="/login" className={primary}>Crear mi catálogo <ArrowRight size={17} aria-hidden="true" /></Link>
+              <button type="button" disabled aria-describedby="example-coming-soon" className={`${secondary} cursor-not-allowed`}>Ver un ejemplo</button>
+            </div>
+            <p id="example-coming-soon" className="mt-4 text-sm text-[var(--brand-forest)]">El enlace a un catálogo de ejemplo estará disponible próximamente.</p>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => { setError(""); setNotice(""); setLoading(true); setReloadKey((key) => key + 1); }}
-              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold text-white transition hover:bg-white/15"
-            >
-              <RefreshCw className="size-4" aria-hidden="true" /> Actualizar
-            </button>
-            <Link href="/dashboard/catalogos/nuevo" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#c3e5d4] px-4 text-sm font-semibold text-[var(--brand-forest)] transition hover:bg-white">
-              <CirclePlus className="size-4" aria-hidden="true" /> Nuevo catálogo
-            </Link>
+
+          <div id="ejemplo" className="min-w-0 scroll-mt-6 rounded-3xl border border-[var(--brand-emerald)]/20 bg-white p-5 shadow-sm sm:p-7" role="region" aria-label="Ejemplo ilustrativo de catálogo">
+            <div className="flex items-center gap-3 border-b border-[var(--brand-emerald)]/15 pb-5">
+              <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-[var(--brand-emerald-soft)] text-[var(--brand-emerald)]"><Store aria-hidden="true" size={24} /></span>
+              <div><p className="font-semibold text-[var(--brand-forest)]">Tu tienda, a un enlace</p><p className="mt-1 text-xs text-[var(--brand-coral-text)]">Ejemplo ilustrativo · productos ficticios</p></div>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              {[{ name: "Bolso de mano", price: "Precio de ejemplo", icon: Store }, { name: "Set de regalo", price: "Precio de ejemplo", icon: Package }].map(item => <div key={item.name} className="min-w-0 rounded-2xl border border-[var(--brand-emerald)]/15 p-3">
+                <div className="grid aspect-square place-items-center rounded-xl bg-[var(--brand-emerald-soft)] text-[var(--brand-emerald)]"><item.icon size={42} aria-hidden="true" strokeWidth={1.25} /></div>
+                <p className="mt-3 text-sm font-medium text-[var(--brand-forest)]">{item.name}</p><p className="mt-1 text-sm font-semibold text-[var(--brand-emerald)]">{item.price}</p>
+              </div>)}
+            </div>
+            <p className="mt-5 flex items-center gap-2 rounded-xl bg-[var(--brand-forest)] px-4 py-3 text-sm text-white"><MessageCircle size={18} aria-hidden="true" className="shrink-0" /> Elige aquí. Conversemos por WhatsApp.</p>
+            <p className="mt-3 text-xs leading-5 text-[var(--brand-forest)]">Así puedes presentar tus productos. Esta muestra no recibe pedidos ni representa una tienda real.</p>
           </div>
-        </div>
-      </section>
-
-      <div className="mt-7 grid gap-3 sm:grid-cols-3">
-        <div className="flex items-center gap-3 rounded-2xl border border-[#e2e8e0] bg-white/85 p-4"><span className="grid size-10 place-items-center rounded-xl bg-[var(--brand-emerald-soft)] text-[#315e4f]"><Store className="size-4" aria-hidden="true" /></span><div><p className="text-xl font-semibold tracking-tight text-[#263b31]">{catalogs.length}</p><p className="text-xs text-[#78847d]">{catalogs.length === 1 ? "catálogo creado" : "catálogos creados"}</p></div></div>
-        <div className="flex items-center gap-3 rounded-2xl border border-[#e2e8e0] bg-white/85 p-4"><span className="grid size-10 place-items-center rounded-xl bg-[#f4eee5] text-[#99734c]"><Box className="size-4" aria-hidden="true" /></span><div><p className="text-sm font-semibold text-[#263b31]">Todo organizado</p><p className="text-xs text-[#78847d]">Productos y pedidos en un lugar</p></div></div>
-        <div className="flex items-center gap-3 rounded-2xl border border-[#e2e8e0] bg-white/85 p-4"><span className="grid size-10 place-items-center rounded-xl bg-[#f9ece8] text-[var(--brand-coral-text)]"><ExternalLink className="size-4" aria-hidden="true" /></span><div><p className="text-sm font-semibold text-[#263b31]">Listo para compartir</p><p className="text-xs text-[#78847d]">Cada tienda tiene su propio enlace</p></div></div>
-      </div>
-
-      {error && (
-        <div role="alert" className="mt-7 flex items-center justify-between gap-4 rounded-md border border-[#f0c8b9] bg-[#fff4ef] px-4 py-3 text-sm text-[#a5432a]">
-          <span>{error}</span>
-          <button type="button" onClick={() => { setError(""); setLoading(true); setReloadKey((key) => key + 1); }} className="shrink-0 font-semibold underline underline-offset-4">Reintentar</button>
-        </div>
-      )}
-
-      {notice && (
-        <div role="status" className="mt-7 flex items-center justify-between gap-4 rounded-md border border-[#c9e0d1] bg-[#f2faf4] px-4 py-3 text-sm text-[#276749]">
-          <span>{notice}</span>
-          <button type="button" onClick={() => setNotice("")} className="shrink-0 font-semibold underline underline-offset-4">Cerrar</button>
-        </div>
-      )}
-
-      <div className="mt-10 flex items-end justify-between border-b border-[#dce4dc] pb-4">
-        <div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--brand-coral-text)]">Activos</p><h2 className="mt-1 text-lg font-semibold tracking-tight text-[#263b31]">Mis catálogos</h2></div>
-        <span className="rounded-full bg-white px-3 py-1.5 text-xs font-medium tabular-nums text-[#66756b]">{activeCatalogs.length} {activeCatalogs.length === 1 ? "catálogo" : "catálogos"}</span>
-      </div>
-
-      {activeCatalogs.length === 0 && archivedCatalogs.length === 0 ? (
-        <section className="mt-5 flex min-h-80 flex-col items-center justify-center rounded-3xl border border-dashed border-[#cbd7cc] bg-white/65 px-6 text-center">
-          <span className="grid size-14 place-items-center rounded-2xl bg-[#e7f0e8] text-[#315e4f]"><CirclePlus className="size-6" aria-hidden="true" /></span>
-          <h2 className="mt-5 text-xl font-semibold tracking-tight text-[#263b31]">Tu primer catálogo empieza aquí</h2>
-          <p className="mt-2 max-w-sm text-sm leading-6 text-[#68756e]">Crea un espacio para tus productos y empieza a prepararlo para compartir.</p>
-          <Link href="/dashboard/catalogos/nuevo" className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[var(--brand-emerald)] px-5 text-sm font-semibold text-white transition hover:bg-[var(--brand-emerald-hover)]">Crear catálogo <ArrowUpRight className="size-4" aria-hidden="true" /></Link>
         </section>
-      ) : (
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {activeCatalogs.map((catalog: Catalog) => (
-            <article key={catalog.id} className="group relative flex min-h-60 flex-col overflow-hidden rounded-2xl border border-[#e2e8e0] bg-white p-5 transition duration-200 hover:-translate-y-1 hover:border-[#a8c2af] hover:shadow-[0_20px_44px_-28px_rgba(31,55,44,0.45)]">
-              <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#83b59a] via-[#d6bf92] to-[#d9947e] opacity-70 transition group-hover:opacity-100" />
-              <div className="flex items-start justify-between gap-4">
-                <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-[#edf3ec] text-sm font-bold text-[#315e4f]">
-                  {catalog.name.trim().charAt(0).toUpperCase() || <Store className="size-4" />}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => openArchiveConfirm(catalog)}
-                    aria-label={`Archivar ${catalog.name}`}
-                    title="Archivar catálogo"
-                    className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-[#52675b] transition hover:bg-[#edf3ec] hover:text-[var(--brand-emerald)]"
-                  >
-                    <Archive className="size-3.5" aria-hidden="true" /> Archivar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openDeleteConfirm(catalog)}
-                    aria-label={`Eliminar ${catalog.name} permanentemente`}
-                    title="Eliminar catálogo permanentemente"
-                    className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-[#87928b] transition hover:bg-[#fff1ec] hover:text-[#a5432a]"
-                  >
-                    <Trash2 className="size-3.5" aria-hidden="true" /> Eliminar
-                  </button>
-                </div>
-              </div>
-              <p className="mt-5 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--brand-coral-text)]">Tienda en línea</p><h3 className="mt-1 text-lg font-semibold tracking-tight text-[#202b27]">{catalog.name}</h3>
-              <p className="mt-1 line-clamp-2 min-h-10 text-sm leading-5 text-[#68756e]">{catalog.description || `/${catalog.slug}`}</p>
-              <Link href={`/dashboard/catalogos/${catalog.id}`} className="mt-auto flex min-h-11 items-center justify-between border-t border-[#edf1ec] pt-3 text-sm font-semibold text-[#315e4f]">
-                Abrir panel <ArrowUpRight className="size-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden="true" />
-              </Link>
-            </article>
-          ))}
-        </div>
-      )}
 
-      {archivedCatalogs.length > 0 && (
-        <>
-          <div className="mt-12 flex items-end justify-between border-b border-[#dce4dc] pb-4">
-            <div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--brand-coral-text)]">Archivados</p><h2 className="mt-1 text-lg font-semibold tracking-tight text-[#263b31]">Catálogos archivados</h2></div>
-            <span className="rounded-full bg-white px-3 py-1.5 text-xs font-medium tabular-nums text-[#66756b]">{archivedCatalogs.length} {archivedCatalogs.length === 1 ? "archivado" : "archivados"}</span>
+        <section aria-labelledby="como-title" className="border-y border-[var(--brand-emerald)]/15 bg-white py-12 sm:py-16">
+          <div className={container}>
+            <h2 id="como-title" className="text-3xl font-semibold tracking-tight text-[var(--brand-forest)]">Cómo funciona</h2>
+            <ol className="mt-8 grid gap-7 md:grid-cols-3">
+              {[{ title: "Sube tus productos.", body: "Añádelos uno a uno o importa tu inventario desde un Excel." }, { title: "Comparte tu enlace.", body: "Cada catálogo tiene su propia dirección. Pégala en WhatsApp, Instagram o donde quieras." }, { title: "Recibe pedidos.", body: "Tus clientes arman su pedido y pueden enviarte el mensaje con todo listo para confirmar." }].map((step, index) => <li key={step.title}>
+                <span aria-hidden="true" className="inline-flex size-10 items-center justify-center rounded-full bg-[var(--brand-emerald-soft)] font-semibold text-[var(--brand-emerald)]">{index + 1}</span>
+                <h3 className="mt-4 text-lg font-semibold text-[var(--brand-forest)]">{step.title}</h3><p className="mt-2 text-sm leading-6">{step.body}</p>
+              </li>)}
+            </ol>
           </div>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-[#68756e]">Los catálogos archivados no son visibles para tus clientes. Sus productos y pedidos se conservan.</p>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {archivedCatalogs.map((catalog: Catalog) => (
-              <article key={catalog.id} className="group relative flex min-h-[220px] flex-col overflow-hidden rounded-2xl border border-[#e2e8e0] bg-[#fafbf9] p-5">
-                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#83b59a]/30 via-[#d6bf92]/30 to-[#d9947e]/30 opacity-50" />
-                <div className="flex items-start justify-between gap-4">
-                  <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-[#e8f0e6] text-sm font-bold text-[#52725e]">
-                    {catalog.name.trim().charAt(0).toUpperCase() || <Store className="size-4" />}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => reactivateCatalog(catalog)}
-                      aria-label={`Reactivar ${catalog.name}`}
-                      title="Reactivar catálogo"
-                      className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-[var(--brand-emerald)] transition hover:bg-[#e8f0e6] hover:text-[var(--brand-emerald-hover)]"
-                    >
-                      <RotateCcw className="size-3.5" aria-hidden="true" /> Reactivar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openDeleteConfirm(catalog)}
-                      aria-label={`Eliminar ${catalog.name} permanentemente`}
-                      title="Eliminar catálogo permanentemente"
-                      className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-[#87928b] transition hover:bg-[#fff1ec] hover:text-[#a5432a]"
-                    >
-                      <Trash2 className="size-3.5" aria-hidden="true" /> Eliminar
-                    </button>
-                  </div>
-                </div>
-                <p className="mt-5 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--brand-coral-text)]">Archivado</p>
-                <h3 className="mt-1 text-lg font-semibold tracking-tight text-[#5d6a63] line-through decoration-[#b9c4bb]">{catalog.name}</h3>
-                <p className="mt-1 line-clamp-2 min-h-10 text-sm leading-5 text-[#68756e]">{catalog.description || `/${catalog.slug}`}</p>
-                <Link href={`/dashboard/catalogos/${catalog.id}`} className="mt-auto flex min-h-11 items-center justify-between border-t border-[#edf1ec] pt-3 text-sm font-semibold text-[#52675b]">
-                  Revisar catálogo <ArrowUpRight className="size-4" aria-hidden="true" />
-                </Link>
-              </article>
-            ))}
-          </div>
-        </>
-      )}
+        </section>
 
-      {pendingAction?.type === "archive" && (
-        <div role="dialog" aria-modal="true" aria-labelledby="archive-title" className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f2a23]/55 px-5">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            <h2 id="archive-title" className="text-lg font-semibold tracking-tight text-[#202b27]">Archivar catálogo</h2>
-            <p className="mt-2 text-sm leading-6 text-[#68756e]">
-              «{pendingAction.catalog.name}» dejará de ser visible para tus clientes. Sus productos, categorías y pedidos se conservan y puedes reactivarlo cuando quieras.
-            </p>
-            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <button type="button" onClick={closeModal} disabled={busy} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#d7e0d8] px-4 text-sm font-semibold text-[#4c5a52] transition hover:bg-[#f4f7f4]">Cancelar</button>
-              <button type="button" onClick={confirmArchive} disabled={busy} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[var(--brand-emerald)] px-4 text-sm font-semibold text-white transition hover:bg-[var(--brand-emerald-hover)] disabled:opacity-60">{busy ? "Archivando…" : "Archivar"}</button>
-            </div>
+        <section id="funciones" aria-labelledby="funciones-title" className={`${container} py-14 sm:py-20`}>
+          <p className="text-xs font-bold uppercase tracking-widest text-[var(--brand-coral-text)]">Disponible hoy</p>
+          <h2 id="funciones-title" className="mt-3 text-3xl font-semibold tracking-tight text-[var(--brand-forest)]">Menos mensajes sueltos. Más claridad.</h2>
+          <div className="mt-8 grid gap-4 sm:grid-cols-2">
+            {features.map(feature => <article key={feature.title} className="rounded-2xl border border-[var(--brand-emerald)]/15 bg-white p-6">
+              <feature.icon size={25} aria-hidden="true" className="text-[var(--brand-emerald)]" /><h3 className="mt-4 text-lg font-semibold text-[var(--brand-forest)]">{feature.title}</h3><p className="mt-2 text-sm leading-6">{feature.body}</p>
+            </article>)}
           </div>
-        </div>
-      )}
+          <p className="mt-5 text-sm leading-6">El mensaje de WhatsApp se envía cuando el cliente abre WhatsApp y confirma su envío. La cotización es una solicitud sujeta a confirmación, no una factura.</p>
+        </section>
 
-      {pendingAction?.type === "delete" && (
-        <div role="dialog" aria-modal="true" aria-labelledby="delete-title" className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f2a23]/55 px-5">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            <h2 id="delete-title" className="text-lg font-semibold tracking-tight text-[#a5432a]">Eliminar catálogo</h2>
-            <p className="mt-2 text-sm leading-6 text-[#68756e]">
-              Esta acción es permanente y no se puede deshacer. Se eliminarán el catálogo «{pendingAction.catalog.name}», sus productos y sus categorías.
-            </p>
-            <p className="mt-3 rounded-xl border border-[#f0d3c5] bg-[#fff8f4] px-3 py-2 text-xs leading-5 text-[#a5432a]">
-              Si este catálogo tiene pedidos registrados, la eliminación se bloqueará y se te pedirá archivarlo en su lugar. Así no pierdes tu historial de ventas.
-            </p>
-            <label className="mt-5 flex items-start gap-3 text-sm text-[#4c5a52]">
-              <input type="checkbox" checked={confirmChecked} onChange={(event) => setConfirmChecked(event.target.checked)} className="mt-0.5 size-4 rounded border-[#c3cdc5]" />
-              <span>Entiendo que esta acción es permanente y quiero eliminar este catálogo.</span>
-            </label>
-            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <button type="button" onClick={closeModal} disabled={busy} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#d7e0d8] px-4 text-sm font-semibold text-[#4c5a52] transition hover:bg-[#f4f7f4]">Cancelar</button>
-              <button type="button" onClick={confirmDelete} disabled={busy || !confirmChecked} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#a5432a] px-4 text-sm font-semibold text-white transition hover:bg-[#8c3620] disabled:opacity-50">{busy ? "Eliminando…" : "Eliminar permanentemente"}</button>
-            </div>
+        <section aria-labelledby="proximo-title" className="bg-[var(--brand-forest)] py-12 text-white sm:py-16">
+          <div className={container}>
+            <p className="text-xs font-semibold uppercase tracking-widest">Próximamente · aún no disponible</p>
+            <h2 id="proximo-title" className="mt-3 text-3xl font-semibold tracking-tight">Inventario y control de gastos.</h2>
+            <p className="mt-5 max-w-2xl text-sm leading-6">Estamos trabajando para que también puedas llevar el control completo de tu negocio desde Vitrinaya.</p>
+            <p className="mt-3 max-w-2xl text-sm leading-6">Hoy el stock es informativo: los pedidos no reservan ni descuentan inventario. El control de gastos todavía no está disponible.</p>
           </div>
+        </section>
+
+        <section id="precios" aria-labelledby="precios-title" className={`${container} py-14 sm:py-20`}>
+          <div className="grid gap-8 rounded-3xl border border-[var(--brand-emerald)]/20 bg-white p-6 sm:p-10 md:grid-cols-2 md:items-center">
+            <div><p className="text-xs font-bold uppercase tracking-widest text-[var(--brand-coral-text)]">Precios</p><h2 id="precios-title" className="mt-3 text-4xl font-semibold tracking-tight text-[var(--brand-forest)]">Gratis por ahora.</h2><p className="mt-4 text-sm leading-6">Crea tus catálogos, compártelos y recibe pedidos sin coste mientras seguimos construyendo.</p><Link href="/login" className={`${primary} mt-6`}>Crear mi catálogo <ArrowRight size={17} aria-hidden="true" /></Link></div>
+            <ul className="space-y-4 text-sm">{["Catálogo con enlace propio", "Pedidos y conversación por WhatsApp", "Cotización PDF sujeta a confirmación", "Carga de productos con plantilla Excel"].map(item => <li key={item} className="flex items-start gap-3"><Check aria-hidden="true" size={18} className="shrink-0 text-[var(--brand-emerald)]" />{item}</li>)}</ul>
+          </div>
+        </section>
+      </main>
+
+      <footer className="border-t border-[var(--brand-emerald)]/15 bg-white py-8">
+        <div className={container}>
+          <div className="flex flex-wrap items-center justify-between gap-5"><BrandLogo variant="horizontal" theme="claro" iconSize={32} nameRatio={0.5} /><nav aria-label="Contacto y enlaces legales pendientes" aria-describedby="footer-coming-soon" className="flex flex-wrap gap-x-5 gap-y-2 text-sm">{["Contacto", "Privacidad", "Términos"].map(label => <span key={label} role="link" aria-disabled="true" className="inline-flex min-h-11 cursor-not-allowed items-center">{label}</span>)}</nav></div>
+          <p id="footer-coming-soon" className="mt-4 text-xs leading-6">Contacto, Privacidad y Términos: próximamente.</p>
+          <p className="mt-6 flex items-center gap-2 text-xs"><Link2 size={14} aria-hidden="true" />Vitrinaya — Tu vitrina digital</p>
         </div>
-      )}
-    </main>
+      </footer>
+    </>
   );
 }

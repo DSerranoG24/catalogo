@@ -138,6 +138,35 @@ try {
   socket.addEventListener("message", event => { const message = JSON.parse(event.data); if (message.method === "Page.fileChooserOpened") fileChoosers.push(message.params); });
   await command("Page.enable"); await command("Runtime.enable"); await command("Network.enable");
   await command("Network.setBlockedURLs", { urls: ["*accounts.google.com/*", "*fonts.googleapis.com/*", "*fonts.gstatic.com/*"] });
+  step("public-landing-without-session-or-javascript");
+  await command("Emulation.setScriptExecutionDisabled", { value: true });
+  await command("Page.navigate", { url: "http://localhost:4328/" });
+  await poll(() => evaluate(`document.querySelector('h1')?.textContent==='Tu vitrina digital, lista para compartir.'`));
+  assert.equal(await evaluate(`location.pathname`), "/");
+  assert.equal(await evaluate(`document.querySelectorAll('h1').length`), 1);
+  assert.equal(await evaluate(`document.querySelector('meta[name="robots"]').content`), "index, follow");
+  assert.equal(await evaluate(`document.querySelector('link[rel="canonical"]').href`), "https://catalogo-pink.vercel.app/");
+  assert.ok(await evaluate(`Boolean([...document.querySelectorAll('a')].find(a=>a.textContent.includes('Crear mi catálogo')&&a.getAttribute('href')==='/login'))`));
+  assert.ok(await evaluate(`Boolean([...document.querySelectorAll('button')].find(b=>b.textContent==='Ver un ejemplo'&&b.disabled&&document.getElementById(b.getAttribute('aria-describedby'))?.textContent.includes('próximamente')))`));
+  assert.deepEqual(await evaluate(`[...document.querySelectorAll('footer [role="link"][aria-disabled="true"]')].map(e=>e.textContent)`), ["Contacto", "Privacidad", "Términos"]);
+  assert.equal(await evaluate(`document.querySelectorAll('footer a').length`), 0);
+  assert.ok(await evaluate(`!document.querySelector('[href="#ejemplo"]')&&document.getElementById('footer-coming-soon').textContent.includes('próximamente')`));
+  for (const width of [320, 390, 1024, 1440]) {
+    await command("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 600 });
+    assert.ok(await evaluate(`document.documentElement.scrollWidth<=innerWidth+1`), `Landing fits at ${width}px without JS`);
+    if (width === 390 || width === 1440) {
+      const landingShot = await command("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
+      fs.writeFileSync(path.join(os.tmpdir(), `vitrinaya-landing-${width}.png`), Buffer.from(landingShot.data, "base64"));
+    }
+  }
+  await command("Emulation.clearDeviceMetricsOverride");
+  assert.equal(apiReads.length, 0, "Landing does not consult the API");
+  await command("Emulation.setScriptExecutionDisabled", { value: false });
+  step("private-dashboard-without-session");
+  await command("Page.navigate", { url: "http://localhost:4328/dashboard" });
+  await poll(() => evaluate(`location.pathname==='/login'&&Boolean(document.querySelector('button[type="submit"]'))`));
+  assert.equal(await evaluate(`document.querySelector('meta[name="robots"]').content`), "noindex, nofollow");
+  summary.scenarios.push("public landing without session or JavaScript, no API calls, index/canonical, four widths; anonymous dashboard redirects to noindex login");
   await command("Page.addScriptToEvaluateOnNewDocument", { source: `if(location.hostname==='localhost')localStorage.setItem('catalogo-session',JSON.stringify({user:{id:'test-user',email:'test@example.invalid',name:null}}))` });
   step("login-layout");
   await command("Page.navigate", { url: "http://localhost:4328/login" });
@@ -169,8 +198,13 @@ try {
   await command("Emulation.clearDeviceMetricsOverride");
   summary.scenarios.push("login labels and button bounds at 320, 390, 1024 and 1440px; Google network blocked");
   await command("Page.navigate", { url: "http://localhost:4328/" });
+  await poll(() => evaluate(`document.querySelector('h1')?.textContent==='Tu vitrina digital, lista para compartir.'`));
+  assert.ok(await evaluate(`localStorage.getItem('catalogo-session')!==null&&location.pathname==='/'`));
+  await command("Page.navigate", { url: "http://localhost:4328/dashboard" });
   step("workspace");
   await poll(() => evaluate(`Boolean(document.querySelector('a[href="/dashboard/catalogos/${catalogId}"]'))`));
+  assert.equal(await evaluate(`[...document.querySelectorAll('button')].filter(b=>b.textContent==='Cerrar sesión').length`), 1);
+  assert.equal(await evaluate(`document.querySelector('meta[name="robots"]').content`), "noindex, nofollow");
   await evaluate(`document.querySelector('a[href="/dashboard/catalogos/${catalogId}"]').click()`);
   await poll(() => evaluate(`[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Importar Excel')`));
   for (const width of [320, 390, 1024, 1440]) {
@@ -303,14 +337,14 @@ try {
   assert.equal(await evaluate(`document.activeElement?.textContent`), "Importar Excel");
   summary.scenarios.push("401 retains report and close restores trigger focus");
   step("main-panel-logout"); reset("normal");
-  await command("Page.navigate", { url: "http://localhost:4328/" });
+  await command("Page.navigate", { url: "http://localhost:4328/dashboard" });
   await poll(() => evaluate(`[...document.querySelectorAll('button')].some(b=>b.textContent==='Cerrar sesión')`));
   await command("Network.setCookie", { name: "catalogo_session", value: "synthetic-browser-session", url: "http://localhost:4328/", httpOnly: true, secure: true, path: "/" });
   assert.ok((await command("Network.getCookies", { urls: ["http://localhost:4328/"] })).cookies.some(cookie => cookie.name === "catalogo_session" && cookie.httpOnly));
   await command("Network.setBlockedURLs", { urls: ["*accounts.google.com/*", "*/api/backend/auth/logout"] });
   await click("Cerrar sesión");
   await poll(() => evaluate(`document.querySelector('[role="alert"]')?.textContent.includes('No se pudo cerrar la sesión del servidor')`));
-  assert.equal(await evaluate(`location.pathname`), "/");
+  assert.equal(await evaluate(`location.pathname`), "/dashboard");
   await command("Network.setBlockedURLs", { urls: ["*accounts.google.com/*"] });
   step("main-panel-logout-keyboard");
   await command("Page.bringToFront");

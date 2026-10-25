@@ -1,6 +1,6 @@
 # SEO y tarjetas públicas
 
-El dominio canónico es `https://catalogo-pink.vercel.app`. Catálogos y productos publicados usan metadata de servidor, canonical, Open Graph y Twitter. La raíz administrativa, login y dashboard heredan `noindex, nofollow`; carrito lo define expresamente. Esto no sustituye autenticación. No se ha añadido robots.txt: no se bloquea el rastreo necesario para leer noindex.
+El dominio canónico es `https://catalogo-pink.vercel.app`. La raíz `/` es la landing pública y sobrescribe explícitamente los robots del layout con `index, follow`, canonical raíz y metadata propia de Vitrinaya. El listado privado reside en `/dashboard`. Login y dashboard conservan `noindex, nofollow` del layout raíz; carrito lo define expresamente. Catálogos y productos publicados mantienen su metadata de servidor, canonical, Open Graph y Twitter. Esto no sustituye autenticación. No se ha añadido robots.txt ni sitemap en el bloque de landing.
 
 ## Lecturas y errores
 

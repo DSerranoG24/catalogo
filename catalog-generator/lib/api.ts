@@ -208,11 +208,17 @@ export function saveSession(session: Session) {
   window.dispatchEvent(new Event("catalogo-session-change"));
 }
 
-export function clearSession() {
-  window.localStorage.removeItem("catalogo-session");
-  window.dispatchEvent(new Event("catalogo-session-change"));
+export function clearSession({ waitForServer = false }: { waitForServer?: boolean } = {}) {
+  const clearMetadata = () => {
+    window.localStorage.removeItem("catalogo-session");
+    window.dispatchEvent(new Event("catalogo-session-change"));
+  };
+  if (!waitForServer) clearMetadata();
   return fetch("/api/backend/auth/logout", { method: "POST", credentials: "same-origin" })
-    .then(response => response.ok, () => false);
+    .then(response => {
+      if (response.ok && waitForServer) clearMetadata();
+      return response.ok;
+    }, () => false);
 }
 
 export async function apiRequest<T>(

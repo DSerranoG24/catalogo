@@ -261,14 +261,14 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
     return (
       <main className="mx-auto w-full max-w-6xl px-5 py-12 sm:px-8">
         <p role="alert" className="rounded-md bg-[#fff1ec] px-4 py-3 text-sm text-[#a5432a]">{error || "No se encontró el catálogo."}</p>
-        <Link href="/" className="mt-5 inline-block text-sm font-semibold text-[var(--brand-emerald)]">Volver a catálogos</Link>
+        <Link href="/dashboard" className="mt-5 inline-block text-sm font-semibold text-[var(--brand-emerald)]">Volver a catálogos</Link>
       </main>
     );
   }
 
   return (
     <main className="mx-auto w-full max-w-7xl px-5 py-8 sm:px-8 sm:py-12">
-      <div className="mb-6 flex items-center gap-2 text-xs font-medium text-[#7b8780]"><Link href="/" aria-disabled={importActive} tabIndex={importActive ? -1 : undefined} onClick={event => { if (importActive) event.preventDefault(); }} className="transition hover:text-[#315e4f]">Catálogos</Link><span className="text-[#c2cbc3]">/</span><span className="max-w-48 truncate text-[#35473d]">{catalog.name}</span></div>
+      <div className="mb-6 flex items-center gap-2 text-xs font-medium text-[#7b8780]"><Link href="/dashboard" aria-disabled={importActive} tabIndex={importActive ? -1 : undefined} onClick={event => { if (importActive) event.preventDefault(); }} className="transition hover:text-[#315e4f]">Catálogos</Link><span className="text-[#c2cbc3]">/</span><span className="max-w-48 truncate text-[#35473d]">{catalog.name}</span></div>
       <section className="relative overflow-hidden rounded-3xl border border-[#e2e8e0] bg-white p-6 shadow-[0_18px_54px_-44px_rgba(36,63,47,0.45)] sm:p-8">
         <div className="pointer-events-none absolute -right-16 -top-24 size-64 rounded-full border border-[#eaf0e8]" /><div className="pointer-events-none absolute -right-3 -top-12 size-40 rounded-full border border-[#eaf0e8]" />
         <div className="relative flex flex-col justify-between gap-5 sm:flex-row sm:items-end">

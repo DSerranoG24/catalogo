@@ -33,7 +33,7 @@ export default function NuevoCatalogo() {
 
   return (
     <main className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-12">
-      <Link href="/" className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-[#52675c] transition hover:text-[var(--brand-forest)]"><ArrowLeft className="size-4" aria-hidden="true" /> Volver a catálogos</Link>
+      <Link href="/dashboard" className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-[#52675c] transition hover:text-[var(--brand-forest)]"><ArrowLeft className="size-4" aria-hidden="true" /> Volver a catálogos</Link>
       <div className="mt-7 grid items-start gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)] lg:gap-10">
       <div>
         <div className="inline-flex items-center gap-2 rounded-full border border-[#dce7dc] bg-white/70 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-[#597565]"><Sparkles className="size-3.5" aria-hidden="true" /> Nuevo espacio</div>
@@ -94,7 +94,7 @@ export default function NuevoCatalogo() {
         </label>
         {error && <p role="alert" className="rounded-md bg-[#fff1ec] px-3.5 py-3 text-sm text-[#a5432a]">{error}</p>}
         <div className="flex flex-col-reverse justify-end gap-3 border-t border-[#edf1ec] pt-5 sm:flex-row">
-          <Link href="/" className="inline-flex min-h-12 items-center justify-center rounded-xl px-5 text-sm font-semibold text-[#68756e] transition hover:bg-[#f4f7f2]">Cancelar</Link>
+          <Link href="/dashboard" className="inline-flex min-h-12 items-center justify-center rounded-xl px-5 text-sm font-semibold text-[#68756e] transition hover:bg-[#f4f7f2]">Cancelar</Link>
           <button type="submit" disabled={busy} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[var(--brand-emerald)] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--brand-emerald-hover)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#5a886c]/20 disabled:cursor-wait disabled:opacity-60">
             {busy ? "Creando..." : <>Crear catálogo <ArrowRight className="size-4" aria-hidden="true" /></>}
           </button>

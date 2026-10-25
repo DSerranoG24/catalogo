@@ -55,7 +55,12 @@ async function run() {
   for (const path of ["/c/missing", "/c/archived", "/c/inactive", "/c/demo/producto/missing"]) {
     assert.equal((await fetch(base + path)).status, 404, path);
   }
-  for (const path of ["/", "/login", "/dashboard/catalogos/nuevo", "/c/demo/carrito"]) {
+  const landing = await (await fetch(base + "/")).text();
+  assert.match(landing.split("</head>")[0], /name="robots" content="index, follow"/);
+  const landingCanonical = landing.split("</head>")[0].match(/<link rel="canonical" href="([^"]+)"/);
+  assert.ok(landingCanonical);
+  assert.equal(new URL(landingCanonical[1]).href, "https://catalogo-pink.vercel.app/");
+  for (const path of ["/login", "/dashboard", "/dashboard/catalogos/nuevo", "/c/demo/carrito"]) {
     assert.match(await (await fetch(base + path)).text(), /name="robots" content="noindex, nofollow"/, path);
   }
   for (const id of ["temporary", "invalid", "slow"]) {

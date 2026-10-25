@@ -38,7 +38,7 @@ export default function LoginPage() {
       );
 
       saveSession(session);
-      router.replace("/");
+      router.replace("/dashboard");
       router.refresh();
     } catch (requestError) {
       setError(
@@ -60,7 +60,7 @@ export default function LoginPage() {
         body: JSON.stringify({ idToken: credential }),
       });
       saveSession(session);
-      router.replace("/");
+      router.replace("/dashboard");
       router.refresh();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "No se pudo iniciar sesión con Google.");
