@@ -1,5 +1,8 @@
 import { Router } from "express";
 import { authenticate } from "../middlewares/auth.middleware";
+import { makeProductListingRouter } from "./product-list.routes";
+import { makeProductListingService } from "../services/product-list.service";
+import { createProductImageSignedUrl } from "../services/storage.service";
 import {
   createProductController,
   getProductsController,
@@ -11,6 +14,7 @@ import {
 const router = Router();
 
 router.use(authenticate);
+router.use("/catalog/:catalogId", makeProductListingRouter(makeProductListingService(createProductImageSignedUrl)));
 
 router.post("/catalog/:catalogId", createProductController);
 router.get("/catalog/:catalogId", getProductsController);

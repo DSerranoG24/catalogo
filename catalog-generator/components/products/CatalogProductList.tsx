@@ -2,11 +2,19 @@
 
 import Image from "next/image";
 import type { RefObject } from "react";
-import { Product } from "@/lib/api";
+import { Category, Product, ProductPage } from "@/lib/api";
+import { productFiltersActive, type ProductListQuery } from "@/lib/product-list-query";
+import ProductListControls from "./ProductListControls";
+import ProductListPagination from "./ProductListPagination";
 import { getDiscountPercent, getSellerPromotionStatus } from "@/lib/product-pricing";
 
 export default function CatalogProductList({
-  products,
+  result,
+  categories,
+  query,
+  onQueryChange,
+  error,
+  onRetry,
   loading,
   onEdit,
   onDelete,
@@ -16,7 +24,12 @@ export default function CatalogProductList({
   mutationDisabled,
   importButtonRef,
 }: {
-  products: Product[];
+  result: ProductPage;
+  categories: Category[];
+  query: ProductListQuery;
+  onQueryChange: (patch: Partial<ProductListQuery>, replace?: boolean) => void;
+  error: string;
+  onRetry: () => void;
   loading: boolean;
   onEdit: (product: Product) => void;
   onDelete: (product: Product) => void;
@@ -26,19 +39,24 @@ export default function CatalogProductList({
   mutationDisabled: boolean;
   importButtonRef: RefObject<HTMLButtonElement | null>;
 }) {
+  const { products, totalProducts, totalFiltered } = result;
+  const filtered = productFiltersActive(query);
+  const clearFilters = () => onQueryChange({ q: "", category: "all", status: "all", stock: "all" });
   return (
-    <section>
-      <div className="flex items-end justify-between rounded-2xl border border-[#e2e8e0] bg-white px-5 py-4 shadow-[0_14px_36px_-34px_rgba(36,63,47,0.5)]">
+    <section className="min-w-0" aria-busy={loading}>
+      <div className="flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-[#e2e8e0] bg-white px-5 py-4 shadow-[0_14px_36px_-34px_rgba(36,63,47,0.5)]">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--brand-coral-text)]">Inventario</p>
           <h2 className="mt-1 text-lg font-semibold tracking-tight text-[#202b27]">Productos</h2>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-3"><span className="text-xs tabular-nums text-[#52655a]">{products.length} en total</span><button ref={importButtonRef} type="button" onClick={onImport} disabled={importDisabled} aria-expanded={importOpen} aria-controls="product-import-panel" className="min-h-11 rounded-lg bg-[var(--brand-emerald)] px-3 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-emerald-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)] disabled:cursor-not-allowed disabled:opacity-50">Importar Excel</button></div>
+        <div className="flex flex-wrap items-center justify-end gap-3"><span className="text-xs tabular-nums text-[#52655a]">{totalProducts} en total{filtered && !loading && !error ? ` · ${totalFiltered} coinciden` : ""}</span><button ref={importButtonRef} type="button" onClick={onImport} disabled={importDisabled} aria-expanded={importOpen} aria-controls="product-import-panel" className="min-h-11 rounded-lg bg-[var(--brand-emerald)] px-3 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-emerald-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)] disabled:cursor-not-allowed disabled:opacity-50">Importar Excel</button></div>
       </div>
-      {loading ? <div role="status" aria-label="Cargando productos" className="mt-4 grid grid-cols-2 gap-3 animate-pulse xl:grid-cols-3">{[0, 1, 2, 3, 4, 5].map((item) => <div key={item} className="overflow-hidden rounded-2xl border border-[#e2e8e0] bg-white"><div className="aspect-square bg-[#e8eee5]" /><div className="space-y-2 p-3"><div className="h-3 w-3/4 rounded-full bg-[#e8eee5]" /><div className="h-3 w-1/2 rounded-full bg-[#f0f3ee]" /><div className="h-3 w-1/3 rounded-full bg-[#f0f3ee]" /></div></div>)}</div> : products.length === 0 ? (
+      <ProductListControls query={query} categories={categories} disabled={mutationDisabled} onChange={onQueryChange} />
+      {error && <div role="alert" className="mt-4 rounded-xl bg-[#fff4ef] p-4 text-sm text-[#a5432a]"><p>{error}</p><button type="button" onClick={onRetry} className="mt-2 min-h-11 rounded-lg px-3 font-semibold focus-visible:outline-2">Reintentar</button></div>}
+      {loading ? <div role="status" aria-label="Cargando productos" className="mt-4 grid grid-cols-2 gap-3 animate-pulse xl:grid-cols-3">{[0, 1, 2, 3, 4, 5].map((item) => <div key={item} className="overflow-hidden rounded-2xl border border-[#e2e8e0] bg-white"><div className="aspect-square bg-[#e8eee5]" /><div className="space-y-2 p-3"><div className="h-3 w-3/4 rounded-full bg-[#e8eee5]" /><div className="h-3 w-1/2 rounded-full bg-[#f0f3ee]" /><div className="h-3 w-1/3 rounded-full bg-[#f0f3ee]" /></div></div>)}</div> : error ? null : products.length === 0 ? (
         <div className="mt-4 rounded-2xl border border-dashed border-[#cbd7cc] bg-white/70 px-5 py-10 text-center">
-          <h3 className="font-semibold text-[#202b27]">Aún no hay productos</h3>
-          <p className="mt-1 text-sm text-[#68756e]">Completa el formulario para añadir el primero.</p>
+          <h3 className="font-semibold text-[#202b27]">{totalProducts === 0 ? "Aún no hay productos" : "No hay productos que coincidan"}</h3>
+          <p className="mt-1 text-sm text-[#68756e]">{totalProducts === 0 ? "Completa el formulario para añadir el primero." : "Prueba otra búsqueda o limpia los filtros."}</p>{totalProducts > 0 && <button type="button" disabled={mutationDisabled} onClick={clearFilters} className="mt-3 min-h-11 rounded-lg px-3 font-semibold text-[var(--brand-emerald)] focus-visible:outline-2">Limpiar filtros</button>}
         </div>
       ) : (
         <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-3">
@@ -66,6 +84,7 @@ export default function CatalogProductList({
           ))}
         </div>
       )}
+      {!error && <ProductListPagination result={result} disabled={loading || mutationDisabled} onPageChange={page => onQueryChange({ page })} />}
     </section>
   );
 }

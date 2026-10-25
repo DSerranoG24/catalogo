@@ -53,7 +53,7 @@ const pending = new Map(); let sequence = 0;
 function command(method, params = {}) {
   const id = ++sequence;
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { pending.delete(id); reject(new Error("CDP_TIMEOUT")); }, 5000);
+    const timer = setTimeout(() => { pending.delete(id); reject(new Error(`CDP_TIMEOUT: ${method}`)); }, 5000);
     pending.set(id, { resolve: value => { clearTimeout(timer); resolve(value); }, reject: error => { clearTimeout(timer); reject(error); } });
     socket.send(JSON.stringify({ id, method, params }));
   });
@@ -64,6 +64,9 @@ async function evaluate(expression) {
   return result.result.value;
 }
 const click = label => evaluate(`(()=>{const button=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(label)});if(!button||button.disabled)return false;button.click();return true})()`);
+const input = (selector, value) => evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}))})()`);
+const selectControl = (label, value) => evaluate(`(()=>{const e=[...document.querySelectorAll('section[aria-busy] label')].find(e=>e.textContent.startsWith(${JSON.stringify(label)}))?.querySelector('select');if(!e)throw Error('SELECT_NOT_FOUND');e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+const rangeIs = text => evaluate(`[...document.querySelectorAll('nav[aria-label="Paginación de productos del panel"] p')].some(e=>e.textContent===${JSON.stringify(text)})`);
 const counts = () => evaluate(`Object.fromEntries([...document.querySelectorAll('#product-import-panel dl>div')].map(e=>[e.querySelector('dt').textContent,Number(e.querySelector('dd').textContent)]))`);
 const status = () => evaluate(`document.querySelector('#product-import-panel [role="status"]')?.textContent||''`);
 const selectionLayout = () => evaluate(`(()=>{const label=document.querySelector('label[for="product-import-file"]'),state=document.getElementById('product-import-file-name')||document.querySelector('#product-import-panel [role="status"]');const rect=e=>{const r=e.getBoundingClientRect();return {left:r.left,top:r.top,width:r.width,height:r.height,centerY:r.top+r.height/2}};return {selector:rect(label),state:rect(state),text:state.textContent}})()`);
@@ -92,12 +95,45 @@ try {
       if (req.url === `/api/catalogs/${catalogId}`) return reply({ catalog });
       if (req.url === `/api/categories/catalog/${catalogId}`) return reply({ categories: categoryPresent ? [category] : [] });
       if (req.url === `/api/products/catalog/${catalogId}`) return reply({ products: [...products.values()] });
+      const url = new URL(req.url, "https://localhost");
+      if (url.pathname === `/api/products/catalog/${catalogId}/list`) {
+        const params = url.searchParams, q = (params.get("q") ?? "").toLowerCase();
+        let rows = [...products.values()].filter(p => (!q || [p.name, p.sku, p.brand, p.model].some(f => f?.toLowerCase().includes(q)))
+          && (!params.has("category") || (params.get("category") === "none" ? p.categoryId === null : p.categoryId === params.get("category")))
+          && (!params.has("status") || p.active === (params.get("status") === "active"))
+          && (!params.has("stock") || (params.get("stock") === "in" ? p.stock > 0 : p.stock === 0)));
+        const sort = params.get("sort") ?? "createdAt", direction = params.get("order") === "asc" ? 1 : -1;
+        rows.sort((a, b) => {
+          if (sort === "category" && Boolean(a.category) !== Boolean(b.category)) return a.category ? -1 : 1;
+          const left = sort === "category" ? a.category?.name ?? "" : a[sort] ?? 0;
+          const right = sort === "category" ? b.category?.name ?? "" : b[sort] ?? 0;
+          const comparison = typeof left === "number" ? left - right : String(left).localeCompare(String(right));
+          return comparison * direction || a.id.localeCompare(b.id);
+        });
+        const totalFiltered = rows.length, pageSize = Number(params.get("pageSize") ?? 24);
+        const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize)), page = Math.min(Number(params.get("page") ?? 1), totalPages);
+        if (q === "producto") await wait(700);
+        return reply({ products: rows.slice((page - 1) * pageSize, page * pageSize), page, pageSize, totalProducts: products.size, totalFiltered, totalPages });
+      }
+      if (url.pathname === `/api/products/catalog/${catalogId}/suggestions`) {
+        const q = (url.searchParams.get("q") ?? "").toLowerCase();
+        const scored = [...products.values()].map(p => {
+          const fields = [p.name, p.sku, p.brand, p.model].filter(Boolean).map(f => f.toLowerCase());
+          return { p, score: p.sku?.toLowerCase() === q ? 0 : p.name.toLowerCase() === q ? 1 : fields.some(f => f.startsWith(q)) ? 2 : fields.some(f => f.includes(q)) ? 3 : 99 };
+        }).filter(p => p.score < 99).sort((a, b) => a.score - b.score || a.p.name.localeCompare(b.p.name) || a.p.id.localeCompare(b.p.id));
+        if (q === "producto") await wait(700);
+        return reply({ products: scored.slice(0, 5).map(item => item.p) });
+      }
       if (req.url.startsWith("/api/product-images/product/")) return reply({ images: [] });
     }
     if (req.method === "DELETE" && req.url === `/api/categories/${categoryId}`) {
       categoryDeletes++;
       if (categoryDeleteFails) return reply({ message: "No se pudo eliminar la categoría" }, 500);
       categoryPresent = false;
+      return reply({ success: true });
+    }
+    if (req.method === "DELETE" && req.url.startsWith("/api/products/product-")) {
+      for (const [sku, p] of products) if (req.url === `/api/products/${p.id}`) products.delete(sku);
       return reply({ success: true });
     }
     if (req.method !== "POST" || !req.url.startsWith(`/api/products/catalog/${catalogId}/import/`)) return reply({ success: false }, 404);
@@ -179,7 +215,7 @@ try {
   assert.ok(headingFonts.fonts.some(font => font.isCustomFont && /Inter/i.test(font.familyName) && font.glyphCount > 0), "Inter is actually used to render heading glyphs");
   assert.equal(await evaluate(`document.title`), "Vitrinaya | Panel de catálogos");
   assert.ok(await evaluate(`(async()=>{const icons=[...document.querySelectorAll('link[rel="icon"]')];if(icons.length!==1||!icons[0].href.includes('/icon.svg')||document.documentElement.outerHTML.includes('/favicon.ico'))return false;const response=await fetch(icons[0].href);return response.ok&&response.headers.get('content-type')?.includes('image/svg+xml')})()`), "Single SVG favicon link resolves successfully with no ICO reference");
-  assert.ok(await evaluate(`[...document.querySelectorAll('a[href="/"]')].every(link=>link.querySelector('[role="img"][aria-label="Vitrinaya"]')&&link.textContent.includes('vitrinaya')&&!link.textContent.includes('Catalogo'))`));
+  assert.ok(await evaluate(`[...document.querySelectorAll('a[aria-label="Vitrinaya — Ir al inicio"]')].length===2&&[...document.querySelectorAll('a[aria-label="Vitrinaya — Ir al inicio"]')].every(link=>link.getAttribute('href')==='/'&&link.querySelector('[role="img"][aria-label="Vitrinaya"]')&&link.textContent.includes('vitrinaya')&&!link.textContent.includes('Catalogo'))`));
   await evaluate(`(()=>{const p=document.createElement('p');p.id='inter-character-probe';p.textContent='á é í ó ú ñ ü ¿ ¡ y Á É Í Ó Ú Ñ Ü';p.style.fontFamily='var(--font-app-sans)';document.body.append(p)})()`);
   await evaluate(`(async()=>{const p=document.getElementById('inter-character-probe');await document.fonts.load('16px '+getComputedStyle(p).fontFamily,p.textContent);await document.fonts.ready;await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));return true})()`);
   const characterDocument = await command("DOM.getDocument");
@@ -197,6 +233,39 @@ try {
   }
   await command("Emulation.clearDeviceMetricsOverride");
   summary.scenarios.push("login labels and button bounds at 320, 390, 1024 and 1440px; Google network blocked");
+  step("login-return-to-landing");
+  for (const width of [320, 390, 1024, 1440]) {
+    await command("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 600 });
+    for (const mode of ["login", "register"]) for (const method of ["keyboard", "click"]) {
+      await command("Page.navigate", { url: "http://localhost:4328/login" });
+      await poll(() => evaluate(`Boolean(document.querySelector('button[type="submit"]'))`));
+      if (mode === "register") {
+        await evaluate(`[...document.querySelectorAll('button[type="button"]')].find(b=>b.textContent.trim()==='Crear cuenta').click()`);
+        await poll(() => evaluate(`document.querySelector('h1').textContent==='Crea tu cuenta.'`));
+      }
+      assert.ok(await evaluate(`(()=>{const link=[...document.querySelectorAll('a')].find(a=>a.textContent.trim()==='Volver al inicio');if(!link)return false;const r=link.getBoundingClientRect();return link.getAttribute('href')==='/'&&r.height>=44&&r.width>0&&r.left>=0&&r.right<=innerWidth&&document.documentElement.scrollWidth<=innerWidth+1})()`), `${mode} return link fits ${width}px`);
+      if (method === "keyboard") {
+        await evaluate(`[...document.querySelectorAll('a[aria-label="Vitrinaya — Ir al inicio"]')].find(a=>a.getBoundingClientRect().width>0).focus()`);
+        await command("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+        await command("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+        assert.ok(await evaluate(`document.activeElement.textContent.trim()==='Volver al inicio'&&getComputedStyle(document.activeElement).outlineStyle==='solid'&&parseFloat(getComputedStyle(document.activeElement).outlineWidth)>=2`), `Return link has keyboard focus in ${mode} at ${width}px`);
+        await command("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, modifiers: 8 });
+        await command("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, modifiers: 8 });
+        assert.ok(await evaluate(`document.activeElement.getAttribute('aria-label')==='Vitrinaya — Ir al inicio'&&getComputedStyle(document.activeElement).cursor==='pointer'&&getComputedStyle(document.activeElement).outlineStyle==='solid'&&parseFloat(getComputedStyle(document.activeElement).outlineWidth)>=2`), `Visible logo has keyboard focus in ${mode} at ${width}px`);
+        await command("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+        await command("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+        await command("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" });
+        await command("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+      } else {
+        const point = await evaluate(`(()=>{const a=[...document.querySelectorAll('a')].find(a=>a.textContent.trim()==='Volver al inicio');a.scrollIntoView({block:'center'});const r=a.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()`);
+        await command("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 1 });
+        await command("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1 });
+      }
+      await poll(() => evaluate(`location.pathname==='/'&&document.querySelector('h1')?.textContent==='Tu vitrina digital, lista para compartir.'`));
+    }
+  }
+  await command("Emulation.clearDeviceMetricsOverride");
+  summary.scenarios.push("login and register: explicit home link navigates by actual pointer click and Tab/Enter at 320/390/1024/1440px; visible logo and return link have keyboard focus outlines, correct href and no overflow");
   await command("Page.navigate", { url: "http://localhost:4328/" });
   await poll(() => evaluate(`document.querySelector('h1')?.textContent==='Tu vitrina digital, lista para compartir.'`));
   assert.ok(await evaluate(`localStorage.getItem('catalogo-session')!==null&&location.pathname==='/'`));
@@ -213,6 +282,96 @@ try {
   }
   await command("Emulation.clearDeviceMetricsOverride");
   summary.scenarios.push("local Inter Spanish uppercase/lowercase, opening punctuation and y; login/dashboard logos fit 320/390/1024/1440px with correct themes");
+  step("scaled-product-list");
+  const listReadsStart = apiReads.length;
+  products.clear();
+  for (let i = 1; i <= 57; i++) {
+    const sku = `SCALE-${String(i).padStart(3, "0")}`;
+    products.set(sku, { ...product(`Producto ${String(i).padStart(3, "0")}`, sku), price: i, stock: i % 2, active: i % 2 === 0,
+      brand: i === 57 ? "Fuera de página" : null, categoryId: i % 3 === 0 ? categoryId : null, category: i % 3 === 0 ? category : null });
+  }
+  const workspaceUrl = `http://localhost:4328/dashboard/catalogos/${catalogId}`;
+  await command("Page.navigate", { url: workspaceUrl });
+  await poll(() => rangeIs("Mostrando 1–24 de 57"));
+  assert.equal(await evaluate(`document.querySelectorAll('section[aria-busy] article').length`), 24);
+  await input('input[placeholder="Ej. Lámpara de mesa"]', "Borrador al paginar");
+  await evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent==='Siguiente').focus()`);
+  await command("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" });
+  await command("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+  await poll(() => rangeIs("Mostrando 25–48 de 57"));
+  assert.equal(await evaluate(`new URLSearchParams(location.search).get('page')`), "2");
+  assert.equal(await evaluate(`document.querySelector('input[placeholder="Ej. Lámpara de mesa"]').value`), "Borrador al paginar");
+  await input("#product-source-search", "producto");
+  await poll(() => apiReads.some(url => url.includes("/suggestions?q=producto")));
+  await input("#product-source-search", "SCALE-057");
+  await poll(() => evaluate(`[...document.querySelectorAll('button')].some(b=>b.textContent.includes('Producto 057')&&b.textContent.includes('Usar datos'))`));
+  await wait(800);
+  assert.equal(await evaluate(`document.querySelectorAll('button').length>0&&[...document.querySelectorAll('button')].filter(b=>b.textContent.includes('Usar datos')).length`), 1);
+  await evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Usar datos')).click()`);
+  assert.equal(await evaluate(`document.querySelector('input[placeholder="Ej. Lámpara de mesa"]').value`), "Producto 057");
+  await input('input[placeholder="Ej. Lámpara de mesa"]', "Borrador al paginar");
+  step("product-list-page-sizes");
+  await selectControl("Productos por página", "48");
+  await poll(() => rangeIs("Mostrando 1–48 de 57"));
+  await selectControl("Productos por página", "96");
+  await poll(() => rangeIs("Mostrando 1–57 de 57"));
+  await selectControl("Productos por página", "24");
+  step("product-list-filters");
+  await selectControl("Estado", "inactive");
+  await poll(() => rangeIs("Mostrando 1–24 de 29"));
+  await selectControl("Stock informativo", "out");
+  await poll(() => rangeIs("Mostrando 0–0 de 0"));
+  assert.ok(await evaluate(`document.body.textContent.includes('No hay productos que coincidan')&&document.body.textContent.includes('57 en total · 0 coinciden')`));
+  await click("Limpiar filtros");
+  await poll(() => rangeIs("Mostrando 1–24 de 57"));
+  await selectControl("Categoría", "none");
+  step("product-list-category-order");
+  await poll(() => rangeIs("Mostrando 1–24 de 38"));
+  await selectControl("Ordenar por", "price");
+  await selectControl("Dirección", "asc");
+  await poll(() => evaluate(`document.querySelector('section[aria-busy] article p')?.textContent==='Producto 001'`));
+  for (const width of [320, 390, 1024, 1440]) {
+    await command("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 600 });
+    assert.ok(await evaluate(`document.documentElement.scrollWidth<=innerWidth+1`), `Private product controls fit ${width}px`);
+  }
+  await command("Emulation.clearDeviceMetricsOverride");
+  await command("Page.reload");
+  step("product-list-history");
+  await poll(() => rangeIs("Mostrando 1–24 de 38"));
+  assert.equal(await evaluate(`new URLSearchParams(location.search).get('sort')`), "price");
+  await selectControl("Estado", "active");
+  await poll(() => rangeIs("Mostrando 1–19 de 19"));
+  await evaluate(`history.back()`);
+  await poll(() => rangeIs("Mostrando 1–24 de 38"));
+  const qReadsStart = apiReads.length;
+  step("product-list-search");
+  await input("#product-list-search", "Fuera");
+  await input("#product-list-search", "Fuera de");
+  await input("#product-list-search", "Fuera de página");
+  await poll(() => rangeIs("Mostrando 0–0 de 0"));
+  assert.equal(apiReads.slice(qReadsStart).filter(url => url.includes("/list?")).length, 1, "Typing is debounced into one listing request");
+  const staleReadsStart = apiReads.length;
+  await input("#product-list-search", "Producto");
+  await poll(() => apiReads.slice(staleReadsStart).some(url => new URL(url, "https://localhost").searchParams.get("q") === "Producto"));
+  await input("#product-list-search", "SCALE-055");
+  await poll(() => rangeIs("Mostrando 1–1 de 1"));
+  await wait(800);
+  assert.equal(await evaluate(`document.querySelector('section[aria-busy] article p')?.textContent`), "Producto 055", "Late listing response cannot overwrite newer results");
+  await click("Limpiar filtros");
+  await poll(() => rangeIs("Mostrando 1–24 de 57"));
+  assert.ok(!apiReads.slice(listReadsStart).some(url => url.includes("/product-images/product/") || url === `/api/products/catalog/${catalogId}`), "No legacy full download or per-product image requests");
+  for (let i = 50; i <= 57; i++) products.delete(`SCALE-${String(i).padStart(3, "0")}`);
+  step("product-list-last-page-delete");
+  await command("Page.navigate", { url: `${workspaceUrl}?page=3` });
+  await poll(() => rangeIs("Mostrando 49–49 de 49"));
+  await evaluate(`window.confirm=()=>true`);
+  await click("Eliminar");
+  await poll(() => rangeIs("Mostrando 25–48 de 48"));
+  assert.equal(await evaluate(`new URLSearchParams(location.search).get('page')`), "2");
+  products.clear(); products.set("EXISTENTE", product("Existente", "EXISTENTE"));
+  await command("Page.navigate", { url: workspaceUrl });
+  await poll(() => rangeIs("Mostrando 1–1 de 1"));
+  summary.scenarios.push("57 products: server page sizes/counts, keyboard paging, draft preservation, remote editor match outside page and stale response discarded, debounce, combined filters, empty reset, URL refresh/back, four widths, deletion clamps last page, no per-product image HTTP calls (simulated API)");
   step("category-delete");
   const productCountBeforeDelete = products.size;
   await evaluate(`window.confirm=()=>false`);

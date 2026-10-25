@@ -6,7 +6,7 @@ import { FormEvent, useState } from "react";
 import { apiRequest, saveSession, Session } from "@/lib/api";
 import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
 import BrandLogo from "@/components/brand/BrandLogo";
-import { ArrowRight, Check, LockKeyhole, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, LockKeyhole, Sparkles } from "lucide-react";
 
 type AuthMode = "login" | "register";
 
@@ -75,7 +75,7 @@ export default function LoginPage() {
       <div className="relative w-full max-w-5xl overflow-hidden rounded-[2rem] border border-[#e3e9e1] bg-white shadow-[0_35px_100px_-55px_rgba(25,57,42,0.45)] lg:grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <aside className="relative hidden min-h-[650px] flex-col justify-between overflow-hidden bg-[var(--brand-forest)] p-10 text-white lg:flex xl:p-12">
           <div className="pointer-events-none absolute -right-32 top-12 size-96 rounded-full border border-white/10" /><div className="pointer-events-none absolute -right-16 top-28 size-64 rounded-full border border-white/10" /><div className="pointer-events-none absolute bottom-24 left-16 size-36 rounded-full bg-[#b8dec8]/10 blur-2xl" />
-          <Link href="/" className="relative inline-flex items-center gap-3"><BrandLogo variant="horizontal" theme="oscuro" iconSize={44} nameRatio={18 / 44} gapSize={12} /></Link>
+          <Link href="/" aria-label="Vitrinaya — Ir al inicio" className="relative inline-flex cursor-pointer items-center gap-3 rounded-lg transition hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"><BrandLogo variant="horizontal" theme="oscuro" iconSize={44} nameRatio={18 / 44} gapSize={12} /></Link>
           <div className="relative"><span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[#c3e5d4]"><Sparkles className="size-3.5" /> Tu negocio, en línea</span><h2 className="mt-5 max-w-sm text-4xl font-semibold leading-tight tracking-tight xl:text-5xl">Una tienda digital que se siente <span className="font-serif font-normal italic text-[#b8dec8]">tuya.</span></h2><p className="mt-4 max-w-sm text-sm leading-6 text-white/70">Organiza tus productos, personaliza tu catálogo y compártelo con tus clientes.</p>
             <div className="mt-8 space-y-3"><p className="flex items-center gap-2.5 text-sm text-white/85"><Check className="size-4 text-[#b8dec8]" /> Diseños para cada tipo de negocio</p><p className="flex items-center gap-2.5 text-sm text-white/85"><Check className="size-4 text-[#b8dec8]" /> Pedidos organizados en un solo lugar</p><p className="flex items-center gap-2.5 text-sm text-white/85"><Check className="size-4 text-[#b8dec8]" /> Comparte tu enlace cuando quieras</p></div>
           </div>
@@ -83,7 +83,13 @@ export default function LoginPage() {
         </aside>
 
         <section className="min-w-0 p-6 sm:p-10 lg:px-12 lg:py-12">
-          <Link href="/" className="mb-8 inline-flex items-center gap-2 text-sm font-semibold text-[var(--brand-emerald)] lg:hidden"><BrandLogo variant="horizontal" theme="claro" iconSize={36} nameRatio={14 / 36} gapSize={8} /></Link>
+          <Link href="/" aria-label="Vitrinaya — Ir al inicio" className="mb-8 inline-flex cursor-pointer items-center gap-2 rounded-lg text-sm font-semibold text-[var(--brand-emerald)] transition hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--brand-emerald)] lg:hidden"><BrandLogo variant="horizontal" theme="claro" iconSize={36} nameRatio={14 / 36} gapSize={8} /></Link>
+          <div className="mb-4">
+            <Link href="/" className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg text-sm font-semibold text-[var(--brand-emerald)] underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--brand-emerald)]">
+              <ArrowLeft className="size-4 shrink-0" aria-hidden="true" />
+              Volver al inicio
+            </Link>
+          </div>
           <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--brand-coral-text)]">
             Tu espacio de trabajo
           </p>

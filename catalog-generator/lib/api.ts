@@ -81,6 +81,17 @@ export type Product = {
   images: ProductImage[];
 };
 
+export type ProductPage = {
+  products: Product[];
+  page: number;
+  pageSize: number;
+  totalProducts: number;
+  totalFiltered: number;
+  totalPages: number;
+};
+
+export type ProductSuggestion = Pick<Product, "id" | "name" | "sku" | "brand" | "model" | "categoryId" | "description">;
+
 export type PublicProduct = {
   id: string;
   name: string;

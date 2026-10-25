@@ -11,7 +11,7 @@ import {
   clearSession,
   getSession,
   Product,
-  ProductImage,
+  ProductPage,
   slugify,
 } from "@/lib/api";
 import CatalogSettings from "@/components/catalogs/CatalogSettings";
@@ -20,6 +20,8 @@ import OrdersPanel from "@/components/catalogs/OrdersPanel";
 import CatalogCategories from "@/components/catalogs/CatalogCategories";
 import CatalogProductEditor, { ProductFormState } from "@/components/products/CatalogProductEditor";
 import CatalogProductList from "@/components/products/CatalogProductList";
+import { useProductListQuery } from "@/lib/use-product-list-query";
+import { productQueryString } from "@/lib/product-list-query";
 import ProductImportPanel from "@/components/products/ProductImportPanel";
 import { ProductImportFlow, importBusy } from "@/lib/product-import-flow";
 import { requestImportBatch } from "@/lib/product-import-api";
@@ -46,7 +48,11 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
   const router = useRouter();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [productPage, setProductPage] = useState<ProductPage>({ products: [], page: 1, pageSize: 24, totalProducts: 0, totalFiltered: 0, totalPages: 1 });
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsError, setProductsError] = useState("");
+  const { query, update: updateQuery } = useProductListQuery();
+  const listQuery = productQueryString(query);
   const [loading, setLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
   const [error, setError] = useState("");
@@ -83,25 +89,14 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
       setLoading(true);
       setError("");
       try {
-        const [catalogResult, categoryResult, productResult] = await Promise.all([
+        const [catalogResult, categoryResult] = await Promise.all([
           apiRequest<{ catalog: Catalog }>(`/catalogs/${catalogId}`),
           apiRequest<{ categories: Category[] }>(`/categories/catalog/${catalogId}`),
-          apiRequest<{ products: Product[] }>(`/products/catalog/${catalogId}`),
         ]);
-        const productsWithSignedImages = await Promise.all(
-          productResult.products.map(async (product) => {
-            const imageResult = await apiRequest<{ images: ProductImage[] }>(
-              `/product-images/product/${product.id}`,
-              {}
-            );
-            return { ...product, images: imageResult.images };
-          })
-        );
 
         if (!active) return;
         setCatalog(catalogResult.catalog);
         setCategories(categoryResult.categories);
-        setProducts(productsWithSignedImages);
       } catch (requestError) {
         if (!active) return;
         if (requestError instanceof ApiError && requestError.status === 401) {
@@ -121,6 +116,34 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
       active = false;
     };
   }, [catalogId, reloadKey, router, importFlow]);
+
+  const loadedCatalogId = catalog?.id;
+  useEffect(() => {
+    if (loadedCatalogId !== catalogId) return;
+    const controller = new AbortController();
+    async function loadProducts() {
+      setProductsLoading(true);
+      setProductsError("");
+      try {
+        const result = await apiRequest<ProductPage>(`/products/catalog/${catalogId}/list?${listQuery}`, { signal: controller.signal });
+        if (controller.signal.aborted) return;
+        setProductPage(result);
+        const requestedPage = Number(new URLSearchParams(listQuery).get("page") ?? 1);
+        if (result.page !== requestedPage) updateQuery({ page: result.page }, true);
+      } catch (requestError) {
+        if (controller.signal.aborted) return;
+        if (requestError instanceof ApiError && requestError.status === 401) {
+          if (importFlow.getSnapshot().open) { importFlow.sessionExpired(); return; }
+          clearSession(); router.replace("/login"); return;
+        }
+        setProductsError(requestError instanceof Error ? requestError.message : "No se pudieron cargar los productos.");
+      } finally {
+        if (!controller.signal.aborted) setProductsLoading(false);
+      }
+    }
+    void loadProducts();
+    return () => controller.abort();
+  }, [catalogId, loadedCatalogId, listQuery, reloadKey, importFlow, router, updateQuery]);
 
   function resetProductForm() {
     setForm(emptyProduct);
@@ -247,7 +270,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
     try {
       await apiRequest(`/products/${product.id}`, { method: "DELETE" });
       if (editingProduct?.id === product.id) resetProductForm();
-      setProducts((current) => current.filter((item) => item.id !== product.id));
+      setReloadKey(key => key + 1);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "No se pudo eliminar el producto.");
     }
@@ -273,7 +296,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
         <div className="pointer-events-none absolute -right-16 -top-24 size-64 rounded-full border border-[#eaf0e8]" /><div className="pointer-events-none absolute -right-3 -top-12 size-40 rounded-full border border-[#eaf0e8]" />
         <div className="relative flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
           <div className="min-w-0"><p className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-emerald-soft)] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#52725e]"><Store className="size-3.5" aria-hidden="true" /> Panel de tienda <span className="text-[#a5b5a7]">·</span> /{catalog.slug}</p><h1 className="mt-3 truncate text-3xl font-semibold tracking-tight text-[#202b27] sm:text-4xl">{catalog.name}</h1>{catalog.description && <p className="mt-2 max-w-2xl text-sm leading-6 text-[#68756e]">{catalog.description}</p>}</div>
-          <div className="flex items-center gap-3 self-start rounded-2xl border border-[#edf1ec] bg-[#fafbf9] px-4 py-3 sm:self-auto"><span className="grid size-9 place-items-center rounded-xl bg-white text-[#557a62]"><LayoutGrid className="size-4" aria-hidden="true" /></span><div><p className="text-lg font-semibold leading-none text-[#263b31]">{products.length}</p><p className="mt-1 text-[10px] uppercase tracking-[0.1em] text-[#849087]">{products.length === 1 ? "producto" : "productos"}</p></div></div>
+          <div className="flex items-center gap-3 self-start rounded-2xl border border-[#edf1ec] bg-[#fafbf9] px-4 py-3 sm:self-auto"><span className="grid size-9 place-items-center rounded-xl bg-white text-[#557a62]"><LayoutGrid className="size-4" aria-hidden="true" /></span><div><p className="text-lg font-semibold leading-none text-[#263b31]">{productPage.totalProducts}</p><p className="mt-1 text-[10px] uppercase tracking-[0.1em] text-[#849087]">{productPage.totalProducts === 1 ? "producto" : "productos"}</p></div></div>
         </div>
       </section>
 
@@ -299,7 +322,8 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
           <CatalogProductEditor
             value={form}
             categories={categories}
-            products={products}
+            catalogId={catalogId}
+            suggestionsDisabled={importActive}
             editing={Boolean(editingProduct)}
             imageFile={imageFile}
             saving={savingProduct}
@@ -318,11 +342,12 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
 
           <CatalogCategories catalogId={catalogId} categories={categories} onCreated={() => setReloadKey((key) => key + 1)} onDeleted={(categoryId) => {
             setForm(current => current.categoryId === categoryId ? { ...current, categoryId: "" } : current);
+            if (query.category === categoryId) updateQuery({ category: "all" });
             setReloadKey(key => key + 1);
           }} />
         </fieldset>
 
-        <CatalogProductList products={products} loading={loading} onEdit={editProduct} onDelete={removeProduct}
+        <CatalogProductList result={productPage} loading={productsLoading} error={productsError} onRetry={() => setReloadKey(key => key + 1)} categories={categories} query={query} onQueryChange={updateQuery} onEdit={editProduct} onDelete={removeProduct}
           importButtonRef={importButtonRef} importOpen={importState.open} importDisabled={Boolean(catalog.archivedAt) || savingProduct || importActive} mutationDisabled={importActive}
           onImport={() => { importFlow.open(); if (importState.open) document.getElementById("product-import-title")?.focus(); }} />
       </div>}

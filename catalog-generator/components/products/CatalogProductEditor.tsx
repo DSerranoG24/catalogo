@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
-import { Category, Product } from "@/lib/api";
+import { FormEvent, useEffect, useState } from "react";
+import { apiRequest, Category, ProductSuggestion } from "@/lib/api";
 
 export type ProductFormState = {
   name: string;
@@ -21,7 +21,8 @@ export type ProductFormState = {
 export default function CatalogProductEditor({
   value,
   categories,
-  products,
+  catalogId,
+  suggestionsDisabled,
   editing,
   imageFile,
   saving,
@@ -32,7 +33,8 @@ export default function CatalogProductEditor({
 }: {
   value: ProductFormState;
   categories: Category[];
-  products: Product[];
+  catalogId: string;
+  suggestionsDisabled: boolean;
   editing: boolean;
   imageFile: File | null;
   saving: boolean;
@@ -45,24 +47,24 @@ export default function CatalogProductEditor({
   const [barcodeQuery, setBarcodeQuery] = useState("");
   const [barcodeLoading, setBarcodeLoading] = useState(false);
   const [barcodeMessage, setBarcodeMessage] = useState("");
-  const matches = useMemo(() => {
-    const query = sourceQuery.trim().toLocaleLowerCase();
-    if (!query || query.length < 2) return [];
-    return products
-      .map((product) => {
-        const fields = [product.name, product.brand, product.model, product.sku].filter(Boolean).map((item) => item!.toLocaleLowerCase());
-        const exactCode = Boolean(product.sku && product.sku.toLocaleLowerCase() === query);
-        const exactName = product.name.toLocaleLowerCase() === query;
-        const score = exactCode ? 0 : exactName ? 1 : fields.some((field) => field.startsWith(query)) ? 2 : fields.some((field) => field.includes(query)) ? 3 : 99;
-        return { product, score };
-      })
-      .filter(({ score }) => score < 99)
-      .sort((a, b) => a.score - b.score || a.product.name.localeCompare(b.product.name))
-      .slice(0, 5)
-      .map(({ product }) => product);
-  }, [products, sourceQuery]);
+  const [suggestions, setSuggestions] = useState<{ query: string; products: ProductSuggestion[]; error: string }>({ query: "", products: [], error: "" });
+  const sourceTerm = sourceQuery.trim();
+  useEffect(() => {
+    if (sourceTerm.length < 2 || editing || suggestionsDisabled) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const result = await apiRequest<{ products: ProductSuggestion[] }>(`/products/catalog/${catalogId}/suggestions?q=${encodeURIComponent(sourceTerm)}`, { signal: controller.signal });
+        if (!controller.signal.aborted) setSuggestions({ query: sourceTerm, products: result.products, error: "" });
+      } catch (error) {
+        if (!controller.signal.aborted) setSuggestions({ query: sourceTerm, products: [], error: error instanceof Error ? error.message : "No se pudieron consultar las sugerencias." });
+      }
+    }, 300);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [catalogId, sourceTerm, editing, suggestionsDisabled]);
+  const matches = suggestions.query === sourceTerm ? suggestions.products : [];
 
-  function applyProduct(product: Product) {
+  function applyProduct(product: ProductSuggestion) {
     onChange("name", product.name);
     onChange("brand", product.brand ?? "");
     onChange("model", product.model ?? "");
@@ -121,9 +123,9 @@ export default function CatalogProductEditor({
         <div className="border-t border-[#dce8dc] pt-4">
         <label htmlFor="product-source-search" className="block text-sm font-semibold text-[#37443d]">Completar desde un producto del catálogo</label>
         <p className="mt-1 text-xs leading-5 text-[#718076]">Busca por nombre, marca, modelo o código. Se copiarán solo los datos descriptivos.</p>
-        <input id="product-source-search" type="search" value={sourceQuery} onChange={(event) => setSourceQuery(event.target.value)} placeholder="Ej. audífonos, Acme o ABC-123" autoComplete="off" className="mt-3 min-h-10 w-full rounded-xl border border-[#d6dfd7] bg-white px-3.5 py-2 outline-none focus:border-[#5a886c] focus:ring-4 focus:ring-[#5a886c]/10" />
+        <input id="product-source-search" type="search" maxLength={150} value={sourceQuery} onChange={(event) => setSourceQuery(event.target.value)} placeholder="Ej. audífonos, Acme o ABC-123" autoComplete="off" className="mt-3 min-h-10 w-full rounded-xl border border-[#d6dfd7] bg-white px-3.5 py-2 outline-none focus:border-[#5a886c] focus:ring-4 focus:ring-[#5a886c]/10" />
         {sourceQuery.trim().length >= 2 && <div className="mt-2 space-y-1" aria-live="polite">
-          {matches.length ? matches.map((product) => <button key={product.id} type="button" onClick={() => applyProduct(product)} className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-[var(--brand-emerald-soft)]"><span className="min-w-0"><span className="block truncate font-medium text-[#263b31]">{product.name}</span><span className="block truncate text-xs text-[#718076]">{[product.brand, product.model, product.sku].filter(Boolean).join(" · ") || "Sin marca, modelo ni código"}</span></span><span className="shrink-0 text-xs font-semibold text-[var(--brand-emerald)]">Usar datos</span></button>) : <p className="px-3 py-2 text-xs text-[#718076]">No hay coincidencias en este catálogo.</p>}
+          {suggestions.query !== sourceTerm ? <p role="status" className="text-xs text-[#52655a]">Buscando productos…</p> : suggestions.error ? <p role="alert" className="text-xs text-[#a5432a]">{suggestions.error}</p> : matches.length ? matches.map((product) => <button key={product.id} type="button" onClick={() => applyProduct(product)} className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-[var(--brand-emerald-soft)]"><span className="min-w-0"><span className="block truncate font-medium text-[#263b31]">{product.name}</span><span className="block truncate text-xs text-[#718076]">{[product.brand, product.model, product.sku].filter(Boolean).join(" · ") || "Sin marca, modelo ni código"}</span></span><span className="shrink-0 text-xs font-semibold text-[var(--brand-emerald)]">Usar datos</span></button>) : <p className="px-3 py-2 text-xs text-[#718076]">No hay coincidencias en este catálogo.</p>}
         </div>}
         </div>
       </div>}

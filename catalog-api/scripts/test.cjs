@@ -3,6 +3,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const testFiles = [
+  "src/routes/product-list.routes.test.ts",
   "src/app.test.ts",
   "src/schemas/catalog.schema.test.ts",
   "src/schemas/order.schema.test.ts",
