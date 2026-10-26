@@ -1,0 +1,77 @@
+.landing {
+  --landing-entry-duration: calc(var(--duration-medium) * 2.2);
+  --landing-stagger: calc(var(--duration-short) * 2 / 3);
+  color: var(--text-primary);
+  background: radial-gradient(ellipse at 95% 8%, color-mix(in srgb, var(--color-accent) 7%, transparent), transparent 30%), var(--surface-base);
+}
+.heroEnter, .scrollReveal { opacity: 1; transform: none; }
+@keyframes enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .heroEnter { animation: enter var(--landing-entry-duration) ease-out 1 backwards; }
+  .heroTitle { animation-delay: 0ms; }
+  .heroSubtitle { animation-delay: var(--landing-stagger); }
+  .heroButtons { animation-delay: calc(var(--landing-stagger) * 2); }
+
+  @supports (animation-timeline: view()) and (animation-range: entry 0% entry 75%) {
+    .scrollReveal {
+      animation: enter linear 1 both;
+      animation-duration: auto;
+      animation-timeline: view();
+      animation-range: entry 0% entry 75%;
+    }
+    .featureGrid > .scrollReveal:nth-child(even) { animation-range: entry 8% entry 83%; }
+  }
+}
+.header { background: color-mix(in srgb, var(--surface-raised) 88%, var(--surface-base)); border-color: var(--border-subtle); }
+.header > div { padding-block: 1.5rem; }
+.hero { position: relative; padding-block: clamp(4rem, 8vw, 8rem); gap: 3.5rem; }
+.hero h1 { font-size: clamp(2.75rem, 5.7vw, 5rem); line-height: 1.06; letter-spacing: -0.055em; max-width: 11ch; }
+.hero h1 span { position: relative; color: var(--color-primary); }
+.hero h1 span::after { content: ""; display: block; width: 3.5rem; height: 0.35rem; border-radius: var(--radius-small); margin-top: 1.25rem; background: var(--color-accent); }
+.heroCopy { margin-top: 1.5rem; font-size: 1.0625rem; line-height: 1.85; max-width: 33rem; color: var(--text-secondary); }
+.cta { min-height: 3.25rem; border-radius: var(--radius-large); padding: 0.875rem 1.5rem; box-shadow: var(--elevation-low); transition: transform var(--duration-medium), box-shadow var(--duration-medium), background-color var(--duration-short); }
+.cta:hover { transform: translateY(-2px); box-shadow: var(--elevation-medium); }
+.cta svg { transition: transform var(--duration-medium); }
+.cta:hover svg { transform: translateX(3px); }
+.exampleButton { min-height: 3.25rem; border-radius: var(--radius-large); background: transparent; border-color: var(--border-strong); box-shadow: none; }
+.showcaseWrap { min-width: 0; position: relative; padding: 0.75rem; border-radius: 2.5rem; background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
+.showcase { border-radius: 2rem; border-color: var(--border-subtle); box-shadow: 0 28px 72px -32px color-mix(in srgb, var(--text-primary) 28%, transparent); }
+.showcase > div:first-child > span { background: color-mix(in srgb, var(--color-accent) 12%, var(--surface-raised)); color: var(--color-accent-text); }
+.showcase > div:nth-child(2) > div { border-color: var(--border-subtle); padding: 0.625rem; }
+.showcase > div:nth-child(2) > div:nth-child(2) > div { background: color-mix(in srgb, var(--color-accent) 9%, var(--surface-raised)); color: var(--color-accent-text); }
+.steps { padding-block: clamp(4rem, 7vw, 6rem); border: 0; background: var(--surface-raised); }
+.landing h2 { font-size: clamp(2rem, 3.5vw, 2.75rem); line-height: 1.15; letter-spacing: -0.04em; }
+.steps ol { gap: 1.25rem; margin-top: 2.75rem; }
+.steps li { padding: 1.75rem; border: 1px solid var(--border-subtle); border-radius: 1.5rem; background: var(--surface-base); }
+.steps li > span { background: var(--color-primary); color: var(--color-on-primary); width: 2.75rem; height: 2.75rem; }
+.steps li:nth-child(2) > span { background: color-mix(in srgb, var(--color-accent) 12%, var(--surface-raised)); color: var(--color-accent-text); }
+.steps li p, .features article p { color: var(--text-secondary); line-height: 1.85; }
+.features { padding-block: clamp(4.5rem, 8vw, 7rem); }
+.featureGrid { gap: 1.25rem; margin-top: 2.75rem; }
+.featureGrid > div { height: 100%; min-width: 0; }
+.features article { padding: clamp(1.5rem, 3vw, 2.25rem); height: 100%; border-color: var(--border-subtle); border-radius: 1.5rem; box-shadow: var(--elevation-low); transition: transform var(--duration-medium), box-shadow var(--duration-medium); }
+.features article:hover { transform: translateY(-4px); box-shadow: var(--elevation-medium); }
+.features article > svg { box-sizing: content-box; padding: 0.875rem; border-radius: var(--radius-large); background: var(--brand-emerald-soft); }
+.featureGrid > div:nth-child(even) article > svg { color: var(--color-accent-text); background: color-mix(in srgb, var(--color-accent) 10%, var(--surface-raised)); }
+.upcoming { position: relative; padding-block: clamp(4rem, 7vw, 6rem); background: radial-gradient(ellipse at 100% 0, color-mix(in srgb, var(--color-primary) 65%, transparent), transparent 65%), var(--brand-forest); }
+.upcoming h2 { max-width: 20ch; }
+.upcoming p { max-width: 40rem; line-height: 1.85; }
+.upcoming > div > p:first-child { display: inline-block; border: 1px solid color-mix(in srgb, var(--color-on-primary) 30%, transparent); border-radius: var(--radius-small); padding: 0.5rem 0.75rem; }
+.pricing { padding-block: clamp(4.5rem, 8vw, 7rem); }
+.pricing > div { border-radius: 2rem; padding: clamp(1.5rem, 5vw, 3.5rem); border-color: var(--border-subtle); box-shadow: var(--elevation-medium); }
+.pricing h2 { font-size: clamp(2.5rem, 4vw, 3.5rem); }
+.pricing ul { padding: 1.75rem; border-radius: 1.5rem; background: var(--surface-base); }
+.footer { padding-block: 3rem; background: var(--surface-raised); border-color: var(--border-subtle); }
+@media (max-width: 639px) {
+  .hero h1 { max-width: 12ch; }
+  .heroActions { flex-direction: column; }
+  .heroActions > a, .heroActions > button { width: 100%; }
+  .showcaseWrap { padding: 0.5rem; border-radius: 2rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .heroEnter, .scrollReveal { animation: none !important; opacity: 1; transform: none; }
+  .cta:hover, .cta:hover svg, .features article:hover { transform: none; }
+}
