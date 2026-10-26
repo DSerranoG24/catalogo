@@ -9,6 +9,9 @@ dist/
 
 coverage/
 
+# Local PostgreSQL verification report (synthetic data and execution plans).
+catalog-api/platform-metrics-postgres-results.json
+
 *.log
 
 .DS_Store

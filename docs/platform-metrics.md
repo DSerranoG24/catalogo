@@ -61,7 +61,7 @@ Reintentar con el estado anterior ya cambiado no actualiza filas; confirmar un y
 
 La migración crea users(createdAt) y orders(createdAt), para los rangos y series recientes. No hacen constante un COUNT histórico completo. No añade orders(catalogId, createdAt): ya hay índice de catalogId y no se ha medido que el compuesto aporte al agrupamiento histórico global. No añade índices a estados de cuenta o publicación preventivamente.
 
-No hubo un destino aislado confirmado para ejecutar EXPLAIN (ANALYZE, BUFFERS); no se leyó el .env real ni se consultó producción. La elección de los dos índices simples es razonada, NO un benchmark. Queda pendiente medir con datos representativos en un entorno aislado antes de aplicar. La creación normal de índices puede bloquear escrituras durante su ejecución: revisar volumen y ventana de despliegue antes de aplicar el archivo. Si el plan exige creación concurrente, preparar esa operación por separado de una transacción explícita, sin modificar una migración ya aplicada.
+La elección inicial de los dos índices simples fue razonada, sin un destino aislado confirmado. La verificación local posterior descrita abajo sí ejecutó EXPLAIN (ANALYZE, BUFFERS), sin leer el .env real ni consultar producción. La creación normal de índices puede bloquear escrituras durante su ejecución: revisar volumen y ventana de despliegue antes de aplicar el archivo. Si el plan exige creación concurrente, preparar esa operación por separado de una transacción explícita, sin modificar una migración ya aplicada.
 
 ## Interfaz y fallos
 
@@ -71,6 +71,51 @@ La carga inicial y la actualización manual son explícitas; no hay polling. Un 
 
 ## Pruebas y despliegue
 
+### Verificador PostgreSQL local
+
+Desde la raíz, ejecutar en una terminal PowerShell interactiva:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\catalog-api\scripts\verify-platform-metrics-postgres.ps1
+```
+
+`RemoteSigned` se limita a ese proceso; no cambia la política permanente del equipo. Primero ejecuta el build y después pide la URI con `Read-Host -AsSecureString`: no pegarla en el comando ni en el chat. No se lee ni modifica `.env`. Solo admite PostgreSQL en `localhost`, `127.0.0.1` o `::1`, base exacta `catalogo_test`, sin opciones de conexión arbitrarias. Comprueba además resolución DNS y `current_database()`/`inet_server_addr()`. No utilizar túneles ni proxies hacia bases remotas: loopback por sí solo no acredita el destino de un túnel.
+
+Requiere PostgreSQL local ya disponible, dependencias existentes instaladas, cliente Prisma generado y un usuario local con permisos de crear/eliminar su propio esquema y aplicar sus migraciones. No crea ni borra la base. No necesita Supabase, Storage, claves de correo ni claves JWT reales.
+
+El verificador crea un esquema aleatorio `metrics_verify_<uuid>` dentro de `catalogo_test`. Copia los archivos de migración a un directorio temporal y usa Prisma Migrate real: aplica las primeras quince, inserta pedidos anteriores y aplica la decimosexta. Verifica historial, índices válidos y NULL de todos los pedidos anteriores. El esquema público y su historial no cambian. La migración permanece aplicada únicamente dentro del esquema temporal hasta su limpieza.
+
+Ejecuta `changeOrderStatus` real, repetición de confirmación, cancelación y ocho confirmaciones concurrentes. Un trigger de auditoría exclusivo del esquema cuenta las escrituras efectivas de `firstConfirmedAt` y compara la fecha con `CURRENT_TIMESTAMP` de la transacción PostgreSQL (tolerancia de 1 ms por conversión Date/timestamp(3)). Prueba los treinta días, huecos, porcentajes null y semanas de Bogotá: lunes 29/12/2025, domingo 04/01/2026 y lunes 05/01/2026, con órdenes en los dos lados de las 05:00 UTC. Un vendedor tiene dos semanas distintas y otro solo una; comprueba que la repetición es 1 de 2. Los null de porcentajes se presentan como «Sin base» por la interfaz existente.
+
+Levanta el router HTTP real en puerto aleatorio de loopback con autenticación, consulta de rol y agregaciones contra el esquema real; verifica 401 sin sesión, 200 de administrador, no-store y ausencia de campos/valores personales canario. Todos los datos y JWT usados son sintéticos y no se imprimen. No se inicia el servidor completo ni ningún transporte de correo.
+
+Después elimina sus fixtures funcionales e inserta por defecto 1.000 cuentas, 1.000 catálogos, 50.000 productos y 100.000 pedidos distribuidos en 365 días y cuatro estados. Ejecuta ANALYZE en sus cuatro tablas y `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` sobre la consulta completa de agregación, dos veces, con el mismo corte. El primer pase no garantiza caché fría. Finalmente verifica que la consulta real también cumple sus timeouts habituales. Para otro volumen sintético:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\catalog-api\scripts\verify-platform-metrics-postgres.ps1 -Accounts 2000 -Orders 200000
+```
+
+El JSON completo se imprime y se guarda en `catalog-api/platform-metrics-postgres-results.json` (ignorado por Git), con checks, etapa fallida si la hubiera y planes completos, sin URI, claves, tokens ni errores crudos. Los planes permiten inspeccionar Planning/Execution Time, nodos, filas, loops y buffers. No se añaden índices adicionales. El workload uniforme sirve de referencia reproducible, no demuestra la distribución real ni sustituye medir otros sesgos o volúmenes.
+
+Un `finally` elimina solo el esquema exacto generado y su directorio temporal. No hay TRUNCATE/DELETE/DROP sobre datos ajenos. Si se interrumpe a la fuerza el proceso o falla la limpieza, el JSON indica el esquema propio para revisarlo manualmente; no eliminar otros esquemas. Nunca ejecutar el verificador contra Supabase. Las pruebas automáticas del verificador rechazan destinos remotos, otra base y parámetros peligrosos antes de conectarse.
+
+### Ejecución real local del 25 de octubre de 2026
+
+Resultado `success: true`, catorce comprobaciones aprobadas y `cleanup: true`. Historial de quince migraciones seguido de dieciséis; columna ausente antes, NULL en los tres pedidos anteriores después. Ocho confirmaciones concurrentes produjeron un ganador y una sola escritura, comparada con el reloj de PostgreSQL. Pasaron también índices, reconfirmación, cancelación, serie de treinta días con ceros, denominadores null, semanas de Bogotá cruzando año y repetición 1 de 2. El endpoint HTTP real devolvió agregados sin los campos ni valores personales canario.
+
+Prisma Migrate se ejecuta desde el directorio temporal: `--schema` por sí solo no evita que el `prisma.config.ts` del repositorio fuerce su carpeta de migraciones. La comprobación de historial detectó ese problema en el primer intento; se corrigió el aislamiento antes de la ejecución final. La auditoría de reloj convierte explícitamente CURRENT_TIMESTAMP a UTC antes de comparar timestamps sin zona.
+
+El informe completo local está en `catalog-api/platform-metrics-postgres-results.json`, fuera de Git. Workload: 1.000 cuentas, 1.000 catálogos, 50.000 productos y 100.000 pedidos. Plan de la consulta completa:
+
+| Pase | Planning Time | Execution Time | Shared Hit Blocks | Shared Read Blocks | Temp Read/Written Blocks |
+|---|---:|---:|---:|---:|---:|
+| Primero | 12,054 ms | 728,897 ms | 24.880 | 0 | 0 / 0 |
+| Repetición | 3,860 ms | 704,497 ms | 24.880 | 0 | 0 / 0 |
+
+La serie de cuentas utilizó Index Only Scan de users_createdAt_idx; la de pedidos, Bitmap Index/Heap Scan de orders_createdAt_idx. Los totales históricos leyeron secuencialmente orders; la repetición empleó Hash Join y agregación. El mayor coste fue el agregado de cohortes (aprox. 435–449 ms): Nested Loop, Memoize y Bitmap Scan por createdAt, con tres iteraciones. La consulta real con el timeout normal de 2.500 ms también pasó.
+
+No se añadieron índices. Estos planes no aportan una justificación para orders(catalogId, createdAt); si el volumen aumenta, primero medir el agregado de cohortes y otras distribuciones. Los dos pases encontraron todos los bloques en caché: no acreditan rendimiento con caché fría ni bajo carga concurrente real.
+
 Las pruebas de unidad/HTTP usan dobles: denegación 401/404 antes de agregar, parámetros rechazados, porcentajes null, treinta días incluyendo huecos y medianoche Bogotá, diferencias entre confirmado actual y conocido, respuesta sin PII, confirmación única/reintento/cancelación y rollback completo. No acreditan ejecución de este SQL en PostgreSQL ni un plan de rendimiento real. Las pruebas de navegador usan el build Next real y una API local simulada para carga, tablas, errores, reintento, actualización manual y revocación.
 
-Orden: revisar y validar en entorno aislado → respaldo y aplicación manual autorizada de migración → generar Prisma/build y desplegar API → frontend. No aplicar la migración desde el arranque. No desplegar esta API sobre esquema anterior. El esquema es aditivo; conservar campo/índices al volver a un binario anterior, pero ese binario dejaría de registrar fechas nuevas y generaría un hueco de cobertura que debe declararse. No se aplicó ninguna migración ni se enviaron correos durante este bloque.
+Orden: revisar y validar en entorno aislado → respaldo y aplicación manual autorizada de migración → generar Prisma/build y desplegar API → frontend. No aplicar la migración desde el arranque. No desplegar esta API sobre esquema anterior. El esquema es aditivo; conservar campo/índices al volver a un binario anterior, pero ese binario dejaría de registrar fechas nuevas y generaría un hueco de cobertura que debe declararse. Solo se aplicaron migraciones dentro del esquema temporal de catalogo_test, posteriormente eliminado. No se enviaron correos ni se accedió a Supabase.
