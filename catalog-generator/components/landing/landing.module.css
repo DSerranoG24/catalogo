@@ -25,27 +25,28 @@
     .featureGrid > .scrollReveal:nth-child(even) { animation-range: entry 8% entry 83%; }
   }
 }
-.header { background: color-mix(in srgb, var(--surface-raised) 88%, var(--surface-base)); border-color: var(--border-subtle); }
+.header { position: sticky; top: 0; z-index: 30; background: var(--surface-raised); border-color: var(--border-subtle); box-shadow: var(--elevation-low); }
 .header > div { padding-block: 1.5rem; }
-.hero { position: relative; padding-block: clamp(4rem, 8vw, 8rem); gap: 3.5rem; }
-.hero h1 { font-size: clamp(2.75rem, 5.7vw, 5rem); line-height: 1.06; letter-spacing: -0.055em; max-width: 11ch; }
-.hero h1 span { position: relative; color: var(--color-primary); }
-.hero h1 span::after { content: ""; display: block; width: 3.5rem; height: 0.35rem; border-radius: var(--radius-small); margin-top: 1.25rem; background: var(--color-accent); }
+.landing > a:first-child { z-index: 40; }
+.landing section[id] { scroll-margin-top: 10rem; }
+.hero { position: relative; padding-block: clamp(3rem, 5.5vw, 5rem); gap: 3.5rem; }
+.hero h1 { font-size: clamp(1.625rem, 7.2vw, 3.9rem); line-height: 1.12; letter-spacing: -0.055em; }
+.hero h1 > span { display: block; white-space: nowrap; color: var(--text-primary); }
+.hero h1 > span:last-child { position: relative; color: var(--color-primary); }
+.hero h1 > span:last-child::after { content: ""; display: block; width: 3.5rem; height: 0.35rem; border-radius: var(--radius-small); margin-top: 1.25rem; background: var(--color-accent); }
 .heroCopy { margin-top: 1.5rem; font-size: 1.0625rem; line-height: 1.85; max-width: 33rem; color: var(--text-secondary); }
 .cta { min-height: 3.25rem; border-radius: var(--radius-large); padding: 0.875rem 1.5rem; box-shadow: var(--elevation-low); transition: transform var(--duration-medium), box-shadow var(--duration-medium), background-color var(--duration-short); }
 .cta:hover { transform: translateY(-2px); box-shadow: var(--elevation-medium); }
 .cta svg { transition: transform var(--duration-medium); }
 .cta:hover svg { transform: translateX(3px); }
 .exampleButton { min-height: 3.25rem; border-radius: var(--radius-large); background: transparent; border-color: var(--border-strong); box-shadow: none; }
+.headerCta { min-height: 2.75rem; padding: 0.625rem 1rem; font-size: 0.875rem; }
 .showcaseWrap { min-width: 0; position: relative; padding: 0.75rem; border-radius: 2.5rem; background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
-.showcase { border-radius: 2rem; border-color: var(--border-subtle); box-shadow: 0 28px 72px -32px color-mix(in srgb, var(--text-primary) 28%, transparent); }
-.showcase > div:first-child > span { background: color-mix(in srgb, var(--color-accent) 12%, var(--surface-raised)); color: var(--color-accent-text); }
-.showcase > div:nth-child(2) > div { border-color: var(--border-subtle); padding: 0.625rem; }
-.showcase > div:nth-child(2) > div:nth-child(2) > div { background: color-mix(in srgb, var(--color-accent) 9%, var(--surface-raised)); color: var(--color-accent-text); }
 .steps { padding-block: clamp(4rem, 7vw, 6rem); border: 0; background: var(--surface-raised); }
 .landing h2 { font-size: clamp(2rem, 3.5vw, 2.75rem); line-height: 1.15; letter-spacing: -0.04em; }
 .steps ol { gap: 1.25rem; margin-top: 2.75rem; }
 .steps li { padding: 1.75rem; border: 1px solid var(--border-subtle); border-radius: 1.5rem; background: var(--surface-base); }
+.stepArt { width: 100%; max-width: 15rem; height: auto; margin: 0 auto 1.25rem; }
 .steps li > span { background: var(--color-primary); color: var(--color-on-primary); width: 2.75rem; height: 2.75rem; }
 .steps li:nth-child(2) > span { background: color-mix(in srgb, var(--color-accent) 12%, var(--surface-raised)); color: var(--color-accent-text); }
 .steps li p, .features article p { color: var(--text-secondary); line-height: 1.85; }
@@ -66,11 +67,50 @@
 .pricing ul { padding: 1.75rem; border-radius: 1.5rem; background: var(--surface-base); }
 .footer { padding-block: 3rem; background: var(--surface-raised); border-color: var(--border-subtle); }
 @media (max-width: 639px) {
-  .hero h1 { max-width: 12ch; }
+  .header > div { padding-block: 0.875rem; }
+  .header nav { flex-basis: 100%; justify-content: space-between; }
+  .headerCta { font-size: 0.8125rem; }
   .heroActions { flex-direction: column; }
-  .heroActions > a, .heroActions > button { width: 100%; }
+  .heroActions > a { width: 100%; }
   .showcaseWrap { padding: 0.5rem; border-radius: 2rem; }
 }
+@media (min-width: 1024px) {
+  .hero h1 { font-size: clamp(2.5rem, 4.1vw, 3.9rem); }
+}
+.mockup { border: 1px solid var(--border-subtle); background: var(--surface-raised); border-radius: 2rem; padding: clamp(1rem, 2vw, 1.5rem); box-shadow: var(--elevation-medium); }
+.mockupHeader { display: flex; align-items: center; gap: 0.75rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-subtle); }
+.storeMark { display: grid; place-items: center; flex-shrink: 0; width: 2.5rem; height: 2.5rem; border-radius: var(--radius-medium); background: var(--brand-emerald-soft); color: var(--color-primary); font-weight: 700; }
+.mockupHeader p:first-child { font-size: 0.875rem; font-weight: 600; }
+.mockupHeader p:last-child { margin-top: 0.25rem; font-size: 0.75rem; color: var(--color-accent-text); }
+.productGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin-top: 1rem; }
+.mockProduct { min-width: 0; }
+.mockProduct > p:first-of-type { margin-top: 0.5rem; font-size: 0.75rem; font-weight: 500; }
+.mockProduct > p:last-child { margin-top: 0.25rem; font-size: 0.8125rem; font-weight: 700; color: var(--color-primary); }
+.productArt { position: relative; height: 112px; overflow: hidden; border-radius: var(--radius-medium); background: radial-gradient(ellipse at 40% 25%, var(--surface-raised), var(--brand-emerald-soft)); }
+.productArt::after { content: ""; position: absolute; bottom: 9px; left: calc(50% - 36px); width: 72px; height: 9px; border-radius: 50%; background: color-mix(in srgb, var(--brand-forest) 10%, transparent); }
+.productArt > span { position: absolute; }
+.artBody { z-index: 2; }
+.artAccent { z-index: 3; }
+.bag .artDetail { top: 17px; left: calc(50% - 19px); width: 38px; height: 40px; border: 5px solid var(--color-primary); border-radius: 24px 24px 0 0; }
+.bag .artBody { top: 42px; left: calc(50% - 35px); width: 70px; height: 55px; border-radius: 8px 8px 14px 14px; background: var(--color-primary); }
+.bag .artAccent { top: 48px; left: calc(50% - 29px); width: 58px; height: 41px; border-radius: 5px 5px 10px 10px; background: repeating-linear-gradient(0deg, transparent 0 5px, color-mix(in srgb, var(--color-on-primary) 30%, transparent) 5px 6px), repeating-linear-gradient(90deg, transparent 0 5px, color-mix(in srgb, var(--color-on-primary) 30%, transparent) 5px 6px); }
+.candle { background: radial-gradient(ellipse at 40% 25%, var(--surface-raised), color-mix(in srgb, var(--color-accent) 12%, var(--surface-raised))); }
+.candle .artDetail { top: 17px; left: calc(50% - 6px); width: 12px; height: 19px; border-radius: 70% 20% 60% 40%; background: var(--color-accent); transform: rotate(-15deg); }
+.candle .artBody { top: 42px; left: calc(50% - 26px); width: 52px; height: 55px; border-radius: 5px 5px 12px 12px; background: var(--brand-emerald-soft); border: 2px solid var(--border-strong); }
+.candle .artAccent { top: 58px; left: calc(50% - 18px); width: 36px; height: 21px; border-radius: 3px; background: var(--surface-raised); border-bottom: 3px solid var(--color-accent); }
+.mug .artDetail { top: 43px; left: calc(50% + 17px); width: 29px; height: 33px; border: 7px solid var(--color-accent); border-radius: 50%; }
+.mug .artBody { top: 36px; left: calc(50% - 32px); width: 61px; height: 58px; border-radius: 6px 6px 20px 20px; background: var(--color-accent); }
+.mug .artAccent { top: 49px; left: calc(50% - 32px); width: 61px; height: 10px; background: color-mix(in srgb, var(--color-on-primary) 70%, var(--color-accent)); }
+.plant .artDetail { top: 21px; left: calc(50% - 2px); width: 4px; height: 53px; border-radius: 4px; background: var(--color-primary); }
+.plant .artDetail::before, .plant .artDetail::after { content: ""; position: absolute; width: 32px; height: 18px; background: var(--color-primary); }
+.plant .artDetail::before { top: 4px; right: 1px; border-radius: 0 100% 0 100%; transform: rotate(12deg); }
+.plant .artDetail::after { top: 20px; left: 1px; border-radius: 100% 0 100% 0; transform: rotate(-12deg); }
+.plant .artBody { top: 66px; left: calc(50% - 26px); width: 52px; height: 32px; background: var(--color-accent); clip-path: polygon(0 0, 100% 0, 86% 100%, 14% 100%); border-radius: 3px; }
+.plant .artAccent { top: 63px; left: calc(50% - 29px); width: 58px; height: 8px; border-radius: 3px; background: var(--color-accent-text); }
+.mockupNote { margin-top: 1rem; font-size: 0.6875rem; line-height: 1.5; color: var(--text-secondary); }
+.realCatalogLink { display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 44px; margin-top: 0.75rem; padding: 0.625rem; border-radius: var(--radius-medium); background: var(--color-primary); color: var(--color-on-primary); font-size: 0.875rem; font-weight: 600; transition: background-color var(--duration-short); }
+.realCatalogLink:hover { background: var(--color-primary-hover); }
+.realCatalogLink:focus-visible { outline: 2px solid var(--field-focus); outline-offset: 4px; }
 @media (prefers-reduced-motion: reduce) {
   .heroEnter, .scrollReveal { animation: none !important; opacity: 1; transform: none; }
   .cta:hover, .cta:hover svg, .features article:hover { transform: none; }

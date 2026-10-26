@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Check, FileSpreadsheet, FileText, Link2, MessageCircle, Package, Store } from "lucide-react";
+import { ArrowRight, Check, FileSpreadsheet, FileText, Link2, MessageCircle, Store } from "lucide-react";
 import BrandLogo from "@/components/brand/BrandLogo";
+import CatalogMockup, { exampleCatalogUrl } from "@/components/landing/CatalogMockup";
+import StepIllustration from "@/components/landing/StepIllustration";
 import styles from "@/components/landing/landing.module.css";
 
 const title = "Vitrinaya | Tu vitrina digital, lista para compartir.";
@@ -39,6 +41,7 @@ export default function LandingPage() {
             <a href="#funciones" className={`hidden min-h-11 items-center text-sm text-[var(--brand-forest)] sm:inline-flex ${focus}`}>Funciones</a>
             <a href="#precios" className={`hidden min-h-11 items-center text-sm text-[var(--brand-forest)] sm:inline-flex ${focus}`}>Precios</a>
             <Link href="/login" className={`inline-flex min-h-11 items-center text-sm font-semibold text-[var(--brand-emerald)] ${focus}`}>Iniciar sesión</Link>
+            <Link href="/login" className={`${primary} ${styles.headerCta}`}>Crear mi catálogo</Link>
           </nav>
         </div>
       </header>
@@ -47,36 +50,23 @@ export default function LandingPage() {
         <section className={`${container} grid items-center gap-12 py-14 sm:py-20 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-16 ${styles.hero}`} aria-labelledby="hero-title">
           <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-widest text-[var(--brand-coral-text)]">Tu negocio ya tiene qué mostrar</p>
-            <div className={`${styles.heroEnter} ${styles.heroTitle}`}><h1 id="hero-title" className="mt-4 text-4xl font-semibold leading-tight tracking-tight text-[var(--brand-forest)] sm:text-5xl lg:text-6xl">Tu vitrina digital, <span className="text-[var(--brand-emerald)]">lista para compartir.</span></h1></div>
-            <div className={`${styles.heroEnter} ${styles.heroSubtitle}`}><p className={`mt-6 max-w-xl text-base leading-7 text-[var(--foreground)] ${styles.heroCopy}`}>{description}</p></div>
+            <div className={`${styles.heroEnter} ${styles.heroTitle}`}><h1 id="hero-title" className="mt-4 font-semibold"><span>Tu vitrina digital,</span>{" "}<span>lista para compartir.</span></h1></div>
+            <div className={`${styles.heroEnter} ${styles.heroSubtitle}`}><p className={`mt-6 max-w-xl text-base leading-7 text-[var(--foreground)] ${styles.heroCopy}`}>Tus clientes ven todo tu catálogo en un enlace. Tú recibes el pedido por WhatsApp.</p></div>
             <div className={`${styles.heroEnter} ${styles.heroButtons}`}><div className={`mt-8 flex flex-wrap gap-3 ${styles.heroActions}`}>
               <Link href="/login" className={primary}>Crear mi catálogo <ArrowRight size={17} aria-hidden="true" /></Link>
-              <button type="button" disabled aria-describedby="example-coming-soon" className={`${secondary} cursor-not-allowed`}>Ver un ejemplo</button>
+              <a href={exampleCatalogUrl} target="_blank" rel="noopener noreferrer" className={secondary}>Ver un ejemplo<span className="sr-only"> (se abre en una pestaña nueva)</span></a>
             </div></div>
-            <p id="example-coming-soon" className="mt-4 text-sm text-[var(--brand-forest)]">El enlace a un catálogo de ejemplo estará disponible próximamente.</p>
           </div>
 
-          <div className={styles.showcaseWrap}><div id="ejemplo" className={`min-w-0 scroll-mt-6 rounded-3xl border border-[var(--brand-emerald)]/20 bg-white p-5 shadow-sm sm:p-7 ${styles.showcase}`} role="region" aria-label="Ejemplo ilustrativo de catálogo">
-            <div className="flex items-center gap-3 border-b border-[var(--brand-emerald)]/15 pb-5">
-              <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-[var(--brand-emerald-soft)] text-[var(--brand-emerald)]"><Store aria-hidden="true" size={24} /></span>
-              <div><p className="font-semibold text-[var(--brand-forest)]">Tu tienda, a un enlace</p><p className="mt-1 text-xs text-[var(--brand-coral-text)]">Ejemplo ilustrativo · productos ficticios</p></div>
-            </div>
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              {[{ name: "Bolso de mano", price: "Precio de ejemplo", icon: Store }, { name: "Set de regalo", price: "Precio de ejemplo", icon: Package }].map(item => <div key={item.name} className="min-w-0 rounded-2xl border border-[var(--brand-emerald)]/15 p-3">
-                <div className="grid aspect-square place-items-center rounded-xl bg-[var(--brand-emerald-soft)] text-[var(--brand-emerald)]"><item.icon size={42} aria-hidden="true" strokeWidth={1.25} /></div>
-                <p className="mt-3 text-sm font-medium text-[var(--brand-forest)]">{item.name}</p><p className="mt-1 text-sm font-semibold text-[var(--brand-emerald)]">{item.price}</p>
-              </div>)}
-            </div>
-            <p className="mt-5 flex items-center gap-2 rounded-xl bg-[var(--brand-forest)] px-4 py-3 text-sm text-white"><MessageCircle size={18} aria-hidden="true" className="shrink-0" /> Elige aquí. Conversemos por WhatsApp.</p>
-            <p className="mt-3 text-xs leading-5 text-[var(--brand-forest)]">Así puedes presentar tus productos. Esta muestra no recibe pedidos ni representa una tienda real.</p>
-          </div></div>
+          <CatalogMockup />
         </section>
 
         <section aria-labelledby="como-title" className={`border-y border-[var(--brand-emerald)]/15 bg-white py-12 sm:py-16 ${styles.steps}`}>
           <div className={`${container} ${styles.scrollReveal}`}>
             <h2 id="como-title" className="text-3xl font-semibold tracking-tight text-[var(--brand-forest)]">Cómo funciona</h2>
             <ol className="mt-8 grid gap-7 md:grid-cols-3">
-              {[{ title: "Sube tus productos.", body: "Añádelos uno a uno o importa tu inventario desde un Excel." }, { title: "Comparte tu enlace.", body: "Cada catálogo tiene su propia dirección. Pégala en WhatsApp, Instagram o donde quieras." }, { title: "Recibe pedidos.", body: "Tus clientes arman su pedido y pueden enviarte el mensaje con todo listo para confirmar." }].map((step, index) => <li key={step.title}>
+              {([{ title: "Sube tus productos", body: "Añádelos uno a uno, impórtalos desde Excel o súbelos por fotos.", illustration: 1 }, { title: "Comparte tu enlace", body: "Pégalo en WhatsApp, Instagram o donde quieras.", illustration: 2 }, { title: "Recibe el pedido", body: "Te llega con los datos completos y una cotización en PDF.", illustration: 3 }] as const).map((step, index) => <li key={step.title}>
+                <StepIllustration step={step.illustration} className={styles.stepArt} />
                 <span aria-hidden="true" className="inline-flex size-10 items-center justify-center rounded-full bg-[var(--brand-emerald-soft)] font-semibold text-[var(--brand-emerald)]">{index + 1}</span>
                 <h3 className="mt-4 text-lg font-semibold text-[var(--brand-forest)]">{step.title}</h3><p className="mt-2 text-sm leading-6">{step.body}</p>
               </li>)}
