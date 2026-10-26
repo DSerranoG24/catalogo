@@ -16,13 +16,17 @@ export async function findUserById(id: string) {
   });
 }
 
+export async function findUserRoleById(id: string) {
+  return prisma.user.findUnique({ where: { id }, select: { role: true } });
+}
+
 export async function createUser(data: {
   email: string;
   passwordHash: string;
   name?: string;
-}) {
-  return prisma.user.create({
-    data,
+}, database = prisma) {
+  return database.user.create({
+    data: { email: data.email, passwordHash: data.passwordHash, name: data.name, role: "USER" },
   });
 }
 
@@ -35,8 +39,8 @@ export async function createGoogleUser(data: {
   name?: string;
   googleId: string;
   emailVerifiedAt?: Date;
-}) {
-  return prisma.user.create({ data });
+}, database = prisma) {
+  return database.user.create({ data: { email: data.email, name: data.name, googleId: data.googleId, emailVerifiedAt: data.emailVerifiedAt, role: "USER" } });
 }
 
 export async function linkGoogleUser(userId: string, email: string, passwordHash: string, sessionVersion: number, googleId: string, authoritative: boolean) {

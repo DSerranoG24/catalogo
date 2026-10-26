@@ -25,6 +25,11 @@ enum AccountActionPurpose {
   RESET_PASSWORD
 }
 
+enum UserRole {
+  USER
+  ADMIN
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -32,6 +37,7 @@ model User {
   googleId     String?  @unique
   emailVerifiedAt DateTime?
   sessionVersion Int @default(0)
+  role UserRole @default(USER)
   name         String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

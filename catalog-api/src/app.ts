@@ -4,6 +4,7 @@ import helmet from "helmet";
 import healthRoutes from "./routes/health.routes";
 import authRoutes from "./routes/auth.routes";
 import meRoutes from "./routes/me.routes";
+import adminRoutes from "./routes/admin.routes";
 import catalogRoutes from "./routes/catalog.routes";
 import categoryRoutes from "./routes/category.routes";
 import productRoutes from "./routes/product.routes";
@@ -57,6 +58,7 @@ app.get("/", (_req, res) => {
 app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/me", meRoutes);
+app.use("/api/admin", adminRoutes);
 app.use("/api/catalogs", catalogRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/products", productRoutes);

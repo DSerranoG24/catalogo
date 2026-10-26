@@ -65,6 +65,7 @@ Consulta la [matriz de pruebas](docs/testing.md): reúne comandos por paquete, p
 | Trabajar en un módulo | [API](catalog-api/README.md), [frontend](catalog-generator/README.md) |
 | Pedidos y PDF | [Idempotencia](catalog-api/docs/order-idempotency.md), [cotizaciones](docs/quotations.md) |
 | Verificación de correo y recuperación | [Contratos, límites, migración y configuración de correo](docs/accounts.md) |
+| Rol de administración | [Protección API/frontend y promoción manual](docs/admin-role.md) |
 | Importar Excel | [Contrato API](docs/product-import.md), [lector/plantilla](catalog-generator/docs/product-import-reader.md), [flujo UI](catalog-generator/docs/product-import-ui.md) |
 | Publicación y diseños | [SEO/OG](catalog-generator/docs/public-seo.md), [añadir diseños](catalog-generator/docs/agregar-disenos-de-catalogo.md) |
 | Consultar verificaciones anteriores | [Historial fechado](docs/historial/README.md), incluido el parche Zod |

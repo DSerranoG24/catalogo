@@ -20,6 +20,7 @@ const catalogId = "11111111-1111-4111-8111-111111111111";
 const catalog = { id: catalogId, publicId: catalogId, name: "Catálogo ficticio", slug: "prueba-local", active: true, archivedAt: null, template: "TECH", description: null, logoUrl: null };
 const products = new Map();
 let emailVerified = false, verificationRequests = 0, verificationConfirms = 0, passwordResets = 0, forgotRequests = 0;
+let adminAllowed = true, adminBackendFailed = false;
 let categoryPresent = true, categoryDeletes = 0, categoryDeleteFails = false;
 const categoryId = "22222222-2222-4222-8222-222222222222";
 const category = { id: categoryId, name: "Manos Libres", slug: "manos-libres", imageUrl: null, position: 0 };
@@ -91,6 +92,10 @@ try {
     const reply = (value, code = 200) => { res.statusCode = code; res.end(JSON.stringify(value)); };
     if (req.method === "GET") {
       apiReads.push(req.url);
+      if (req.url === "/api/admin/access") {
+        if (adminBackendFailed) return reply({ success: false }, 503);
+        return req.headers.authorization === "Bearer admin-test-session" && adminAllowed ? reply({ success: true }) : reply({ success: false, error: "ROUTE_NOT_FOUND" }, 404);
+      }
       if (mode === "auth" && confirms > 0) return reply({ success: false, error: "AUTH_REQUIRED" }, 401);
       if (req.url === "/api/catalogs") return reply({ catalogs: [catalog] });
       if (req.url === "/api/me") return reply({ success: true, user: { id: "test-user", email: "owner@example.invalid", emailVerifiedAt: emailVerified ? "2026-10-25T12:00:00Z" : null, hasLocalPassword: true } });
@@ -239,6 +244,38 @@ try {
     assert.ok(await evaluate(`document.activeElement.getAttribute('aria-label')==='${social.label}'&&getComputedStyle(document.activeElement).outlineStyle==='solid'&&parseFloat(getComputedStyle(document.activeElement).outlineWidth)>=2`), `${social.label} has visible keyboard focus`);
   }
   summary.scenarios.push("social profiles: exact crawlable anchors in server HTML, blank target with noopener noreferrer and no nofollow, 44px targets at four widths without JS, keyboard focus; legal links remain pending");
+  step("admin-server-guard");
+  for (const userAgent of ["Mozilla/5.0 Chrome/130.0.0.0", "Googlebot"]) {
+    for (const cookie of ["", "catalogo_session=user-test-session"]) {
+      const response = await fetch("http://localhost:4328/admin", { headers: { "user-agent": userAgent, ...(cookie ? { cookie } : {}) } });
+      const html = await response.text();
+      assert.equal(response.status, 404, "Admin denial must be a real HTTP 404 before streaming");
+      assert.ok(response.headers.get("cache-control").includes("no-store"));
+      assert.ok(html.includes("Página no disponible"));
+      assert.ok(!html.includes("Administración") && !html.includes("Acceso autorizado."), "Denied HTML cannot contain administrative title or content");
+      assert.ok(html.includes('content="noindex, nofollow"'));
+    }
+  }
+  const adminHeaders = { cookie: "catalogo_session=admin-test-session" };
+  const authorized = await fetch("http://localhost:4328/admin", { headers: adminHeaders });
+  assert.equal(authorized.status, 200); assert.ok((await authorized.text()).includes("Acceso autorizado."));
+  adminAllowed = false;
+  const demoted = await fetch("http://localhost:4328/admin", { headers: adminHeaders });
+  assert.equal(demoted.status, 404); assert.ok(!(await demoted.text()).includes("Acceso autorizado."));
+  adminBackendFailed = true;
+  const unavailable = await fetch("http://localhost:4328/admin", { headers: adminHeaders });
+  assert.equal(unavailable.status, 404); assert.ok(!(await unavailable.text()).includes("Acceso autorizado."));
+  adminBackendFailed = false; adminAllowed = true;
+  await command("Network.setCookie", { name: "catalogo_session", value: "user-test-session", url: "http://localhost:4328", httpOnly: true, sameSite: "Lax" });
+  await command("Page.navigate", { url: "http://localhost:4328/" });
+  await poll(() => evaluate(`location.pathname==='/'&&Boolean(document.querySelector('h1'))`));
+  await evaluate(`localStorage.setItem('catalogo-session',JSON.stringify({user:{id:'fake-admin',email:'fake@example.invalid',name:null,role:'ADMIN',isAdmin:true}}))`);
+  await command("Page.navigate", { url: "http://localhost:4328/admin" });
+  await poll(() => evaluate(`document.querySelector('h1')?.textContent==='Página no disponible'`));
+  assert.ok(await evaluate(`!document.body.textContent.includes('Administración')&&!document.body.textContent.includes('Acceso autorizado.')`));
+  await evaluate(`localStorage.removeItem('catalogo-session')`);
+  await command("Network.deleteCookies", { name: "catalogo_session", url: "http://localhost:4328" });
+  summary.scenarios.push("admin SSR: real HTTP 404 for anonymous/seller and failed backend, normal and bot user agents, no administrative HTML, no-store/noindex, admin 200 then same-cookie degradation 404, forged localStorage cannot authorize (local simulated API)");
   step("private-dashboard-without-session");
   await command("Page.navigate", { url: "http://localhost:4328/dashboard" });
   await poll(() => evaluate(`location.pathname==='/login'&&Boolean(document.querySelector('button[type="submit"]'))`));
@@ -280,6 +317,8 @@ try {
     for (const mode of ["login", "register"]) for (const method of ["keyboard", "click"]) {
       await command("Page.navigate", { url: "http://localhost:4328/login" });
       await poll(() => evaluate(`Boolean(document.querySelector('button[type="submit"]'))`));
+      await poll(() => evaluate(`document.readyState==='complete'`));
+      await evaluate(`document.fonts.ready.then(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))`);
       if (mode === "register") {
         await evaluate(`[...document.querySelectorAll('button[type="button"]')].find(b=>b.textContent.trim()==='Crear cuenta').click()`);
         await poll(() => evaluate(`document.querySelector('h1').textContent==='Crea tu cuenta.'`));
@@ -310,6 +349,8 @@ try {
   step("account-verification-and-recovery");
   await command("Page.navigate", { url: "http://localhost:4328/dashboard" });
   await poll(() => evaluate(`Boolean(document.querySelector('aside[aria-label="Verificación de correo"]'))`));
+  // The notice and catalog list load independently; wait for both before asserting.
+  await poll(() => evaluate(`Boolean(document.querySelector('a[href="/dashboard/catalogos/${catalogId}"]'))`));
   assert.ok(await evaluate(`document.querySelector('aside[aria-label="Verificación de correo"]').textContent.includes('owner@example.invalid')&&Boolean(document.querySelector('a[href="/dashboard/catalogos/${catalogId}"]'))`));
   await click("Reenviar verificación");
   await poll(() => evaluate(`[...document.querySelectorAll('button')].some(b=>b.textContent.startsWith('Reenviar en ')&&b.disabled)`));

@@ -15,7 +15,7 @@ const nextConfig: NextConfig = {
       headers.push({ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" });
     }
 
-    return [{ source: "/:path*", headers }, ...["/verificar-correo", "/restablecer-contrasena", "/recuperar-contrasena"].map(source => ({
+    return [{ source: "/:path*", headers }, { source: "/admin/:path*", headers: [{ key: "Cache-Control", value: "private, no-store, max-age=0" }] }, ...["/verificar-correo", "/restablecer-contrasena", "/recuperar-contrasena"].map(source => ({
       source, headers: [{ key: "Referrer-Policy", value: "no-referrer" }, { key: "Cache-Control", value: "private, no-store, max-age=0" }],
     }))];
   },
