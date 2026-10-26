@@ -1,5 +1,8 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
+import { Input, Textarea } from "@/components/ui/Input";
+
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import Image from "next/image";
 import { apiRequest, ApiError, type Category } from "@/lib/api";
@@ -9,7 +12,6 @@ import { uploadPhotoSequence, type PhotoResult } from "@/lib/product-photo-flow"
 type Draft = { id: string; name: string; price: number; categoryId: string | null; description: string | null; images: { url: string }[] };
 type Pending = { products: Draft[]; count: number; page: number; pages: number };
 const control = "mt-1 min-h-11 w-full rounded-lg border border-[#d6dfd7] bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)]";
-const button = "min-h-11 rounded-lg border border-[#d6dfd7] px-3 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)] disabled:opacity-50";
 
 export default function ProductPhotoPanel({ catalogId, categories, onRefresh, onBusy, onClose }: {
   catalogId: string; categories: Category[]; onRefresh: () => void; onBusy: (busy: boolean) => void; onClose: () => void;
@@ -120,7 +122,7 @@ export default function ProductPhotoPanel({ catalogId, categories, onRefresh, on
   }
   const draft = pending?.products[selected];
   return <section aria-labelledby="photo-title" className="mt-6 min-w-0 rounded-2xl border border-[#d6dfd7] bg-white p-4 sm:p-6">
-    <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="photo-title" ref={title} tabIndex={-1} className="text-xl font-semibold">Cargar varias fotos</h2><button type="button" className={button} disabled={busy || loading} onClick={() => { if (mayLeave()) onClose(); }}>Cerrar</button></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="photo-title" ref={title} tabIndex={-1} className="text-xl font-semibold">Cargar varias fotos</h2><Button variant="ghost" type="button"  disabled={busy || loading} onClick={() => { if (mayLeave()) onClose(); }}>Cerrar</Button></div>
     <p className="mt-2 text-sm">Una foto crea un producto distinto. Varias vistas del mismo artículo no se agrupan. Se guardan inactivos hasta que los completes y publiques.</p>
     <p className="mt-2 text-sm">Hasta 30 fotos. JPG, PNG o WebP; original hasta 20 MiB y 40 megapíxeles. Se preparan una a una a un máximo de 1.800 px y 2 MiB, intentando llegar a 300 KB.</p>
     <p className="mt-2 text-sm">El reporte no se recupera tras recargar. Si se pierde una respuesta, el producto puede estar creado: comprueba el listado antes de subirlo otra vez.</p>
@@ -130,22 +132,22 @@ export default function ProductPhotoPanel({ catalogId, categories, onRefresh, on
       const chosen = Array.from(event.target.files ?? []);
       if (chosen.length > 30) { setError("Selecciona como máximo 30 fotos."); setFiles([]); event.target.value = ""; return; }
       setFiles(chosen); setError("");
-    }} /></label><button type="button" className={`${button} mt-3`} disabled={!files.length} onClick={() => void upload()}>Cargar {files.length || "las"} fotos</button></fieldset>
-    {uploading && <div className="mt-3"><p role="status">Subiendo {Math.min(index + 1, files.length)} de {files.length}</p><progress aria-label="Fotografías procesadas" max={Math.max(1, files.length)} value={results.length} className="mt-2 w-full" /><button className={`${button} mt-2`} type="button" onClick={() => { stop.current = true; }}>Detener después de la foto actual</button></div>}
+    }} /></label><Button variant="primary" type="button" className="mt-3" disabled={!files.length} onClick={() => void upload()}>Cargar {files.length || "las"} fotos</Button></fieldset>
+    {uploading && <div className="mt-3"><p role="status">Subiendo {Math.min(index + 1, files.length)} de {files.length}</p><progress aria-label="Fotografías procesadas" max={Math.max(1, files.length)} value={results.length} className="mt-2 w-full" /><Button variant="outline" className="mt-2" type="button" onClick={() => { stop.current = true; }}>Detener después de la foto actual</Button></div>}
     {results.length > 0 && <div className="mt-4" role="status"><p>{results.filter(row => row.status === "created").length} creados · {results.filter(row => row.status !== "created").length} sin confirmar</p><ul className="mt-2 max-h-52 space-y-1 overflow-auto text-sm">{results.map((row, item) => <li key={item} className="break-words">{row.name}: {row.status === "created" ? "Creado, sin completar" : row.status === "not_processed" ? "No procesado" : row.status === "failed" ? "No se pudo preparar" : "Resultado sin confirmar"}{row.message ? ` · ${row.message}` : ""}</li>)}</ul></div>}
     <div className="mt-6 border-t border-[#d6dfd7] pt-4"><h3 className="font-semibold">Completar productos</h3><p aria-live="polite" className="mt-1 text-sm">{pending ? `Faltan ${pending.count} productos por completar (total del servidor).` : "Consultando pendientes…"}</p>
-      <button type="button" disabled={busy || loading} className={`${button} mt-2`} onClick={() => { if (mayLeave()) { setError(""); void refreshPending(pending?.page); } }}>Actualizar pendientes</button>
+      <Button variant="secondary" type="button" disabled={busy || loading} className="mt-2" onClick={() => { if (mayLeave()) { setError(""); void refreshPending(pending?.page); } }}>Actualizar pendientes</Button>
       <p className="mt-2 text-sm">Guardar los deja completos e inactivos. Después podrás publicarlos desde el listado. Categoría y descripción son opcionales.</p>
       {draft && <div className="mt-4 grid min-w-0 gap-5 md:grid-cols-2"><div className="relative aspect-square min-w-0 rounded-xl bg-[var(--brand-emerald-soft)]">{draft.images[0] ? <Image src={draft.images[0].url} alt={draft.name} fill unoptimized className="object-contain" sizes="(max-width: 768px) 90vw, 40vw" /> : <span>Sin imagen disponible</span>}</div>
         <form onSubmit={event => void complete(event)} className="min-w-0 space-y-3"><fieldset disabled={busy || loading} className="space-y-3"><legend className="sr-only">Datos del producto</legend>
-          <label className="block text-sm">Nombre revisado<input ref={nameInput} required maxLength={150} className={control} value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} /></label>
-          <label className="block text-sm">Precio en COP<input required type="number" min="0" max="2147483647" step="1" className={control} value={form.price} onChange={event => setForm({ ...form, price: event.target.value })} /></label>
+          <label className="block text-sm">Nombre revisado<Input ref={nameInput} required maxLength={150} className="mt-1" value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} /></label>
+          <label className="block text-sm">Precio en COP<Input required type="number" min="0" max="2147483647" step="1" className="mt-1" value={form.price} onChange={event => setForm({ ...form, price: event.target.value })} /></label>
           <label className="block text-sm">Categoría (opcional)<select className={control} value={form.categoryId} onChange={event => setForm({ ...form, categoryId: event.target.value })}><option value="">Sin categoría</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
-          <label className="block text-sm">Descripción (opcional)<textarea className={control} maxLength={2000} rows={3} value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} /></label>
+          <label className="block text-sm">Descripción (opcional)<Textarea className="mt-1" maxLength={2000} rows={3} value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} /></label>
           <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" required checked={form.reviewed} onChange={event => setForm({ ...form, reviewed: event.target.checked })} />He revisado el nombre y el precio, incluso si es 0.</label>
-          <div className="flex flex-wrap gap-2"><button className={button} type="button" disabled={selected === 0} onClick={() => { if (mayLeave()) { choose(pending.products[selected - 1], selected - 1); nameInput.current?.focus(); } }}>Anterior</button><button className={`${button} bg-[var(--brand-emerald)] text-white`} type="submit">Guardar y siguiente</button><button className={button} type="button" disabled={selected >= pending.products.length - 1} onClick={() => { if (mayLeave()) choose(pending.products[selected + 1], selected + 1); }}>Omitir por ahora</button></div>
+          <div className="flex flex-wrap gap-2"><Button variant="secondary"  type="button" disabled={selected === 0} onClick={() => { if (mayLeave()) { choose(pending.products[selected - 1], selected - 1); nameInput.current?.focus(); } }}>Anterior</Button><Button variant="primary"  type="submit">Guardar y siguiente</Button><Button variant="ghost"  type="button" disabled={selected >= pending.products.length - 1} onClick={() => { if (mayLeave()) choose(pending.products[selected + 1], selected + 1); }}>Omitir por ahora</Button></div>
         </fieldset></form></div>}
-      {pending && pending.pages > 1 && <nav aria-label="Páginas de productos pendientes" className="mt-4 flex flex-wrap gap-2"><button type="button" className={button} disabled={busy || loading || pending.page <= 1} onClick={() => { if (mayLeave()) void refreshPending(pending.page - 1); }}>Página anterior</button><span className="self-center text-sm">Página {pending.page} de {pending.pages}</span><button type="button" className={button} disabled={busy || loading || pending.page >= pending.pages} onClick={() => { if (mayLeave()) void refreshPending(pending.page + 1); }}>Página siguiente</button></nav>}
+      {pending && pending.pages > 1 && <nav aria-label="Páginas de productos pendientes" className="mt-4 flex flex-wrap gap-2"><Button variant="secondary" type="button"  disabled={busy || loading || pending.page <= 1} onClick={() => { if (mayLeave()) void refreshPending(pending.page - 1); }}>Página anterior</Button><span className="self-center text-sm">Página {pending.page} de {pending.pages}</span><Button variant="secondary" type="button"  disabled={busy || loading || pending.page >= pending.pages} onClick={() => { if (mayLeave()) void refreshPending(pending.page + 1); }}>Página siguiente</Button></nav>}
     </div>
   </section>;
 }

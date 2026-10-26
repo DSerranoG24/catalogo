@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
+
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -35,7 +37,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </Link>
           <div className="flex min-w-0 items-center gap-4">
             <span className="hidden max-w-56 truncate text-sm text-[#68756e] sm:block">{session.user.name || session.user.email}</span>
-            {!isCatalogList && <button type="button" onClick={signOut} className="rounded-md border border-[#d6dfd7] px-3 py-2 text-xs font-semibold text-[#435047] transition hover:bg-[#f4f7f2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)]">Cerrar sesión</button>}
+            {!isCatalogList && <Button variant="secondary" type="button" onClick={signOut} >Cerrar sesión</Button>}
           </div>
         </div>
       </header>

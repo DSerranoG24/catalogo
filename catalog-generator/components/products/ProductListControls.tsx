@@ -1,11 +1,13 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+
 import { useEffect, useRef, useState } from "react";
 import type { Category } from "@/lib/api";
 import { defaultProductQuery, productQueryString, type ProductListQuery } from "@/lib/product-list-query";
 
 const field = "min-h-11 min-w-0 w-full rounded-xl border border-[#d6dfd7] bg-white px-3 py-2 text-sm text-[#37443d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)]";
-const button = "min-h-11 rounded-lg px-3 py-2 text-xs font-semibold text-[var(--brand-emerald)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)] disabled:opacity-50";
 
 export default function ProductListControls({ query, categories, disabled, onChange }: {
   query: ProductListQuery; categories: Category[]; disabled: boolean;
@@ -23,7 +25,7 @@ export default function ProductListControls({ query, categories, disabled, onCha
   return <fieldset disabled={disabled} className="mt-4 min-w-0 rounded-2xl border border-[#e2e8e0] bg-white p-4">
     <legend className="sr-only">Buscar, filtrar y ordenar productos</legend>
     <label htmlFor="product-list-search" className="block text-xs font-semibold text-[#37443d]">Buscar productos</label>
-    <input id="product-list-search" type="search" maxLength={150} placeholder="Nombre, SKU, marca o modelo" className={`${field} mt-2`} value={draft.signature === signature ? draft.value : query.q} onChange={event => {
+    <Input id="product-list-search" type="search" maxLength={150} placeholder="Nombre, SKU, marca o modelo" className="mt-2" value={draft.signature === signature ? draft.value : query.q} onChange={event => {
       const value = event.target.value;
       setDraft({ signature, value });
       if (timer.current) clearTimeout(timer.current);
@@ -37,6 +39,6 @@ export default function ProductListControls({ query, categories, disabled, onCha
       <label className="min-w-0 text-xs font-semibold text-[#37443d]">Dirección<select className={`${field} mt-1`} value={query.order} onChange={e => onChange({ order: e.target.value === "asc" ? "asc" : "desc" })}><option value="desc">Descendente</option><option value="asc">Ascendente</option></select></label>
       <label className="min-w-0 text-xs font-semibold text-[#37443d]">Productos por página<select className={`${field} mt-1`} value={query.pageSize} onChange={e => onChange({ pageSize: Number(e.target.value) })}>{[24, 48, 96].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
     </div>
-    {chips.length > 0 && <div className="mt-3 flex min-w-0 flex-wrap gap-2" aria-label="Filtros activos">{chips.map(chip => <button key={chip.label} type="button" className={`${button} max-w-full break-words bg-[var(--brand-emerald-soft)] text-left`} aria-label={`Quitar filtro ${chip.label}`} onClick={() => onChange(chip.clear)}>{chip.label} ×</button>)}<button type="button" className={button} onClick={() => onChange({ q: "", category: defaultProductQuery.category, status: "all", stock: "all" })}>Limpiar filtros</button></div>}
+    {chips.length > 0 && <div className="mt-3 flex min-w-0 flex-wrap gap-2" aria-label="Filtros activos">{chips.map(chip => <Button variant="chip" selected key={chip.label} type="button" className="max-w-full break-words" aria-label={`Quitar filtro ${chip.label}`} onClick={() => onChange(chip.clear)}>{chip.label} ×</Button>)}<Button variant="ghost" type="button"  onClick={() => onChange({ q: "", category: defaultProductQuery.category, status: "all", stock: "all" })}>Limpiar filtros</Button></div>}
   </fieldset>;
 }

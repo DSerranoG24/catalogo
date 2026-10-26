@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
+
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, apiRequest } from "@/lib/api";
 
@@ -43,8 +45,8 @@ export default function EmailVerificationNotice() {
   if (user?.emailVerifiedAt) return null;
   if (!user && !error) return null;
   return <aside aria-label="Verificación de correo" className="mx-auto mt-4 w-[calc(100%-2.5rem)] max-w-6xl rounded-xl border border-[var(--brand-emerald)]/25 bg-white p-4 text-sm">
-    {user && <><p className="font-semibold">Verifica tu correo para proteger tu cuenta</p><p className="mt-1 break-words">Pendiente: {user.email}. Puedes seguir usando Vitrinaya.</p><button type="button" onClick={resend} disabled={busy || remaining > 0} className="mt-2 min-h-11 rounded-lg px-3 font-semibold text-[var(--brand-emerald)] focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50">{busy ? "Solicitando…" : remaining > 0 ? `Reenviar en ${remaining} s` : "Reenviar verificación"}</button></>}
+    {user && <><p className="font-semibold">Verifica tu correo para proteger tu cuenta</p><p className="mt-1 break-words">Pendiente: {user.email}. Puedes seguir usando Vitrinaya.</p><Button variant="ghost" type="button" onClick={resend} disabled={busy || remaining > 0} className="mt-2">{busy ? "Solicitando…" : remaining > 0 ? `Reenviar en ${remaining} s` : "Reenviar verificación"}</Button></>}
     {message && <p role="status" className="mt-2">{message}</p>}
-    {error && <div role="alert" className="mt-2 text-[#a5432a]"><p>{error}</p><button type="button" className="min-h-11 rounded-lg px-3 font-semibold focus-visible:outline-2" onClick={() => setRetry(value => value + 1)}>Volver a comprobar</button></div>}
+    {error && <div role="alert" className="mt-2 text-[#a5432a]"><p>{error}</p><Button variant="ghost" type="button"  onClick={() => setRetry(value => value + 1)}>Volver a comprobar</Button></div>}
   </aside>;
 }

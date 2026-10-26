@@ -1,6 +1,9 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
+
 import { startTransition, useEffect, useState } from "react";
+import { DestructiveConfirm } from "@/components/ui/Dialog";
 import { Check, Star, Trash2, X } from "lucide-react";
 import { apiRequest, ProductReview } from "@/lib/api";
 
@@ -13,6 +16,7 @@ const filters: { id: ReviewFilter; label: string }[] = [
 ];
 
 export default function ReviewModerationPanel({ catalogId }: { catalogId: string }) {
+  const [pendingDelete, setPendingDelete] = useState<ProductReview | null>(null);
   const [filter, setFilter] = useState<ReviewFilter>("PENDING");
   const [reviews, setReviews] = useState<ProductReview[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,7 +61,6 @@ export default function ReviewModerationPanel({ catalogId }: { catalogId: string
   }
 
   async function deleteReview(review: ProductReview) {
-    if (!window.confirm(`¿Eliminar definitivamente la reseña de ${review.product.name}?`)) return;
     setBusyId(review.id);
     setError("");
     setNotice("");
@@ -81,7 +84,7 @@ export default function ReviewModerationPanel({ catalogId }: { catalogId: string
       </header>
 
       <nav aria-label="Filtrar reseñas" className="mt-4 flex gap-1 overflow-x-auto rounded-2xl border border-[#e2e8e0] bg-white/75 p-1.5">
-        {filters.map((item) => <button key={item.id} type="button" aria-pressed={filter === item.id} onClick={() => setFilter(item.id)} className={`min-h-10 shrink-0 rounded-xl px-4 text-xs font-semibold transition sm:text-sm ${filter === item.id ? "bg-[var(--brand-emerald)] text-white shadow-sm" : "text-[#68756e] hover:bg-[#f0f4ee] hover:text-[#202b27]"}`}>{item.label}</button>)}
+        {filters.map((item) => <Button variant="tab" selected={filter === item.id} key={item.id} type="button" aria-pressed={filter === item.id} onClick={() => setFilter(item.id)} className="shrink-0">{item.label}</Button>)}
       </nav>
 
       {error && <p role="alert" className="mt-4 border border-[#f0c8b9] bg-[#fff4ef] px-4 py-3 text-sm text-[#a5432a]">{error}</p>}
@@ -105,14 +108,17 @@ export default function ReviewModerationPanel({ catalogId }: { catalogId: string
               </div>
               <p className="mt-3 whitespace-pre-line text-sm leading-6 text-[#526157]">{review.comment}</p>
               <div className="mt-4 flex flex-wrap gap-2">
-                {review.status !== "APPROVED" && <button type="button" disabled={busyId === review.id} onClick={() => void setReviewStatus(review, "APPROVED")} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[var(--brand-emerald)] px-4 text-xs font-semibold text-white transition hover:bg-[var(--brand-emerald-hover)] disabled:opacity-50"><Check aria-hidden="true" size={15} /> Aprobar</button>}
-                {review.status !== "REJECTED" && <button type="button" disabled={busyId === review.id} onClick={() => void setReviewStatus(review, "REJECTED")} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#e1d1cc] px-4 text-xs font-semibold text-[#9f4b3a] transition hover:bg-[#fff6f2] disabled:opacity-50"><X aria-hidden="true" size={15} /> Rechazar</button>}
-                <button type="button" disabled={busyId === review.id} onClick={() => void deleteReview(review)} aria-label={`Eliminar reseña de ${review.product.name}`} className="grid size-9 place-items-center text-[#68756e] hover:bg-[#fff1ec] hover:text-[#a5432a] disabled:opacity-50"><Trash2 aria-hidden="true" size={16} /></button>
+                {review.status !== "APPROVED" && <Button variant="primary" type="button" disabled={busyId === review.id} onClick={() => void setReviewStatus(review, "APPROVED")} ><Check aria-hidden="true" size={15} /> Aprobar</Button>}
+                {review.status !== "REJECTED" && <Button variant="destructive-ghost" type="button" disabled={busyId === review.id} onClick={() => void setReviewStatus(review, "REJECTED")} ><X aria-hidden="true" size={15} /> Rechazar</Button>}
+                <Button variant="destructive-ghost" size="sm" iconOnly type="button" disabled={busyId === review.id} onClick={() => setPendingDelete(review)} aria-label={`Eliminar reseña de ${review.product.name}`} ><Trash2 aria-hidden="true" size={16} /></Button>
               </div>
             </li>
           ))}
         </ul>
       )}
+      <DestructiveConfirm open={pendingDelete !== null} onOpenChange={open => { if (!open) setPendingDelete(null); }} title="Eliminar reseña"
+        description={`¿Eliminar definitivamente la reseña de ${pendingDelete?.product.name ?? ""}?`}
+        onConfirm={() => { if (pendingDelete) void deleteReview(pendingDelete); }} />
     </section>
   );
 }

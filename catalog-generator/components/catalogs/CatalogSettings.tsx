@@ -1,5 +1,9 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
+import { Input, Textarea } from "@/components/ui/Input";
+import uiStyles from "@/components/ui/ui.module.css";
+
 import { FormEvent, useRef, useState } from "react";
 import Image from "next/image";
 import { apiRequest, Catalog } from "@/lib/api";
@@ -72,7 +76,6 @@ export default function CatalogSettings({
   const publicUrl = typeof window === "undefined"
     ? ""
     : `${window.location.origin}/c/${catalog.publicId}`;
-  const inputClass = "mt-2 min-h-11 w-full rounded-xl border border-[#d6dfd7] bg-[#fcfdfb] px-3.5 py-3 outline-none transition focus:border-[#5a886c] focus:bg-white focus:ring-4 focus:ring-[#5a886c]/10";
 
   function updateProfileField(field: keyof typeof profile, value: string) {
     setProfile((current) => ({ ...current, [field]: value }));
@@ -173,13 +176,13 @@ export default function CatalogSettings({
 
         <div role="radiogroup" aria-label="Plantilla del catálogo" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {catalogTemplateOptions.map((item) => (
-            <button
+            <Button variant="secondary" selected={template === item.id}
               key={item.id}
               type="button"
               role="radio"
               aria-checked={template === item.id}
               onClick={() => setTemplate(item.id)}
-              className={`group w-full rounded-2xl border p-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-emerald)] focus-visible:ring-offset-2 ${template === item.id ? "border-[var(--brand-emerald)] bg-[#f3f7f2] ring-1 ring-[var(--brand-emerald)]" : "border-[#e0e7df] bg-white hover:border-[#a8bcae] hover:bg-[#fafbf9]"}`}
+              className={uiStyles.templateChoice}
             >
               <TemplatePreview template={item.id} colors={item.colors} />
               <span className="flex items-start justify-between gap-2 px-1 pb-1 pt-3">
@@ -192,7 +195,7 @@ export default function CatalogSettings({
                 <svg viewBox="0 0 16 16" fill="none" className="size-3" aria-hidden="true"><path d="m3 8 3 3 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </span>
               </span>
-            </button>
+            </Button>
           ))}
         </div>
 
@@ -214,79 +217,79 @@ export default function CatalogSettings({
               </div>
               <div className="flex gap-2">
                 <input ref={logoInput} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => void uploadLogo(event.target.files?.[0])} />
-                <button type="button" disabled={logoBusy} onClick={() => logoInput.current?.click()} className="min-h-10 rounded-xl border border-[#cbd7ce] px-3 text-xs font-semibold text-[#315e4f] transition hover:bg-white disabled:opacity-60">{logoBusy ? "Subiendo..." : logoUrl ? "Cambiar logo" : "Subir logo"}</button>
-                {logoUrl && <button type="button" disabled={logoBusy} onClick={() => void removeLogo()} className="min-h-10 rounded-md px-2 text-xs font-semibold text-[#a5432a] hover:bg-white disabled:opacity-60">Quitar</button>}
+                <Button variant="outline" type="button" disabled={logoBusy} onClick={() => logoInput.current?.click()} >{logoBusy ? "Subiendo..." : logoUrl ? "Cambiar logo" : "Subir logo"}</Button>
+                {logoUrl && <Button variant="destructive-ghost" type="button" disabled={logoBusy} onClick={() => void removeLogo()} >Quitar</Button>}
               </div>
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-medium text-[#37443d]">
               Nombre comercial
-              <input required maxLength={100} value={profile.name} onChange={(event) => updateProfileField("name", event.target.value)} className={inputClass} />
+              <Input required maxLength={100} value={profile.name} onChange={(event) => updateProfileField("name", event.target.value)} className="mt-2" />
             </label>
             <label className="block text-sm font-medium text-[#37443d]">
               NIT <span className="font-normal text-[#849087]">(opcional)</span>
-              <input maxLength={30} pattern="[0-9][0-9. -]*" value={profile.nit} onChange={(event) => updateProfileField("nit", event.target.value)} className={inputClass} />
+              <Input maxLength={30} pattern="[0-9][0-9. -]*" value={profile.nit} onChange={(event) => updateProfileField("nit", event.target.value)} className="mt-2" />
             </label>
             <label className="block text-sm font-medium text-[#37443d] sm:col-span-2">
               Condiciones de cotización <span className="font-normal text-[#849087]">(opcional)</span>
-              <textarea rows={5} maxLength={4000} value={profile.quotationTerms} onChange={(event) => updateProfileField("quotationTerms", event.target.value)} placeholder="Condiciones de entrega, formas de pago, garantía..." className={inputClass} />
+              <Textarea rows={5} maxLength={4000} value={profile.quotationTerms} onChange={(event) => updateProfileField("quotationTerms", event.target.value)} placeholder="Condiciones de entrega, formas de pago, garantía..." className="mt-2" />
               <span className="mt-1.5 block text-xs font-normal text-[#849087]">Se guardan en cada nueva cotización. Los cambios no modifican las condiciones ya emitidas.</span>
             </label>
             <label className="block text-sm font-medium text-[#37443d] sm:col-span-2">
               Asunto o mensaje personalizado de WhatsApp <span className="font-normal text-[#849087]">(opcional)</span>
-              <textarea rows={2} maxLength={500} value={profile.whatsappMessage} onChange={(event) => updateProfileField("whatsappMessage", event.target.value)} placeholder="Hola, quisiera más información sobre sus productos." className={inputClass} />
+              <Textarea rows={2} maxLength={500} value={profile.whatsappMessage} onChange={(event) => updateProfileField("whatsappMessage", event.target.value)} placeholder="Hola, quisiera más información sobre sus productos." className="mt-2" />
               <span className="mt-1.5 block text-xs font-normal text-[#849087]">Se abrirá como mensaje sugerido; el cliente podrá editarlo antes de enviarlo.</span>
             </label>
             <label className="block text-sm font-medium text-[#37443d]">
               Teléfono
-              <input type="tel" autoComplete="tel" inputMode="tel" maxLength={30} value={profile.phone} onChange={(event) => updateProfileField("phone", event.target.value)} placeholder="+57 300 123 4567" className={inputClass} />
+              <Input type="tel" autoComplete="tel" inputMode="tel" maxLength={30} value={profile.phone} onChange={(event) => updateProfileField("phone", event.target.value)} placeholder="+57 300 123 4567" className="mt-2" />
             </label>
             <label className="block text-sm font-medium text-[#37443d] sm:col-span-2">
               Descripción del negocio
-              <textarea rows={3} maxLength={500} value={profile.description} onChange={(event) => updateProfileField("description", event.target.value)} className={inputClass} />
+              <Textarea rows={3} maxLength={500} value={profile.description} onChange={(event) => updateProfileField("description", event.target.value)} className="mt-2" />
             </label>
             <label className="block text-sm font-medium text-[#37443d]">
               WhatsApp
-              <input type="tel" autoComplete="tel" inputMode="tel" pattern="\+[1-9][0-9]{7,14}" value={profile.whatsappPhone} onChange={(event) => updateProfileField("whatsappPhone", event.target.value)} placeholder="+573001234567" className={inputClass} />
+              <Input type="tel" autoComplete="tel" inputMode="tel" pattern="\+[1-9][0-9]{7,14}" value={profile.whatsappPhone} onChange={(event) => updateProfileField("whatsappPhone", event.target.value)} placeholder="+573001234567" className="mt-2" />
               <span className="mt-1.5 block text-xs font-normal text-[#849087]">Formato internacional: +, código de país y número.</span>
             </label>
             <label className="block text-sm font-medium text-[#37443d]">
               Correo de contacto
-              <input type="email" autoComplete="email" maxLength={254} value={profile.email} onChange={(event) => updateProfileField("email", event.target.value)} placeholder="hola@mitienda.com" className={inputClass} />
+              <Input type="email" autoComplete="email" maxLength={254} value={profile.email} onChange={(event) => updateProfileField("email", event.target.value)} placeholder="hola@mitienda.com" className="mt-2" />
             </label>
             <label className="block text-sm font-medium text-[#37443d] sm:col-span-2">
               Dirección
-              <input maxLength={250} value={profile.address} onChange={(event) => updateProfileField("address", event.target.value)} className={inputClass} />
+              <Input maxLength={250} value={profile.address} onChange={(event) => updateProfileField("address", event.target.value)} className="mt-2" />
             </label>
             <label className="block text-sm font-medium text-[#37443d] sm:col-span-2">
               Horario de atención
-              <textarea rows={2} maxLength={500} value={profile.businessHours} onChange={(event) => updateProfileField("businessHours", event.target.value)} placeholder="Lunes a viernes, 9:00 a 18:00" className={inputClass} />
+              <Textarea rows={2} maxLength={500} value={profile.businessHours} onChange={(event) => updateProfileField("businessHours", event.target.value)} placeholder="Lunes a viernes, 9:00 a 18:00" className="mt-2" />
             </label>
             <label className="block text-sm font-medium text-[#37443d]">
               Instagram
-              <input type="url" maxLength={2048} value={profile.instagramUrl} onChange={(event) => updateProfileField("instagramUrl", event.target.value)} placeholder="https://instagram.com/mitienda" className={inputClass} />
+              <Input type="url" maxLength={2048} value={profile.instagramUrl} onChange={(event) => updateProfileField("instagramUrl", event.target.value)} placeholder="https://instagram.com/mitienda" className="mt-2" />
             </label>
             <label className="block text-sm font-medium text-[#37443d]">
               Facebook
-              <input type="url" maxLength={2048} value={profile.facebookUrl} onChange={(event) => updateProfileField("facebookUrl", event.target.value)} placeholder="https://facebook.com/mitienda" className={inputClass} />
+              <Input type="url" maxLength={2048} value={profile.facebookUrl} onChange={(event) => updateProfileField("facebookUrl", event.target.value)} placeholder="https://facebook.com/mitienda" className="mt-2" />
             </label>
             <label className="block text-sm font-medium text-[#37443d]">
               TikTok
-              <input type="url" maxLength={2048} value={profile.tiktokUrl} onChange={(event) => updateProfileField("tiktokUrl", event.target.value)} placeholder="https://tiktok.com/@mitienda" className={inputClass} />
+              <Input type="url" maxLength={2048} value={profile.tiktokUrl} onChange={(event) => updateProfileField("tiktokUrl", event.target.value)} placeholder="https://tiktok.com/@mitienda" className="mt-2" />
             </label>
             <label className="block text-sm font-medium text-[#37443d]">
               Enlace de ubicación
-              <input type="url" maxLength={2048} value={profile.mapUrl} onChange={(event) => updateProfileField("mapUrl", event.target.value)} placeholder="https://maps.google.com/..." className={inputClass} />
+              <Input type="url" maxLength={2048} value={profile.mapUrl} onChange={(event) => updateProfileField("mapUrl", event.target.value)} placeholder="https://maps.google.com/..." className="mt-2" />
             </label>
           </div>
         </section>
 
         {error && <p role="alert" className="rounded-md bg-[#fff1ec] px-3 py-2 text-sm text-[#a5432a]">{error}</p>}
         {message && <p role="status" className="text-sm text-[#17665c]">{message}</p>}
-        <button type="submit" disabled={saving} className="rounded-md bg-[var(--brand-emerald)] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--brand-emerald-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-emerald)] focus-visible:ring-offset-2 disabled:opacity-60">
+        <Button variant="primary" size="lg" type="submit" disabled={saving} >
           {saving ? "Guardando..." : "Guardar cambios"}
-        </button>
+        </Button>
       </form>
 
       <aside className="rounded-3xl border border-[#dce4dc] bg-[#e8eee5] p-5 sm:sticky sm:top-6 sm:p-6">
@@ -294,7 +297,7 @@ export default function CatalogSettings({
         <h2 className="mt-1 text-lg font-semibold text-[#202b27]">Listo para compartir</h2>
         <p className="mt-2 text-sm leading-6 text-[#68756e]">Cualquier persona con este enlace puede ver los productos activos y preparar una orden.</p>
         <div className="mt-5 break-all rounded-xl border border-[#d4ded2] bg-white px-3 py-3 text-xs text-[#435047]">{publicUrl}</div>
-        <button type="button" onClick={() => void copyLink()} className="mt-3 min-h-11 w-full rounded-xl bg-[var(--brand-emerald)] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[var(--brand-emerald-hover)]">Copiar enlace</button>
+        <Button variant="primary" type="button" onClick={() => void copyLink()} className="mt-3 w-full">Copiar enlace</Button>
         <p className="mt-3 text-xs leading-5 text-[#68756e]">El identificador público es aleatorio. No incluye correo ni datos privados del vendedor.</p>
       </aside>
     </div>

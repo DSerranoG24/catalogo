@@ -1,6 +1,9 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
+
 import Link from "next/link";
+import { DestructiveConfirm } from "@/components/ui/Dialog";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -47,6 +50,7 @@ const emptyProduct: ProductFormState = {
 
 export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
   const router = useRouter();
+  const [pendingDelete, setPendingDelete] = useState<Product | null>(null);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [productPage, setProductPage] = useState<ProductPage>({ products: [], page: 1, pageSize: 24, totalProducts: 0, totalFiltered: 0, totalPages: 1, needsCompletionCount: 0 });
@@ -278,7 +282,6 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
 
   async function removeProduct(product: Product) {
     if (importBusy(importFlow.getSnapshot().phase)) return;
-    if (!window.confirm(`¿Eliminar “${product.name}”?`)) return;
     try {
       await apiRequest(`/products/${product.id}`, { method: "DELETE" });
       if (editingProduct?.id === product.id) resetProductForm();
@@ -331,9 +334,9 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
           ["reviews", "Reseñas", MessageSquareText],
           ["settings", "Tienda y diseño", Settings2],
         ] as const).map(([tab, label, Icon]) => (
-          <button key={tab} type="button" disabled={workActive && activeTab !== tab} onClick={() => setActiveTab(tab)} aria-current={activeTab === tab ? "page" : undefined} className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-xs font-semibold transition disabled:opacity-50 sm:px-4 sm:text-sm ${activeTab === tab ? "bg-[var(--brand-emerald)] text-white shadow-sm" : "text-[#68756e] hover:bg-[#f0f4ee] hover:text-[#202b27]"}`}>
+          <Button variant="tab" selected={activeTab === tab} key={tab} type="button" disabled={workActive && activeTab !== tab} onClick={() => setActiveTab(tab)} aria-current={activeTab === tab ? "page" : undefined} className="shrink-0">
             <Icon className="size-4" aria-hidden="true" /> {label}
-          </button>
+          </Button>
         ))}
       </nav>
 
@@ -370,7 +373,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
           }} />
         </fieldset>
 
-        <CatalogProductList result={productPage} loading={productsLoading} error={productsError} onRetry={() => setReloadKey(key => key + 1)} categories={categories} query={query} onQueryChange={updateQuery} onEdit={editProduct} onDelete={removeProduct}
+        <CatalogProductList result={productPage} loading={productsLoading} error={productsError} onRetry={() => setReloadKey(key => key + 1)} categories={categories} query={query} onQueryChange={updateQuery} onEdit={editProduct} onDelete={product => setPendingDelete(product)}
           onPublish={publishProduct} photoOpen={photoOpen} photosDisabled={Boolean(catalog.archivedAt) || savingProduct || importState.open || workActive} photoButtonRef={photoButtonRef} onPhotos={() => { if (importState.open) return; setPhotoOpen(true); if (photoOpen) document.getElementById("photo-title")?.focus(); }}
           importButtonRef={importButtonRef} importOpen={importState.open} importDisabled={Boolean(catalog.archivedAt) || savingProduct || importActive || photoOpen} mutationDisabled={workActive || photoOpen || savingProduct}
           onImport={() => { importFlow.open(); if (importState.open) document.getElementById("product-import-title")?.focus(); }} />
@@ -378,6 +381,9 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
       {activeTab === "orders" && <div className="mt-8"><OrdersPanel catalogId={catalogId} /></div>}
       {activeTab === "reviews" && <div className="mt-8"><ReviewModerationPanel catalogId={catalogId} /></div>}
       {activeTab === "settings" && <div className="mt-8"><CatalogSettings key={catalog.id} catalog={catalog} onUpdated={(patch) => setCatalog((current) => current ? { ...current, ...patch } : current)} /></div>}
+      <DestructiveConfirm open={pendingDelete !== null} onOpenChange={open => { if (!open) setPendingDelete(null); }} title="Eliminar producto"
+        description={`¿Eliminar “${pendingDelete?.name ?? ""}”?`}
+        onConfirm={() => { if (pendingDelete) void removeProduct(pendingDelete); }} />
     </main>
   );
 }

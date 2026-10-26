@@ -1,5 +1,9 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
+import { Input, Textarea } from "@/components/ui/Input";
+import uiStyles from "@/components/ui/ui.module.css";
+
 import { FormEvent, useEffect, useState } from "react";
 import { apiRequest, Category, ProductSuggestion } from "@/lib/api";
 
@@ -107,15 +111,15 @@ export default function CatalogProductEditor({
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--brand-coral-text)]">{editing ? "Edición" : "Inventario"}</p>
           <h2 className="mt-1 text-lg font-semibold tracking-tight text-[#202b27]">{editing ? "Actualizar producto" : "Añadir producto"}</h2>
         </div>
-        {editing && <button type="button" onClick={onCancel} className="text-sm font-medium text-[#68756e] hover:text-[#202b27]">Cancelar</button>}
+        {editing && <Button variant="ghost" type="button" onClick={onCancel} >Cancelar</Button>}
       </div>
       {!editing && <div className="mt-5 space-y-4 rounded-2xl border border-[#dce8dc] bg-[#f7faf6] p-4">
         <form onSubmit={lookupBarcode}>
           <label htmlFor="product-barcode-search" className="block text-sm font-semibold text-[#37443d]">Buscar por código de barras</label>
           <p className="mt-1 text-xs leading-5 text-[#718076]">Consulta códigos EAN, UPC o GTIN para sugerir nombre y descripción.</p>
           <div className="mt-3 flex gap-2">
-            <input id="product-barcode-search" inputMode="numeric" autoComplete="off" value={barcodeQuery} onChange={(event) => setBarcodeQuery(event.target.value.replace(/\D/g, "").slice(0, 14))} placeholder="Ej. 7701234567890" className="min-h-10 min-w-0 flex-1 rounded-xl border border-[#d6dfd7] bg-white px-3.5 py-2 outline-none focus:border-[#5a886c] focus:ring-4 focus:ring-[#5a886c]/10" />
-            <button type="submit" disabled={barcodeLoading || !/^\d{8,14}$/.test(barcodeQuery)} className="shrink-0 rounded-xl bg-[var(--brand-emerald)] px-3.5 text-xs font-semibold text-white transition hover:bg-[var(--brand-emerald)] disabled:cursor-not-allowed disabled:opacity-50">{barcodeLoading ? "Buscando…" : "Buscar código"}</button>
+            <Input id="product-barcode-search" inputMode="numeric" autoComplete="off" value={barcodeQuery} onChange={(event) => setBarcodeQuery(event.target.value.replace(/\D/g, "").slice(0, 14))} placeholder="Ej. 7701234567890" className="min-w-0 flex-1" />
+            <Button variant="primary" type="submit" disabled={barcodeLoading || !/^\d{8,14}$/.test(barcodeQuery)} className="shrink-0">{barcodeLoading ? "Buscando…" : "Buscar código"}</Button>
           </div>
           {barcodeMessage && <p role="status" className="mt-2 text-xs leading-5 text-[#52725e]">{barcodeMessage}</p>}
           <p className="mt-2 text-[11px] leading-4 text-[#849087]">La consulta usa un servicio externo gratuito con límite de solicitudes. Verifica los datos antes de guardar; los precios e inventario nunca se importan.</p>
@@ -123,30 +127,30 @@ export default function CatalogProductEditor({
         <div className="border-t border-[#dce8dc] pt-4">
         <label htmlFor="product-source-search" className="block text-sm font-semibold text-[#37443d]">Completar desde un producto del catálogo</label>
         <p className="mt-1 text-xs leading-5 text-[#718076]">Busca por nombre, marca, modelo o código. Se copiarán solo los datos descriptivos.</p>
-        <input id="product-source-search" type="search" maxLength={150} value={sourceQuery} onChange={(event) => setSourceQuery(event.target.value)} placeholder="Ej. audífonos, Acme o ABC-123" autoComplete="off" className="mt-3 min-h-10 w-full rounded-xl border border-[#d6dfd7] bg-white px-3.5 py-2 outline-none focus:border-[#5a886c] focus:ring-4 focus:ring-[#5a886c]/10" />
+        <Input id="product-source-search" type="search" maxLength={150} value={sourceQuery} onChange={(event) => setSourceQuery(event.target.value)} placeholder="Ej. audífonos, Acme o ABC-123" autoComplete="off" className="mt-3 w-full" />
         {sourceQuery.trim().length >= 2 && <div className="mt-2 space-y-1" aria-live="polite">
-          {suggestions.query !== sourceTerm ? <p role="status" className="text-xs text-[#52655a]">Buscando productos…</p> : suggestions.error ? <p role="alert" className="text-xs text-[#a5432a]">{suggestions.error}</p> : matches.length ? matches.map((product) => <button key={product.id} type="button" onClick={() => applyProduct(product)} className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-[var(--brand-emerald-soft)]"><span className="min-w-0"><span className="block truncate font-medium text-[#263b31]">{product.name}</span><span className="block truncate text-xs text-[#718076]">{[product.brand, product.model, product.sku].filter(Boolean).join(" · ") || "Sin marca, modelo ni código"}</span></span><span className="shrink-0 text-xs font-semibold text-[var(--brand-emerald)]">Usar datos</span></button>) : <p className="px-3 py-2 text-xs text-[#718076]">No hay coincidencias en este catálogo.</p>}
+          {suggestions.query !== sourceTerm ? <p role="status" className="text-xs text-[#52655a]">Buscando productos…</p> : suggestions.error ? <p role="alert" className="text-xs text-[#a5432a]">{suggestions.error}</p> : matches.length ? matches.map((product) => <Button variant="ghost" key={product.id} type="button" onClick={() => applyProduct(product)} className={uiStyles.suggestion}><span className="min-w-0"><span className="block truncate font-medium text-[#263b31]">{product.name}</span><span className="block truncate text-xs text-[#718076]">{[product.brand, product.model, product.sku].filter(Boolean).join(" · ") || "Sin marca, modelo ni código"}</span></span><span className="shrink-0 text-xs font-semibold text-[var(--brand-emerald)]">Usar datos</span></Button>) : <p className="px-3 py-2 text-xs text-[#718076]">No hay coincidencias en este catálogo.</p>}
         </div>}
         </div>
       </div>}
       <form onSubmit={onSubmit} className="mt-5 space-y-4">
         <label className="block text-sm font-medium text-[#37443d]">
           Nombre
-          <input required maxLength={150} value={value.name} onChange={(event) => onChange("name", event.target.value)} placeholder="Ej. Lámpara de mesa" className="mt-2 min-h-11 w-full rounded-xl border border-[#d6dfd7] bg-[#fcfdfb] px-3.5 py-2.5 outline-none transition focus:border-[#5a886c] focus:bg-white focus:ring-4 focus:ring-[#5a886c]/10" />
+          <Input required maxLength={150} value={value.name} onChange={(event) => onChange("name", event.target.value)} placeholder="Ej. Lámpara de mesa" className="mt-2 w-full" />
         </label>
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm font-medium text-[#37443d]">Marca <span className="font-normal text-[#849087]">(opcional)</span><input maxLength={100} value={value.brand} onChange={(event) => onChange("brand", event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-[#d6dfd7] bg-[#fcfdfb] px-3.5 py-2.5 outline-none focus:border-[#5a886c] focus:ring-4 focus:ring-[#5a886c]/10" /></label>
-          <label className="block text-sm font-medium text-[#37443d]">Modelo <span className="font-normal text-[#849087]">(opcional)</span><input maxLength={100} value={value.model} onChange={(event) => onChange("model", event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-[#d6dfd7] bg-[#fcfdfb] px-3.5 py-2.5 outline-none focus:border-[#5a886c] focus:ring-4 focus:ring-[#5a886c]/10" /></label>
+          <label className="block text-sm font-medium text-[#37443d]">Marca <span className="font-normal text-[#849087]">(opcional)</span><Input maxLength={100} value={value.brand} onChange={(event) => onChange("brand", event.target.value)} className="mt-2 w-full" /></label>
+          <label className="block text-sm font-medium text-[#37443d]">Modelo <span className="font-normal text-[#849087]">(opcional)</span><Input maxLength={100} value={value.model} onChange={(event) => onChange("model", event.target.value)} className="mt-2 w-full" /></label>
         </div>
-        <label className="block text-sm font-medium text-[#37443d]">Código/SKU <span className="font-normal text-[#849087]">(opcional)</span><input maxLength={100} value={value.sku} onChange={(event) => onChange("sku", event.target.value)} placeholder="Código único de este producto" className="mt-2 min-h-11 w-full rounded-xl border border-[#d6dfd7] bg-[#fcfdfb] px-3.5 py-2.5 outline-none focus:border-[#5a886c] focus:ring-4 focus:ring-[#5a886c]/10" /></label>
+        <label className="block text-sm font-medium text-[#37443d]">Código/SKU <span className="font-normal text-[#849087]">(opcional)</span><Input maxLength={100} value={value.sku} onChange={(event) => onChange("sku", event.target.value)} placeholder="Código único de este producto" className="mt-2 w-full" /></label>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block text-sm font-medium text-[#37443d]">
             Precio
-            <input required type="number" min="0" step="1" value={value.price} onChange={(event) => onChange("price", event.target.value)} placeholder="25000" className="mt-2 min-h-11 w-full rounded-xl border border-[#d6dfd7] bg-[#fcfdfb] px-3.5 py-2.5 outline-none transition focus:border-[#5a886c] focus:bg-white focus:ring-4 focus:ring-[#5a886c]/10" />
+            <Input required type="number" min="0" step="1" value={value.price} onChange={(event) => onChange("price", event.target.value)} placeholder="25000" className="mt-2 w-full" />
           </label>
           <label className="block text-sm font-medium text-[#37443d]">
             Inventario
-            <input required type="number" min="0" step="1" value={value.stock} onChange={(event) => onChange("stock", event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-[#d6dfd7] bg-[#fcfdfb] px-3.5 py-2.5 outline-none transition focus:border-[#5a886c] focus:bg-white focus:ring-4 focus:ring-[#5a886c]/10" />
+            <Input required type="number" min="0" step="1" value={value.stock} onChange={(event) => onChange("stock", event.target.value)} className="mt-2 w-full" />
           </label>
         </div>
         <fieldset className="rounded-2xl border border-[#ead2ce] bg-[#fff8f6] p-4">
@@ -158,17 +162,17 @@ export default function CatalogProductEditor({
             <div className="mt-4 space-y-4 border-t border-[#f0d9d4] pt-4">
               <label className="block text-sm font-medium text-[#37443d]">
                 Precio de oferta
-                <input required type="number" min="0" max={value.price || undefined} step="1" value={value.salePrice} onChange={(event) => onChange("salePrice", event.target.value)} placeholder="18000" className="mt-2 min-h-11 w-full rounded-xl border border-[#e3c5c0] bg-white px-3.5 py-2.5 outline-none focus:border-[#c62828] focus:ring-2 focus:ring-[#c62828]/10" />
+                <Input required type="number" min="0" max={value.price || undefined} step="1" value={value.salePrice} onChange={(event) => onChange("salePrice", event.target.value)} placeholder="18000" className="mt-2 w-full" />
                 <span className="mt-1.5 block text-xs font-normal text-[#7d6a66]">Debe ser menor al precio normal de ${Number(value.price || 0).toLocaleString("es-CO")}.</span>
               </label>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm font-medium text-[#37443d]">
                   Válido desde
-                  <input required type="datetime-local" value={value.saleStartsAt} onChange={(event) => onChange("saleStartsAt", event.target.value)} className="mt-2 min-h-11 w-full min-w-0 rounded-xl border border-[#e3c5c0] bg-white px-2.5 py-2.5 text-sm outline-none focus:border-[#c62828]" />
+                  <Input required type="datetime-local" value={value.saleStartsAt} onChange={(event) => onChange("saleStartsAt", event.target.value)} className="mt-2 w-full min-w-0" />
                 </label>
                 <label className="block text-sm font-medium text-[#37443d]">
                   Válido hasta
-                  <input required type="datetime-local" value={value.saleEndsAt} onChange={(event) => onChange("saleEndsAt", event.target.value)} className="mt-2 min-h-11 w-full min-w-0 rounded-xl border border-[#e3c5c0] bg-white px-2.5 py-2.5 text-sm outline-none focus:border-[#c62828]" />
+                  <Input required type="datetime-local" value={value.saleEndsAt} onChange={(event) => onChange("saleEndsAt", event.target.value)} className="mt-2 w-full min-w-0" />
                 </label>
               </div>
               <p className="text-xs leading-5 text-[#7d6a66]">La etiqueta roja y el precio tachado solo se verán durante este periodo.</p>
@@ -184,7 +188,7 @@ export default function CatalogProductEditor({
         </label>
         <label className="block text-sm font-medium text-[#37443d]">
           Descripción <span className="font-normal text-[#849087]">(opcional)</span>
-          <textarea maxLength={2000} rows={3} value={value.description} onChange={(event) => onChange("description", event.target.value)} className="mt-2 w-full resize-y rounded-xl border border-[#d6dfd7] bg-[#fcfdfb] px-3.5 py-2.5 outline-none focus:border-[#5a886c] focus:bg-white focus:ring-4 focus:ring-[#5a886c]/10" />
+          <Textarea maxLength={2000} rows={3} value={value.description} onChange={(event) => onChange("description", event.target.value)} className="mt-2 w-full" />
         </label>
         <label className="block text-sm font-medium text-[#37443d]">
           Imagen <span className="font-normal text-[#849087]">(JPG, PNG o WebP; máximo 5 MB)</span>
@@ -199,9 +203,9 @@ export default function CatalogProductEditor({
           }} className="mt-2 block w-full text-sm text-[#68756e] file:mr-3 file:rounded-md file:border-0 file:bg-[#e8f0e8] file:px-3 file:py-2 file:text-xs file:font-semibold file:text-[var(--brand-emerald)]" />
           {imageFile && <span className="mt-1 block text-xs font-normal text-[var(--brand-emerald)]">{imageFile.name}</span>}
         </label>
-        <button type="submit" disabled={saving} className="w-full rounded-md bg-[var(--brand-emerald)] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[var(--brand-emerald-hover)] disabled:cursor-wait disabled:opacity-60">
+        <Button variant="primary" size="lg" type="submit" disabled={saving} className="w-full">
           {saving ? "Guardando..." : editing ? "Guardar cambios" : "Guardar producto"}
-        </button>
+        </Button>
       </form>
     </section>
   );

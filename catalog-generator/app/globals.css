@@ -10,6 +10,45 @@
   --brand-coral: #E4572E;
   --brand-coral-text: #B43C1C;
   --brand-forest: #0B2E27;
+
+  /* Additive foundations: existing utilities and seller palettes keep their values. */
+  --surface-base: var(--background);
+  --surface-raised: #ffffff;
+  --surface-sunken: #edf3ec;
+  --border-normal: #d6dfd7;
+  --border-subtle: #e2e8e0;
+  --border-strong: #a8c2af;
+  --text-primary: var(--brand-forest);
+  --text-secondary: #52655a;
+  --text-muted: #68756e;
+  --color-primary: var(--brand-emerald);
+  --color-primary-hover: var(--brand-emerald-hover);
+  --color-on-primary: #ffffff;
+  --color-accent: var(--brand-coral);
+  --color-accent-text: var(--brand-coral-text);
+  --field-background: #fcfdfb;
+  --field-border: var(--border-normal);
+  --field-focus: var(--brand-emerald);
+  --field-focus-ring: #0f6b5733;
+
+  /* Status colors are independent of brand accents. */
+  --status-success-text: #166534;
+  --status-success-surface: #f0fdf4;
+  --status-error-text: #991b1b;
+  --status-error-surface: #fef2f2;
+  --status-warning-text: #92400e;
+  --status-warning-surface: #fffbeb;
+  --status-info-text: #1e40af;
+  --status-info-surface: #eff6ff;
+
+  --radius-small: 0.5rem;
+  --radius-medium: 0.75rem;
+  --radius-large: 1rem;
+  --elevation-low: 0 2px 8px -4px rgb(11 46 39 / 12%);
+  --elevation-medium: 0 12px 28px -12px rgb(11 46 39 / 18%);
+  --elevation-high: 0 20px 44px -20px rgb(11 46 39 / 24%);
+  --duration-short: 120ms;
+  --duration-medium: 200ms;
 }
 
 @theme inline {
@@ -26,4 +65,23 @@ body {
     repeating-linear-gradient(90deg, rgba(36, 75, 58, 0.025) 0 1px, transparent 1px 34px);
   color: var(--foreground);
   font-family: var(--font-app-sans);
+}
+
+/* Keep normal motion unchanged, including public templates. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-short: 0.01ms;
+    --duration-medium: 0.01ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
 }

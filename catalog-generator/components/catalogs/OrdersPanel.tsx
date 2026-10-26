@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
+
 import { useEffect, useState } from "react";
 import { apiRequest, OrderStatus } from "@/lib/api";
 
@@ -75,7 +77,7 @@ export default function OrdersPanel({ catalogId }: { catalogId: string }) {
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--brand-coral-text)]">Solicitudes de clientes</p>
           <h2 className="mt-1 text-lg font-semibold tracking-tight text-[#202b27]">Órdenes recibidas</h2>
         </div>
-        <button type="button" onClick={() => { setLoading(true); setReloadKey((key) => key + 1); }} className="min-h-10 rounded-xl border border-[#dce7dc] px-3.5 text-xs font-semibold text-[#315e4f] transition hover:bg-[#f1f5ef]">Actualizar</button>
+        <Button variant="secondary" type="button" onClick={() => { setLoading(true); setReloadKey((key) => key + 1); }} >Actualizar</Button>
       </div>
       {error && <p role="alert" className="mt-4 rounded-md bg-[#fff1ec] px-4 py-3 text-sm text-[#a5432a]">{error}</p>}
       {orders.length === 0 ? (
@@ -109,9 +111,9 @@ export default function OrdersPanel({ catalogId }: { catalogId: string }) {
               {order.notes && <p className="mt-2 text-xs leading-5 text-[#68756e]">Nota: {order.notes}</p>}
               {order.status !== "COMPLETED" && order.status !== "CANCELLED" && (
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {order.status === "PENDING" && <button disabled={updatingId === order.id} onClick={() => void changeStatus(order, "CONFIRMED")} className="rounded-md bg-[var(--brand-emerald)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-60">Confirmar</button>}
-                  {order.status === "CONFIRMED" && <button disabled={updatingId === order.id} onClick={() => void changeStatus(order, "COMPLETED")} className="rounded-md bg-[var(--brand-emerald)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-60">Marcar completada</button>}
-                  <button disabled={updatingId === order.id} onClick={() => void changeStatus(order, "CANCELLED")} className="rounded-md border border-[#e6c7bc] px-3 py-2 text-xs font-semibold text-[#a5432a] disabled:opacity-60">Cancelar orden</button>
+                  {order.status === "PENDING" && <Button variant="primary" disabled={updatingId === order.id} onClick={() => void changeStatus(order, "CONFIRMED")} >Confirmar</Button>}
+                  {order.status === "CONFIRMED" && <Button variant="primary" disabled={updatingId === order.id} onClick={() => void changeStatus(order, "COMPLETED")} >Marcar completada</Button>}
+                  <Button variant="destructive-ghost" disabled={updatingId === order.id} onClick={() => void changeStatus(order, "CANCELLED")} >Cancelar orden</Button>
                 </div>
               )}
             </article>

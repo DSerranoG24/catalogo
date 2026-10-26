@@ -1,6 +1,10 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+
 import { FormEvent, useState } from "react";
+import { DestructiveConfirm } from "@/components/ui/Dialog";
 import Image from "next/image";
 import { ImagePlus, Trash2 } from "lucide-react";
 import { apiRequest, Category, slugify } from "@/lib/api";
@@ -16,6 +20,7 @@ export default function CatalogCategories({
   onCreated: () => void;
   onDeleted: (categoryId: string) => void;
 }) {
+  const [pendingDelete, setPendingDelete] = useState<Category | null>(null);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -24,7 +29,6 @@ export default function CatalogCategories({
 
   async function removeCategory(category: Category) {
     if (deleting) return;
-    if (!window.confirm(`¿Eliminar la categoría «${category.name}»? Los productos asociados se conservarán y quedarán sin categoría. Los pedidos se conservan. Esta acción no se puede deshacer.`)) return;
     setDeleting(category.id);
     setError("");
     try {
@@ -110,7 +114,7 @@ export default function CatalogCategories({
                   }
                 }} />
               </label>
-              {category.imageUrl && <button type="button" title={`Quitar imagen de ${category.name}`} aria-label={`Quitar imagen de ${category.name}`} onClick={async () => {
+              {category.imageUrl && <Button variant="destructive-ghost" size="sm" iconOnly type="button" title={`Quitar imagen de ${category.name}`} aria-label={`Quitar imagen de ${category.name}`} onClick={async () => {
                 setError("");
                 try {
                   await apiRequest(`/categories/${category.id}/image`, { method: "DELETE" });
@@ -118,19 +122,19 @@ export default function CatalogCategories({
                 } catch (deleteError) {
                   setError(deleteError instanceof Error ? deleteError.message : "No se pudo quitar la imagen.");
                 }
-              }} className="grid size-8 shrink-0 place-items-center text-[#a5432a] hover:bg-[#fff1ec]">
+              }} className="shrink-0">
                 <Trash2 aria-hidden="true" size={15} />
-              </button>}
+              </Button>}
             </div>
-            <button type="button" disabled={deleting !== null} onClick={() => { void removeCategory(category); }} aria-label={`Eliminar categoría ${category.name}`} className="flex min-h-11 w-full items-center justify-center gap-2 border-t border-[#e2e8e0] px-2 py-2 text-xs font-semibold text-[#a5432a] hover:bg-[#fff1ec] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#a5432a] disabled:opacity-60">
+            <Button variant="destructive-ghost" type="button" disabled={deleting !== null} onClick={() => setPendingDelete(category)} aria-label={`Eliminar categoría ${category.name}`} className="w-full">
               <Trash2 aria-hidden="true" size={15} />{deleting === category.id ? "Eliminando…" : "Eliminar categoría"}
-            </button>
+            </Button>
           </article>
         )) : <p className="text-sm text-[#849087]">Todavía no hay categorías.</p>}
       </div>
       <form onSubmit={submit} className="mt-5 flex gap-2 border-t border-[#edf1ec] pt-4">
-        <input required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="Nueva categoría" aria-label="Nombre de la nueva categoría" className="min-w-0 flex-1 rounded-md border border-[#d6dfd7] px-3 py-2.5 text-sm outline-none focus:border-[var(--brand-emerald)]" />
-        <button type="submit" disabled={busy} className="rounded-md border border-[#bdd0c1] px-3 py-2.5 text-sm font-semibold text-[var(--brand-emerald)] transition hover:bg-[#edf3ec] disabled:opacity-60">Añadir</button>
+        <Input required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="Nueva categoría" aria-label="Nombre de la nueva categoría" className="min-w-0 flex-1" />
+        <Button variant="outline" type="submit" disabled={busy} >Añadir</Button>
       </form>
       <label className="mt-3 flex min-h-10 cursor-pointer items-center gap-2 text-xs font-medium text-[#52675b]">
         <ImagePlus aria-hidden="true" size={16} />
@@ -138,6 +142,9 @@ export default function CatalogCategories({
         <input type="file" accept="image/jpeg,image/png,image/webp" aria-label="Imagen para la nueva categoría" className="sr-only" onChange={(event) => setImageFile(readImage(event.target.files?.[0]))} />
       </label>
       {error && <p role="alert" className="mt-3 text-xs text-[#a5432a]">{error}</p>}
+      <DestructiveConfirm open={pendingDelete !== null} onOpenChange={open => { if (!open) setPendingDelete(null); }} title="Eliminar categoría"
+        description={`¿Eliminar la categoría «${pendingDelete?.name ?? ""}»? Los productos asociados se conservarán y quedarán sin categoría. Los pedidos se conservan. Esta acción no se puede deshacer.`}
+        onConfirm={() => { if (pendingDelete) void removeCategory(pendingDelete); }} />
     </section>
   );
 }

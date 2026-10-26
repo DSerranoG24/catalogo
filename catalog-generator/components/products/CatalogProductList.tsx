@@ -1,5 +1,9 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import uiStyles from "@/components/ui/ui.module.css";
+
 import Image from "next/image";
 import type { RefObject } from "react";
 import { Category, Product, ProductPage } from "@/lib/api";
@@ -55,20 +59,20 @@ export default function CatalogProductList({
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--brand-coral-text)]">Inventario</p>
           <h2 className="mt-1 text-lg font-semibold tracking-tight text-[#202b27]">Productos</h2>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-3"><span className="text-xs tabular-nums text-[#52655a]">{totalProducts} en total{filtered && !loading && !error ? ` · ${totalFiltered} coinciden` : ""}</span><button ref={importButtonRef} type="button" onClick={onImport} disabled={importDisabled} aria-expanded={importOpen} aria-controls="product-import-panel" className="min-h-11 rounded-lg bg-[var(--brand-emerald)] px-3 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-emerald-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)] disabled:cursor-not-allowed disabled:opacity-50">Importar Excel</button></div>
+        <div className="flex flex-wrap items-center justify-end gap-3"><span className="text-xs tabular-nums text-[#52655a]">{totalProducts} en total{filtered && !loading && !error ? ` · ${totalFiltered} coinciden` : ""}</span><Button variant="primary" ref={importButtonRef} type="button" onClick={onImport} disabled={importDisabled} aria-expanded={importOpen} aria-controls="product-import-panel" >Importar Excel</Button></div>
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-3"><button ref={photoButtonRef} type="button" onClick={onPhotos} disabled={photosDisabled} aria-expanded={photoOpen} aria-controls="product-photo-panel" className="min-h-11 rounded-lg border border-[var(--brand-emerald)] px-3 py-2 text-sm font-semibold text-[var(--brand-emerald)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)] disabled:opacity-50">Cargar varias fotos</button>{!loading && !error && Number.isSafeInteger(result.needsCompletionCount) && <span className="text-sm tabular-nums">{result.needsCompletionCount} sin completar (total)</span>}</div>
+      <div className="mt-3 flex flex-wrap items-center gap-3"><Button variant="outline" ref={photoButtonRef} type="button" onClick={onPhotos} disabled={photosDisabled} aria-expanded={photoOpen} aria-controls="product-photo-panel" >Cargar varias fotos</Button>{!loading && !error && Number.isSafeInteger(result.needsCompletionCount) && <span className="text-sm tabular-nums">{result.needsCompletionCount} sin completar (total)</span>}</div>
       <ProductListControls query={query} categories={categories} disabled={mutationDisabled} onChange={onQueryChange} />
-      {error && <div role="alert" className="mt-4 rounded-xl bg-[#fff4ef] p-4 text-sm text-[#a5432a]"><p>{error}</p><button type="button" onClick={onRetry} className="mt-2 min-h-11 rounded-lg px-3 font-semibold focus-visible:outline-2">Reintentar</button></div>}
+      {error && <div role="alert" className="mt-4 rounded-xl bg-[#fff4ef] p-4 text-sm text-[#a5432a]"><p>{error}</p><Button variant="ghost" type="button" onClick={onRetry} className="mt-2">Reintentar</Button></div>}
       {loading ? <div role="status" aria-label="Cargando productos" className="mt-4 grid grid-cols-2 gap-3 animate-pulse xl:grid-cols-3">{[0, 1, 2, 3, 4, 5].map((item) => <div key={item} className="overflow-hidden rounded-2xl border border-[#e2e8e0] bg-white"><div className="aspect-square bg-[#e8eee5]" /><div className="space-y-2 p-3"><div className="h-3 w-3/4 rounded-full bg-[#e8eee5]" /><div className="h-3 w-1/2 rounded-full bg-[#f0f3ee]" /><div className="h-3 w-1/3 rounded-full bg-[#f0f3ee]" /></div></div>)}</div> : error ? null : products.length === 0 ? (
         <div className="mt-4 rounded-2xl border border-dashed border-[#cbd7cc] bg-white/70 px-5 py-10 text-center">
           <h3 className="font-semibold text-[#202b27]">{totalProducts === 0 ? "Aún no hay productos" : "No hay productos que coincidan"}</h3>
-          <p className="mt-1 text-sm text-[#68756e]">{totalProducts === 0 ? "Completa el formulario para añadir el primero." : "Prueba otra búsqueda o limpia los filtros."}</p>{totalProducts > 0 && <button type="button" disabled={mutationDisabled} onClick={clearFilters} className="mt-3 min-h-11 rounded-lg px-3 font-semibold text-[var(--brand-emerald)] focus-visible:outline-2">Limpiar filtros</button>}
+          <p className="mt-1 text-sm text-[#68756e]">{totalProducts === 0 ? "Completa el formulario para añadir el primero." : "Prueba otra búsqueda o limpia los filtros."}</p>{totalProducts > 0 && <Button variant="ghost" type="button" disabled={mutationDisabled} onClick={clearFilters} className="mt-3">Limpiar filtros</Button>}
         </div>
       ) : (
         <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-3">
           {products.map((product) => (
-            <article key={product.id} className="group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-[#e2e8e0] bg-white shadow-[0_14px_36px_-34px_rgba(36,63,47,0.5)] transition hover:-translate-y-0.5 hover:shadow-md">
+            <Card as="article" variant="interactive" key={product.id} className={`group flex min-w-0 flex-col overflow-hidden ${uiStyles.productCard}`}>
               <div className="relative aspect-square w-full shrink-0 overflow-hidden bg-[#eef2ed]">
                 {product.images[0] ? <Image src={product.images[0].url} alt={product.images[0].alt || product.name} fill unoptimized sizes="(max-width: 640px) 48vw, (max-width: 1280px) 30vw, 20vw" className="object-cover transition duration-300 group-hover:scale-[1.03]" /> : <span className="absolute inset-0 grid place-items-center text-[10px] font-medium text-[#87928b]">Sin imagen</span>}
               </div>
@@ -83,13 +87,13 @@ export default function CatalogProductList({
                 </div>
                 {product.description && <p className="mt-1 line-clamp-2 min-h-8 text-[10px] leading-4 text-[#68756e]">{product.description}</p>}
                 {!product.description && <span className="min-h-8" aria-hidden="true" />}
-                {!product.needsCompletion && !product.active && <button type="button" disabled={mutationDisabled} onClick={() => onPublish(product)} className="my-2 min-h-11 rounded-lg bg-[var(--brand-emerald)] px-2 text-xs font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50">Publicar</button>}
-                <div className="mt-auto flex gap-2 border-t border-[#edf1ec] pt-2.5 text-[10px] font-semibold">
-                  <button type="button" disabled={mutationDisabled} onClick={() => onEdit(product)} className="min-h-8 flex-1 rounded-lg bg-[var(--brand-emerald-soft)] px-2 text-[#315e4f] transition hover:bg-[#e1ece1] disabled:opacity-50">Editar</button>
-                  <button type="button" disabled={mutationDisabled} onClick={() => onDelete(product)} className="min-h-8 rounded-lg px-2 text-[#ad4d35] transition hover:bg-[#fff1ec] disabled:opacity-50">Eliminar</button>
+                {!product.needsCompletion && !product.active && <Button variant="primary" size="sm" type="button" disabled={mutationDisabled} onClick={() => onPublish(product)} className="my-2">Publicar</Button>}
+                <div className="mt-auto flex flex-wrap gap-2 border-t border-[#edf1ec] pt-2.5 text-[10px] font-semibold">
+                  <Button variant="secondary" size="sm" type="button" disabled={mutationDisabled} onClick={() => onEdit(product)} className="flex-1">Editar</Button>
+                  <Button variant="destructive-ghost" size="sm" type="button" disabled={mutationDisabled} onClick={() => onDelete(product)} className="shrink-0">Eliminar</Button>
                 </div>
               </div>
-            </article>
+            </Card>
           ))}
         </div>
       )}

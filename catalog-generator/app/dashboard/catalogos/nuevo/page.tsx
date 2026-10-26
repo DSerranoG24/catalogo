@@ -1,5 +1,8 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
+import { Input, Textarea } from "@/components/ui/Input";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
@@ -50,7 +53,7 @@ export default function NuevoCatalogo() {
         <div className="flex items-center gap-3 border-b border-[#edf1ec] pb-4"><span className="grid size-10 place-items-center rounded-xl bg-[var(--brand-emerald-soft)] text-[#315e4f]"><Store className="size-4" aria-hidden="true" /></span><div><h2 className="text-sm font-semibold text-[#263b31]">Identidad de tu tienda</h2><p className="mt-0.5 text-xs text-[#829087]">Puedes cambiar estos datos después.</p></div></div>
         <label className="block text-sm font-medium text-[#37443d]">
           Nombre del catálogo
-          <input
+          <Input
             required
             maxLength={100}
             value={name}
@@ -59,14 +62,14 @@ export default function NuevoCatalogo() {
               if (!slugEdited) setSlug(slugify(event.target.value));
             }}
             placeholder="Colección de temporada"
-            className="mt-2 min-h-12 w-full rounded-xl border border-[#d9e2d9] bg-[#fcfdfb] px-4 py-3 text-[#202b27] outline-none transition placeholder:text-[#a2aca5] focus:border-[#5a886c] focus:bg-white focus:ring-4 focus:ring-[#5a886c]/10"
+            className="mt-2 w-full"
           />
         </label>
         <label className="block text-sm font-medium text-[#37443d]">
           Dirección del catálogo
           <div className="mt-2 flex min-h-12 overflow-hidden rounded-xl border border-[#d9e2d9] bg-[#fcfdfb] transition focus-within:border-[#5a886c] focus-within:bg-white focus-within:ring-4 focus-within:ring-[#5a886c]/10">
             <span className="flex items-center border-r border-[#e5ebe4] bg-[#f3f6f1] px-4 text-sm text-[#849087]">/</span>
-            <input
+            <Input
               required
               maxLength={100}
               pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
@@ -76,28 +79,28 @@ export default function NuevoCatalogo() {
                 setSlugEdited(true);
               }}
               placeholder="coleccion-de-temporada"
-              className="min-w-0 flex-1 bg-transparent px-4 py-3 text-[#202b27] outline-none"
+              className="min-w-0 flex-1"
             />
           </div>
           <span className="mt-1.5 block text-xs font-normal text-[#849087]">Solo minúsculas, números y guiones.</span>
         </label>
         <label className="block text-sm font-medium text-[#37443d]">
           Descripción <span className="font-normal text-[#849087]">(opcional)</span>
-          <textarea
+          <Textarea
             maxLength={500}
             rows={4}
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             placeholder="¿Qué encontrarán las personas en este catálogo?"
-            className="mt-2 w-full resize-y rounded-xl border border-[#d9e2d9] bg-[#fcfdfb] px-4 py-3 text-[#202b27] outline-none placeholder:text-[#a2aca5] transition focus:border-[#5a886c] focus:bg-white focus:ring-4 focus:ring-[#5a886c]/10"
+            className="mt-2 w-full"
           />
         </label>
         {error && <p role="alert" className="rounded-md bg-[#fff1ec] px-3.5 py-3 text-sm text-[#a5432a]">{error}</p>}
         <div className="flex flex-col-reverse justify-end gap-3 border-t border-[#edf1ec] pt-5 sm:flex-row">
           <Link href="/dashboard" className="inline-flex min-h-12 items-center justify-center rounded-xl px-5 text-sm font-semibold text-[#68756e] transition hover:bg-[#f4f7f2]">Cancelar</Link>
-          <button type="submit" disabled={busy} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[var(--brand-emerald)] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--brand-emerald-hover)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#5a886c]/20 disabled:cursor-wait disabled:opacity-60">
+          <Button variant="primary" size="lg" type="submit" disabled={busy} >
             {busy ? "Creando..." : <>Crear catálogo <ArrowRight className="size-4" aria-hidden="true" /></>}
-          </button>
+          </Button>
         </div>
       </form>
       </div>

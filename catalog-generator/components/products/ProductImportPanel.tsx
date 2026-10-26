@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
+
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { importTextHelp, importBusy, importCounts, importFieldLabel, type ImportFlowState, type ProductImportFlow, type RowStatus } from "@/lib/product-import-flow";
@@ -40,7 +42,7 @@ export default function ProductImportPanel({ flow, state, archived, onClose }: {
   return <section aria-labelledby="product-import-title" className="mt-8 rounded-2xl border border-[#cbd7cc] bg-white p-5 shadow-sm sm:p-6">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div><h2 ref={title} id="product-import-title" tabIndex={-1} className="text-xl font-semibold text-[#202b27] focus-visible:outline-2">Importar productos desde Excel</h2><p className="mt-1 text-sm text-[#52655a]">Crea o actualiza productos. No borra productos ni cambia su visibilidad; añade las imágenes después.</p></div>
-      <button type="button" className={button} onClick={onClose} disabled={busy} aria-describedby={busy ? "import-close-help" : undefined}>Cerrar importación</button>
+      <Button variant="outline" type="button"  onClick={onClose} disabled={busy} aria-describedby={busy ? "import-close-help" : undefined}>Cerrar importación</Button>
     </div>
     {busy && <p id="import-close-help" className="mt-2 text-sm text-[#52655a]">El cierre está bloqueado mientras hay trabajo activo. Usa la acción de cancelar o detener que aparece abajo.</p>}
     {archived && <p role="alert" className="mt-4 text-sm text-[#963b23]">Este catálogo está archivado y no admite importaciones.</p>}
@@ -65,18 +67,18 @@ export default function ProductImportPanel({ flow, state, archived, onClose }: {
       <p className="mt-2">{importTextHelp}</p>
       {!state.formatWarning.canContinue && <p className="mt-2">No hay filas válidas para continuar.</p>}
       <div className="mt-3 flex flex-wrap gap-3">
-        {state.formatWarning.canContinue && <button type="button" className={button} disabled={archived || state.failure?.status === 401} onClick={() => { void flow.startPreview(); }}>Continuar con las filas válidas</button>}
-        <button type="button" className={button} onClick={() => { document.getElementById("product-import-file")?.focus(); }}>Corregir el archivo</button>
+        {state.formatWarning.canContinue && <Button variant="primary" type="button"  disabled={archived || state.failure?.status === 401} onClick={() => { void flow.startPreview(); }}>Continuar con las filas válidas</Button>}
+        <Button variant="outline" type="button"  onClick={() => { document.getElementById("product-import-file")?.focus(); }}>Corregir el archivo</Button>
       </div>
       <p className="mt-2">Corrige el archivo en Excel y vuelve a seleccionarlo con el selector de arriba.</p>
     </div>}
     {state.failure && <div role="alert" className="mt-4 rounded-lg border border-[#f0c8b9] bg-[#fff4ef] p-4 text-sm text-[#963b23]"><p>{state.failure.message}</p>{state.failure.requestId && <p className="mt-2 break-all">Referencia de soporte: {state.failure.requestId}</p>}{state.failure.status === 401 && !busy && <Link href="/login" className="mt-3 inline-block font-semibold underline focus-visible:outline-2">Volver a iniciar sesión</Link>}</div>}
     <div className="mt-4 flex flex-wrap gap-3">
-      {(state.phase === "reading" || state.phase === "previewing") && <button type="button" className={button} onClick={() => flow.cancel()}>{state.phase === "reading" ? "Cancelar lectura" : "Cancelar vista previa"}</button>}
-      {state.phase === "writing" && <button type="button" className={button} onClick={() => flow.stop()} disabled={state.stopRequested}>{state.stopRequested ? "Detención solicitada: esperando el lote actual" : "Detener después del lote actual"}</button>}
-      {state.phase === "ready" && <button type="button" className={`${button} bg-[var(--brand-emerald)] text-white hover:bg-[var(--brand-emerald-hover)]`} disabled={!eligible || expired || archived} onClick={() => { void flow.confirm(); }}>Importar {eligible} productos</button>}
-      {state.failure?.retryable && !busy && <button type="button" className={button} disabled={retrySeconds > 0 || archived || (state.failure.stage === "confirm" && expired)} onClick={() => { void flow.retry(); }}>Reintentar {state.failure.stage === "preview" ? "vista previa" : "lote rechazado"}</button>}
-      {!busy && state.report.some(row => !row.local && row.status !== "created" && row.status !== "updated") && state.phase !== "idle" && <button type="button" className={button} disabled={archived || state.failure?.status === 401 || retrySeconds > 0} onClick={() => { void flow.startPreview(); }}>Nueva vista previa de filas sin confirmar</button>}
+      {(state.phase === "reading" || state.phase === "previewing") && <Button variant="outline" type="button"  onClick={() => flow.cancel()}>{state.phase === "reading" ? "Cancelar lectura" : "Cancelar vista previa"}</Button>}
+      {state.phase === "writing" && <Button variant="outline" type="button"  onClick={() => flow.stop()} disabled={state.stopRequested}>{state.stopRequested ? "Detención solicitada: esperando el lote actual" : "Detener después del lote actual"}</Button>}
+      {state.phase === "ready" && <Button variant="primary" type="button"  disabled={!eligible || expired || archived} onClick={() => { void flow.confirm(); }}>Importar {eligible} productos</Button>}
+      {state.failure?.retryable && !busy && <Button variant="outline" type="button"  disabled={retrySeconds > 0 || archived || (state.failure.stage === "confirm" && expired)} onClick={() => { void flow.retry(); }}>Reintentar {state.failure.stage === "preview" ? "vista previa" : "lote rechazado"}</Button>}
+      {!busy && state.report.some(row => !row.local && row.status !== "created" && row.status !== "updated") && state.phase !== "idle" && <Button variant="outline" type="button"  disabled={archived || state.failure?.status === 401 || retrySeconds > 0} onClick={() => { void flow.startPreview(); }}>Nueva vista previa de filas sin confirmar</Button>}
       {retrySeconds > 0 && <span aria-live="off" className="self-center text-sm text-[#52655a]">Podrás reintentar en {retrySeconds} s.</span>}
     </div>
     {expired && !busy && state.phase === "ready" && <p role="alert" className="mt-3 text-sm text-[#963b23]">La vista previa caducó. Genera una nueva para confirmar.</p>}
@@ -93,7 +95,7 @@ export default function ProductImportPanel({ flow, state, archived, onClose }: {
           <tbody>{state.report.slice(currentPage * 25, currentPage * 25 + 25).map(row => <tr key={row.rowNumber} className="border-t border-[#e2e8e0] align-top text-[#35473d]"><th scope="row" className="px-3 py-3 tabular-nums">{row.rowNumber}</th><td className="max-w-56 break-words px-3 py-3">{row.name || "Sin nombre"}</td><td className="max-w-40 break-all px-3 py-3">{row.sku || "—"}</td><td className="px-3 py-3 font-semibold">{statusLabels[row.status]}</td><td className="max-w-md break-words px-3 py-3">{row.reasons.map((reason, index) => <p key={index} className="mb-1">{reason}</p>)}{row.textHelp && <p className="mt-2 text-xs leading-5">Ayuda: {importTextHelp}</p>}{row.fields.length > 0 && <p>Campos: {row.fields.map(importFieldLabel).join(", ")}.</p>}{row.requestId && <p className="mt-2 break-all text-xs">requestId: {row.requestId}</p>}</td></tr>)}</tbody>
         </table>
       </div>
-      <nav aria-label="Páginas del reporte de importación" className="mt-3 flex items-center gap-3"><button type="button" className={button} disabled={currentPage === 0} onClick={() => changePage(currentPage - 1)}>Anterior</button><span className="text-sm text-[#52655a]">{currentPage + 1} / {pages}</span><button type="button" className={button} disabled={currentPage === pages - 1} onClick={() => changePage(currentPage + 1)}>Siguiente</button></nav>
+      <nav aria-label="Páginas del reporte de importación" className="mt-3 flex items-center gap-3"><Button variant="secondary" type="button"  disabled={currentPage === 0} onClick={() => changePage(currentPage - 1)}>Anterior</Button><span className="text-sm text-[#52655a]">{currentPage + 1} / {pages}</span><Button variant="secondary" type="button"  disabled={currentPage === pages - 1} onClick={() => changePage(currentPage + 1)}>Siguiente</Button></nav>
     </>}
   </section>;
 }
