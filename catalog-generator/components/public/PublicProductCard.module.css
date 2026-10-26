@@ -1,0 +1,76 @@
+.card {
+  /* Defaults retain each seller layout; public variables can be overridden by an ancestor. */
+  --card-default-bg: #fffefa;
+  --card-default-border: #dcded2;
+  --card-default-image: #edf0e6;
+  --card-default-accent: #ad553b;
+  --card-default-title: #263b31;
+  --card-default-price: #202b27;
+  --card-default-button: #263b31;
+  --card-default-button-hover: #192b22;
+  --card-default-button-text: #ffffff;
+  --card-default-font: var(--font-serif);
+  --card-default-weight: 400;
+  --card-default-button-radius: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--product-card-border, var(--card-default-border));
+  border-radius: var(--product-card-radius, 1rem);
+  background: var(--product-card-background, var(--card-default-bg));
+  transition: transform var(--duration-medium), box-shadow var(--duration-medium);
+}
+.card[data-layout="grid"] {
+  --card-default-bg: #ffffff; --card-default-border: #d9e1dc; --card-default-image: #eaf0ec;
+  --card-default-accent: #315c53; --card-default-button: #315c53; --card-default-button-hover: #24483f;
+  --card-default-font: inherit; --card-default-weight: 600;
+}
+.card[data-layout="tech"] {
+  color: var(--product-card-text, #ffffff);
+  --card-default-bg: #101e2d; --card-default-border: #26394a; --card-default-image: #dceaf3;
+  --card-default-accent: #56e0c0; --card-default-title: #ffffff; --card-default-price: #ffffff;
+  --card-default-button: #56e0c0; --card-default-button-hover: #35cbaa; --card-default-button-text: #071421;
+  --card-default-font: inherit; --card-default-weight: 600;
+}
+.card[data-layout="beauty"] {
+  --card-default-bg: #fffaf9; --card-default-border: #eed5dc; --card-default-image: #f5dfe6;
+  --card-default-accent: #b55271; --card-default-title: #552e48;
+  --card-default-button: #b55271; --card-default-button-hover: #94425c; --card-default-button-radius: 9999px;
+}
+.card[data-layout="fashion"] {
+  --card-default-bg: #fffdfa; --card-default-border: #e5d9d0; --card-default-image: #e9ddd2;
+  --card-default-accent: #9a554b; --card-default-title: #322c29;
+  --card-default-button: #322c29; --card-default-button-hover: #4c3f39;
+}
+.card[data-layout="boutique"] {
+  --card-default-bg: #fffdf8; --card-default-border: #e8d9ba; --card-default-image: #f1e9d8;
+  --card-default-accent: #bd4d36; --card-default-button: #bd4d36; --card-default-button-hover: #a83f2c;
+}
+.card:hover { transform: translateY(-2px); box-shadow: var(--product-card-shadow, 0 18px 38px -28px rgb(25 45 36 / 55%)); }
+.detailLink { display: block; min-width: 0; }
+.detailLink:focus-visible { outline: 2px solid var(--product-card-focus, var(--card-default-accent)); outline-offset: -4px; }
+.media { position: relative; overflow: hidden; aspect-ratio: 1; background: var(--product-card-image-background, var(--card-default-image)); }
+.image { object-fit: cover; transition: transform calc(var(--duration-medium) * 2.5); }
+.card:hover .image { transform: scale(1.035); }
+.placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem; padding: 1rem; text-align: center; }
+.placeholder > span:first-child { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-family: var(--font-serif); font-size: clamp(1rem, 2vw, 1.5rem); line-height: 1.2; color: var(--product-card-placeholder, #45584d); }
+.placeholder > span:last-child { font-size: 0.625rem; text-transform: uppercase; color: var(--product-card-placeholder-label, #677a6f); }
+.promotion { position: absolute; top: 0.5rem; right: 0.5rem; border-radius: 0.375rem; padding: 0.25rem 0.5rem; background: var(--product-card-sale, #c62828); color: var(--product-card-sale-label, #ffffff); font-size: 0.625rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.body { min-width: 0; padding: 0.75rem; }
+.meta { min-height: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.5625rem; line-height: 1rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--product-card-accent, var(--card-default-accent)); }
+.name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; min-height: 2.5rem; margin-top: 0.375rem; font-size: 0.875rem; line-height: 1.25rem; font-family: var(--product-card-title-font, var(--card-default-font)); font-weight: var(--product-card-title-weight, var(--card-default-weight)); color: var(--product-card-title, var(--card-default-title)); }
+.footer { display: grid; gap: 0.625rem; margin-top: auto; padding: 0.75rem; border-top: 1px solid var(--product-card-divider, color-mix(in srgb, currentColor 10%, transparent)); }
+.prices { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; min-height: 2.5rem; font-variant-numeric: tabular-nums; }
+.price { max-width: 100%; overflow-wrap: anywhere; font-size: 1.25rem; line-height: 1.5rem; font-weight: 700; color: var(--product-card-price, var(--card-default-price)); }
+.price[data-on-sale] { color: var(--product-card-sale, #c62828); }
+.priceGroup { white-space: nowrap; }
+.previousPrice { max-width: 100%; overflow-wrap: anywhere; font-size: 0.625rem; line-height: 1rem; text-decoration: line-through; color: var(--product-card-previous-price, #737d77); }
+.add { width: 100%; min-width: 0; min-height: 44px; padding: 0.625rem; border-radius: var(--product-card-button-radius, var(--card-default-button-radius)); background: var(--product-card-button, var(--card-default-button)); color: var(--product-card-button-text, var(--card-default-button-text)); font-size: 0.75rem; line-height: 1.25rem; font-weight: 600; overflow-wrap: anywhere; cursor: pointer; transition: background-color var(--duration-short); }
+.add:hover { background: var(--product-card-button-hover, var(--card-default-button-hover)); }
+.add:focus-visible { outline: 2px solid var(--product-card-focus, var(--card-default-accent)); outline-offset: 3px; }
+@media (min-width: 640px) { .body, .footer { padding: 0.875rem; } }
+@media (prefers-reduced-motion: reduce) {
+  .card, .image, .add { transition: none; }
+  .card:hover, .card:hover .image { transform: none; }
+}

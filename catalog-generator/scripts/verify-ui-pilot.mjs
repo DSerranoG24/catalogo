@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { cardFixture, verifyPublicCards } from "./public-product-card-checks.mjs";
+const publicCards = process.argv.includes("--public-cards");
 import fs from "node:fs";
 import http from "node:http";
 import https from "node:https";
@@ -22,7 +24,7 @@ const categoryFixture = { id: "local-category", name: "Categoría local", slug: 
 const handlePublic = (req, res) => {
   const id = req.url.split("/").pop();
   res.setHeader("Content-Type", "application/json");
-  res.end(JSON.stringify({ catalog: { ...catalog, publicId: id, template: templates.includes(id) ? id : "TECH" } }));
+  res.end(JSON.stringify({ catalog: publicCards ? cardFixture(catalog, id) : { ...catalog, publicId: id, template: templates.includes(id) ? id : "TECH" } }));
 };
 const secureApi = process.argv.includes("--https-api");
 let api, caPath;
@@ -49,6 +51,11 @@ async function poll(fn) {
 function command(method, params = {}) {
   return new Promise((resolve, reject) => {
     const id = ++seq; pending.set(id, { resolve, reject }); socket.send(JSON.stringify({ id, method, params }));
+  });
+}
+function interception(method, params) {
+  void command(method, params).catch(error => {
+    if (!/Invalid InterceptionId|LOCAL_BROWSER_CLOSED/.test(error.message)) errors.push("LOCAL_INTERCEPTION_FAILED");
   });
 }
 async function evaluate(expression) {
@@ -93,17 +100,7 @@ async function fits(label) {
   assert.ok(await evaluate(`document.documentElement.scrollWidth<=innerWidth`), label + " document overflow");
   assert.ok(await evaluate(`[...document.querySelectorAll('button')].filter(b=>b.getBoundingClientRect().height>0).every(b=>['36px','44px','48px'].includes(getComputedStyle(b).minHeight))`), label + " unified button sizes");
 }
-// Compare all computed CSS properties except animations and runtime-generated custom properties.
-const snapshot = `JSON.stringify([...document.querySelectorAll('body *')].filter(e=>!['SCRIPT','STYLE','LINK','NEXTJS-PORTAL'].includes(e.tagName)).map(e=>{const s=getComputedStyle(e);return [e.tagName,...Array.from(s).filter(p=>!p.startsWith('--')&&!p.startsWith('animation')).map(p=>[p,s.getPropertyValue(p)])]}))`;
-function compareStyles(before, after, label) {
-  const a = JSON.parse(before), b = JSON.parse(after);
-  assert.equal(a.length, b.length, label + " element count");
-  for (let i = 0; i < a.length; i++) {
-    for (let j = 0; j < a[i].length; j++) {
-      if (JSON.stringify(a[i][j]) !== JSON.stringify(b[i][j])) throw new Error(JSON.stringify({ label, element: i, before: a[i][j], after: b[i][j] }));
-    }
-  }
-}
+
 try {
   api.listen(4317, "127.0.0.1"); await once(api, "listening");
   next = spawn(process.execPath, [require.resolve("next/dist/bin/next"), "start", "--hostname", "127.0.0.1", "--port", "4338"], {
@@ -120,6 +117,10 @@ try {
   let target;
   await poll(async () => { target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(p => p.type === "page"); return Boolean(target); });
   socket = new WebSocket(target.webSocketDebuggerUrl); await once(socket, "open");
+  socket.addEventListener("close", () => {
+    for (const item of pending.values()) item.reject(new Error("LOCAL_BROWSER_CLOSED"));
+    pending.clear();
+  });
   socket.addEventListener("message", event => {
     const m = JSON.parse(event.data);
     if (m.id) { const item = pending.get(m.id); pending.delete(m.id); if (m.error) item?.reject(new Error(m.error.message)); else item?.resolve(m.result); }
@@ -130,10 +131,14 @@ try {
       const url = new URL(request.url);
       if (!["127.0.0.1", "localhost"].includes(url.hostname)) {
         result.externalRequests.push(url.hostname);
-        void command("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" });
+        interception("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" });
+      } else if (url.pathname.startsWith("/card-test-")) {
+        const portrait = url.pathname.includes("portrait");
+        const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="'+(portrait?180:400)+'" height="'+(portrait?400:180)+'"><rect width="100%" height="100%" fill="#e8f3ef"/><circle cx="90" cy="90" r="60" fill="#0F6B57"/></svg>';
+        interception("Fetch.fulfillRequest", { requestId, responseCode: 200, responseHeaders: [{name:"Content-Type",value:"image/svg+xml"}], body:Buffer.from(svg).toString("base64") });
       } else if (url.pathname.startsWith("/api/public/catalogs/")) {
         const id = url.pathname.split("/").pop();
-        void command("Fetch.fulfillRequest", { requestId, responseCode: 200, responseHeaders: [{ name: "Content-Type", value: "application/json" }, { name: "Access-Control-Allow-Origin", value: base }], body: Buffer.from(JSON.stringify({ catalog: { ...catalog, publicId: id, template: templates.includes(id) ? id : "TECH" } })).toString("base64") });
+        interception("Fetch.fulfillRequest", { requestId, responseCode: 200, responseHeaders: [{ name: "Content-Type", value: "application/json" }, { name: "Access-Control-Allow-Origin", value: base }], body: Buffer.from(JSON.stringify({ catalog: publicCards ? cardFixture(catalog, id) : { ...catalog, publicId: id, template: templates.includes(id) ? id : "TECH" } })).toString("base64") });
       } else if (url.pathname.startsWith("/api/backend/")) {
         if (request.method !== "GET") mutations.push(request.method);
         let body;
@@ -145,12 +150,13 @@ try {
         else if (url.pathname.includes("/reviews/")) body = { reviews: [] };
         else if (url.pathname.includes("/orders/")) body = { orders: [] };
         else body = { catalogs: [{ ...catalog, template: "TECH" }] };
-        void command("Fetch.fulfillRequest", { requestId, responseCode: 200, responseHeaders: [{ name: "Content-Type", value: "application/json" }], body: Buffer.from(JSON.stringify(body)).toString("base64") });
-      } else void command("Fetch.continueRequest", { requestId });
+        interception("Fetch.fulfillRequest", { requestId, responseCode: 200, responseHeaders: [{ name: "Content-Type", value: "application/json" }], body: Buffer.from(JSON.stringify(body)).toString("base64") });
+      } else interception("Fetch.continueRequest", { requestId });
     }
   });
   await command("Page.enable"); await command("Runtime.enable");
   await command("Fetch.enable", { patterns: [{ urlPattern: "*" }] });
+  if (!publicCards) {
   await command("Page.addScriptToEvaluateOnNewDocument", { source: `localStorage.setItem('catalogo-session',JSON.stringify({user:{id:'local-user',email:'test@example.invalid',name:'Prueba local'}}));` });
   await command("Page.navigate", { url: base + "/dashboard" });
   await poll(() => evaluate(`Boolean(document.querySelector('button[aria-label="Archivar Catálogo local"]'))`));
@@ -221,31 +227,9 @@ try {
     }
     assert.deepEqual(mutations, [], "Panel checks never submit forms");
   }
-  const baselineArg = process.argv.indexOf("--baseline-css");
-  if (baselineArg !== -1) {
-    const baseline = fs.readFileSync(process.argv[baselineArg + 1], "utf8").replaceAll("../media/", "/_next/static/media/");
-    for (const template of templates) {
-      await command("Page.navigate", { url: base + "/c/" + template });
-      await poll(() => evaluate(`document.body.textContent.includes('Producto local')`));
-      await evaluate("document.fonts.ready"); await pause(300);
-      const after = await evaluate(snapshot);
-      await evaluate(`document.querySelectorAll('link[rel="stylesheet"]').forEach(l=>l.disabled=true);const style=document.createElement('style');style.textContent=${JSON.stringify(baseline)};document.head.append(style);`);
-      await evaluate("document.fonts.ready");
-      compareStyles(await evaluate(snapshot), after, template);
-      result.publicStyles.push(template);
-    }
-    for (const template of templates) {
-      await evaluate(`sessionStorage.setItem('catalogo-cart-${template}', JSON.stringify({p1:2}))`);
-      await command("Page.navigate", { url: base + "/c/" + template + "/carrito" });
-      await poll(() => evaluate(`document.querySelector('h1')?.textContent==='Carrito'&&document.body.textContent.includes('Producto local')`));
-      await evaluate("document.fonts.ready"); await pause(300);
-      const after = await evaluate(snapshot);
-      await evaluate(`document.querySelectorAll('link[rel="stylesheet"]').forEach(l=>l.disabled=true);const style=document.createElement('style');style.textContent=${JSON.stringify(baseline)};document.head.append(style);`);
-      await evaluate("document.fonts.ready");
-      compareStyles(await evaluate(snapshot), after, "carrito:" + template);
-      result.publicStyles.push("carrito:" + template);
-    }
   }
+  assert.ok(!process.argv.includes("--baseline-css"), "Use --public-cards --card-baseline FILE for visual invariants");
+  if (publicCards) result.publicCards = await verifyPublicCards({ command, evaluate, poll, pause: ms => pause(ms), base, folder });
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ success: true, ...result }, null, 2));
 } catch (error) {
