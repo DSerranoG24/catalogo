@@ -8,6 +8,8 @@ ADMIN no elimina los filtros de propietario en rutas de vendedor. Los repositori
 
 ## Contrato y autorización
 
+El bloque posterior de [métricas de plataforma](platform-metrics.md) añade únicamente agregados sobre esta protección; no incorpora gestión de cuentas ni permisos por vendedor.
+
 Todo `/api/admin/*` pasa por `authenticate` y después `requireAdmin`, también para métodos o subrutas desconocidos. El primero verifica la firma, caducidad y sessionVersion del JWT. El segundo consulta únicamente `role` en PostgreSQL usando el id autenticado. Ignora rol del JWT, cuerpo, query y cabeceras del cliente. No almacena el rol en JWT, cookie ni localStorage.
 
 | GET /api/admin/access | Resultado |

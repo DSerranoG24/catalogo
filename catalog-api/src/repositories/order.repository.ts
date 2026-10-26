@@ -111,10 +111,19 @@ export async function changeOrderStatus(
   id: string,
   userId: string,
   currentStatus: OrderStatus,
-  status: OrderStatus
+  status: OrderStatus,
+  database = prisma
 ) {
-  return prisma.order.updateMany({
-    where: { id, status: currentStatus, catalog: { userId } },
-    data: { status },
+  return database.$transaction(async tx => {
+    const result = await tx.order.updateMany({
+      where: { id, status: currentStatus, catalog: { userId } },
+      data: { status },
+    });
+    if (result.count === 1 && currentStatus === "PENDING" && status === "CONFIRMED") {
+      const [clock] = await tx.$queryRaw<{ confirmedAt: Date }[]>`SELECT CURRENT_TIMESTAMP AS "confirmedAt"`;
+      if (!clock) throw new Error("ORDER_CONFIRMATION_CLOCK_UNAVAILABLE");
+      await tx.order.updateMany({ where: { id, catalog: { userId }, firstConfirmedAt: null }, data: { firstConfirmedAt: clock.confirmedAt } });
+    }
+    return result;
   });
 }

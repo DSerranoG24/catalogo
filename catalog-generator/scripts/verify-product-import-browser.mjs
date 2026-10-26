@@ -21,6 +21,16 @@ const catalog = { id: catalogId, publicId: catalogId, name: "Catálogo ficticio"
 const products = new Map();
 let emailVerified = false, verificationRequests = 0, verificationConfirms = 0, passwordResets = 0, forgotRequests = 0;
 let adminAllowed = true, adminBackendFailed = false;
+let metricsFailed = false, metricsEmpty = false, metricsReads = 0;
+function metricsFixture() {
+  const n = metricsEmpty ? 0 : 1;
+  const cohort = { initiated: n * 5, pending: n, confirmedCurrent: n, confirmedKnown: n * 3, confirmedDated: n * 2, legacyCancelledUnknown: n, confirmedCurrentPercent: n ? 20 : null, confirmedKnownPercent: n ? 60 : null };
+  return { asOf: "2026-10-25T12:00:00.000Z", timeZone: "America/Bogota", includesAdmin: true,
+    accounts: { total: n * 3, last7Days: n * 3, last30Days: n * 3, active: n * 2, unverified: n, activePercent: n ? 66.67 : null, unverifiedPercent: n ? 33.33 : null },
+    catalogs: { published: n * 2, last7Days: n * 2, last30Days: n * 2 }, orders: { total: n * 5, last7Days: n * 5, last30Days: n * 5 },
+    repeat: { withOrders: n * 2, repeating: n, percent: n ? 50 : null }, funnel: { allTime: cohort, last7Days: cohort, last30Days: cohort }, visits: { last7Days: null, last30Days: null },
+    daily: Array.from({ length: 30 }, (_, index) => ({ date: new Date(Date.UTC(2026, 8, 26 + index)).toISOString().slice(0, 10), accountsCreated: index === 29 ? n * 3 : 0, ordersCreated: index === 29 ? n * 5 : 0 })) };
+}
 let categoryPresent = true, categoryDeletes = 0, categoryDeleteFails = false;
 const categoryId = "22222222-2222-4222-8222-222222222222";
 const category = { id: categoryId, name: "Manos Libres", slug: "manos-libres", imageUrl: null, position: 0 };
@@ -95,6 +105,12 @@ try {
       if (req.url === "/api/admin/access") {
         if (adminBackendFailed) return reply({ success: false }, 503);
         return req.headers.authorization === "Bearer admin-test-session" && adminAllowed ? reply({ success: true }) : reply({ success: false, error: "ROUTE_NOT_FOUND" }, 404);
+      }
+      if (req.url === "/api/admin/metrics") {
+        metricsReads++;
+        if (req.headers.authorization !== "Bearer admin-test-session" || !adminAllowed) return reply({ success: false }, 404);
+        if (metricsFailed) return reply({ success: false, message: "No se pudieron actualizar las métricas." }, 503);
+        return reply({ success: true, metrics: metricsFixture() });
       }
       if (mode === "auth" && confirms > 0) return reply({ success: false, error: "AUTH_REQUIRED" }, 401);
       if (req.url === "/api/catalogs") return reply({ catalogs: [catalog] });
@@ -275,6 +291,28 @@ try {
   assert.ok(await evaluate(`!document.body.textContent.includes('Administración')&&!document.body.textContent.includes('Acceso autorizado.')`));
   await evaluate(`localStorage.removeItem('catalogo-session')`);
   await command("Network.deleteCookies", { name: "catalogo_session", url: "http://localhost:4328" });
+  step("admin-platform-metrics");
+  await command("Network.setCookie", { name: "catalogo_session", value: "admin-test-session", url: "http://localhost:4328", httpOnly: true, sameSite: "Lax" });
+  await command("Page.navigate", { url: "http://localhost:4328/admin" });
+  await poll(() => evaluate(`document.querySelector('time')?.dateTime==='2026-10-25T12:00:00.000Z'&&document.querySelectorAll('div[aria-label="Datos diarios"] tbody tr').length===30`));
+  assert.ok(await evaluate(`document.body.textContent.includes('Repetición histórica acumulada')&&document.body.textContent.includes('Sin instrumentación')&&document.body.textContent.includes('también ADMIN')`));
+  for (const width of [320, 390, 1024, 1440]) {
+    await command("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 600 });
+    assert.ok(await evaluate(`document.documentElement.scrollWidth<=innerWidth+1`), `Admin metrics fits ${width}px`);
+  }
+  await command("Emulation.clearDeviceMetricsOverride");
+  const stableReads = metricsReads; await wait(500); assert.equal(metricsReads, stableReads, "No polling");
+  metricsFailed = true; await click("Actualizar métricas");
+  await poll(() => evaluate(`Boolean(document.querySelector('[role="alert"]'))`));
+  assert.equal(await evaluate(`document.querySelector('time')?.dateTime`), "2026-10-25T12:00:00.000Z", "Failure retains the prior timestamp instead of inventing zero data");
+  metricsFailed = false; metricsEmpty = true; await click("Reintentar");
+  await poll(() => evaluate(`!document.querySelector('[role="alert"]')&&document.body.textContent.includes('Sin base')`));
+  assert.equal(await evaluate(`document.querySelectorAll('div[aria-label="Datos diarios"] tbody tr').length`), 30);
+  adminAllowed = false; await click("Actualizar métricas");
+  await poll(() => evaluate(`document.querySelector('h1')?.textContent==='Página no disponible'`));
+  adminAllowed = true; metricsEmpty = false;
+  await command("Network.deleteCookies", { name: "catalogo_session", url: "http://localhost:4328" });
+  summary.scenarios.push("admin metrics: daily table 30 rows and SVG, explicit definitions, unavailable visits, zero denominator Sin base, manual refresh/error/retry preserves prior snapshot, no polling, four widths, API revocation refreshes to generic 404 (simulated API)");
   summary.scenarios.push("admin SSR: real HTTP 404 for anonymous/seller and failed backend, normal and bot user agents, no administrative HTML, no-store/noindex, admin 200 then same-cookie degradation 404, forged localStorage cannot authorize (local simulated API)");
   step("private-dashboard-without-session");
   await command("Page.navigate", { url: "http://localhost:4328/dashboard" });
