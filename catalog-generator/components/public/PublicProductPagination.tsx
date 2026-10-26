@@ -18,12 +18,12 @@ export default function PublicProductPagination({
   const firstProduct = (page - 1) * pageSize + 1;
   const lastProduct = Math.min(page * pageSize, totalProducts);
   const tones = variant === "tech"
-    ? { nav: "border-[#26394a]", text: "text-[#a9bccd]", button: "border-[#34495c] bg-[#101e2d] text-[#e5f2ff] hover:bg-[#1b2c3d]" }
+    ? { nav: "border-[var(--catalog-border-subtle,#26394a)]", text: "text-[var(--catalog-text-muted,#a9bccd)]", button: "border-[var(--catalog-border,#34495c)] bg-[var(--catalog-surface,#101e2d)] text-[var(--catalog-text,#e5f2ff)] hover:bg-[var(--catalog-surface-hover,#1b2c3d)]" }
     : variant === "fashion"
-      ? { nav: "border-[#e5d9d0]", text: "text-[#766b64]", button: "border-[#d8c9bf] bg-[#fffdfa] text-[#322c29] hover:bg-[#f2e9e3]" }
+      ? { nav: "border-[var(--catalog-border-subtle,#e5d9d0)]", text: "text-[var(--catalog-text-muted,#766b64)]", button: "border-[var(--catalog-border,#d8c9bf)] bg-[var(--catalog-surface,#fffdfa)] text-[var(--catalog-text,#322c29)] hover:bg-[var(--catalog-soft,#f2e9e3)]" }
       : variant === "beauty"
-        ? { nav: "border-[#f0dce2]", text: "text-[#806575]", button: "border-[#e8cbd5] bg-white text-[#552e48] hover:bg-[#fbedf1]" }
-        : { nav: "border-[#d8ded6]", text: "text-[#647268]", button: "border-[#cbd4cb] bg-white text-[#33483c] hover:bg-[#eef2e7]" };
+        ? { nav: "border-[var(--catalog-border-subtle,#f0dce2)]", text: "text-[var(--catalog-text-muted,#806575)]", button: "border-[var(--catalog-border,#e8cbd5)] bg-[var(--catalog-surface,#ffffff)] text-[var(--catalog-text,#552e48)] hover:bg-[var(--catalog-soft,#fbedf1)]" }
+        : { nav: "border-[var(--catalog-border-subtle,#d8ded6)]", text: "text-[var(--catalog-text-muted,#647268)]", button: "border-[var(--catalog-border,#cbd4cb)] bg-[var(--catalog-surface,#ffffff)] text-[var(--catalog-text,#33483c)] hover:bg-[var(--catalog-soft,#eef2e7)]" };
 
   return (
     <nav aria-label="Paginación del catálogo" className={`mt-8 flex flex-wrap items-center justify-between gap-3 border-t pt-5 text-sm ${tones.nav}`}>

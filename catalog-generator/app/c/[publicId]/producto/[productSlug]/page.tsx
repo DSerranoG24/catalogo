@@ -25,5 +25,8 @@ export default async function SharedProductPage({ params }: Props) {
     return <CatalogUnavailable href={`/c/${encodeURIComponent(publicId)}/producto/${encodeURIComponent(productSlug)}`} />;
   }
   const product = requirePublicProduct(catalog, productSlug);
-  return <PublicProductDetailPage key={`${publicId}/${productSlug}`} publicId={publicId} initialCatalog={catalog} initialProduct={product} />;
+  const themeStyle = catalog.themePreset
+    ? (await import("@/lib/catalog-theme")).resolveCatalogTheme(catalog.template, catalog.themePreset)
+    : undefined;
+  return <PublicProductDetailPage key={`${publicId}/${productSlug}`} publicId={publicId} initialCatalog={catalog} initialProduct={product} themeStyle={themeStyle} />;
 }

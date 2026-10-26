@@ -1,5 +1,6 @@
 import { prisma } from "../config/prisma";
 import { quotationCatalogFieldsSchema } from "../schemas/catalog.schema";
+import { assertCatalogThemeCompatibility } from "../schemas/catalog-theme";
 
 export async function createCatalog(data: {
   userId: string;
@@ -19,8 +20,10 @@ export async function createCatalog(data: {
   email?: string;
   mapUrl?: string;
   template?: string;
-}) {
-  return prisma.catalog.create({
+  themePreset?: string | null;
+}, database = prisma) {
+  assertCatalogThemeCompatibility(data.template ?? "EDITORIAL", data.themePreset);
+  return database.catalog.create({
     data: { ...data, ...quotationCatalogFieldsSchema.parse(data) },
   });
 }
@@ -70,9 +73,30 @@ export async function updateCatalog(
     email?: string | null;
     mapUrl?: string | null;
     template?: string;
-  }
+    themePreset?: string | null;
+  },
+  database = prisma
 ) {
-  return prisma.catalog.updateMany({
+  if (data.template !== undefined || data.themePreset !== undefined) {
+    return database.$transaction(async (tx) => {
+      // Validate the merged pair under the same row lock as its write.
+      const rows = await tx.$queryRaw<{ template: string; themePreset: string | null }[]>`
+        SELECT template, "themePreset" FROM catalogs
+        WHERE id = ${id} AND "userId" = ${userId} FOR UPDATE
+      `;
+      const current = rows[0];
+      if (!current) return { count: 0 };
+      assertCatalogThemeCompatibility(
+        data.template ?? current.template,
+        data.themePreset === undefined ? current.themePreset : data.themePreset
+      );
+      return tx.catalog.updateMany({
+        where: { id, userId },
+        data: { ...data, ...quotationCatalogFieldsSchema.parse(data) },
+      });
+    });
+  }
+  return database.catalog.updateMany({
     where: {
       id,
       userId,
@@ -141,6 +165,7 @@ export async function findPublicCatalog(publicId: string, database = prisma) {
       email: true,
       mapUrl: true,
       template: true,
+      themePreset: true,
       categories: {
         where: { active: true },
         select: { id: true, name: true, slug: true, imageUrl: true, position: true },

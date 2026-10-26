@@ -6,6 +6,8 @@ import { CSSProperties, FormEvent, startTransition, useEffect, useRef, useState 
 import { publicApiRequest, PublicCatalog, PublicProduct, rememberPublicCatalogTemplate } from "@/lib/api";
 import FloatingWhatsAppButton from "@/components/public/FloatingWhatsAppButton";
 import PublicRouteLoading from "@/components/public/PublicRouteLoading";
+import type { CatalogThemeStyle } from "@/lib/catalog-theme";
+import themeStyles from "./catalog-theme.module.css";
 
 type OrderReceipt = {
   id: string;
@@ -25,6 +27,7 @@ const cartThemes = {
 
 export default function PublicShoppingCartPage({ publicId }: { publicId: string }) {
   const [catalog, setCatalog] = useState<PublicCatalog | null>(null);
+  const [catalogTheme, setCatalogTheme] = useState<CatalogThemeStyle>();
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [cartReady, setCartReady] = useState(false);
   const [customerName, setCustomerName] = useState("");
@@ -44,8 +47,15 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
   useEffect(() => {
     let active = true;
     publicApiRequest<{ catalog: PublicCatalog }>(`/public/catalogs/${encodeURIComponent(publicId)}`)
-      .then(({ catalog: loadedCatalog }) => {
+      .then(async ({ catalog: loadedCatalog }) => {
+        // A cosmetic chunk failure must not prevent the buyer from opening checkout.
+        const resolvedTheme = loadedCatalog.themePreset
+          ? await import("@/lib/catalog-theme")
+            .then(({ resolveCatalogTheme }) => resolveCatalogTheme(loadedCatalog.template, loadedCatalog.themePreset))
+            .catch(() => undefined)
+          : undefined;
         if (!active) return;
+        setCatalogTheme(resolvedTheme);
         setCatalog(loadedCatalog);
         rememberPublicCatalogTemplate(loadedCatalog.publicId, loadedCatalog.template);
         try {
@@ -177,12 +187,13 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
     "--cart-accent-fg": theme.accentForeground,
     "--cart-soft": theme.soft,
     "--cart-danger": theme.danger,
+    ...catalogTheme,
   } as CSSProperties;
-  const controlClass = "mt-1.5 min-h-11 w-full rounded-xl border border-[var(--cart-border)] bg-[var(--cart-bg)] px-3 text-[var(--cart-fg)] outline-none transition placeholder:text-[var(--cart-muted)] focus:border-[var(--cart-accent)] focus:ring-4 focus:ring-[var(--cart-accent)]/10";
-  const areaClass = "mt-1.5 w-full rounded-xl border border-[var(--cart-border)] bg-[var(--cart-bg)] px-3 py-2 text-[var(--cart-fg)] outline-none transition placeholder:text-[var(--cart-muted)] focus:border-[var(--cart-accent)] focus:ring-4 focus:ring-[var(--cart-accent)]/10";
+  const controlClass = "mt-1.5 min-h-11 w-full rounded-xl border border-[var(--catalog-border,var(--cart-border))] bg-[var(--cart-bg)] px-3 text-[var(--cart-fg)] outline-none transition placeholder:text-[var(--cart-muted)] focus:border-[var(--cart-accent)] focus:ring-4 focus:ring-[var(--catalog-focus-ring,color-mix(in_oklab,var(--cart-accent)_10%,transparent))]";
+  const areaClass = "mt-1.5 w-full rounded-xl border border-[var(--catalog-border,var(--cart-border))] bg-[var(--cart-bg)] px-3 py-2 text-[var(--cart-fg)] outline-none transition placeholder:text-[var(--cart-muted)] focus:border-[var(--cart-accent)] focus:ring-4 focus:ring-[var(--catalog-focus-ring,color-mix(in_oklab,var(--cart-accent)_10%,transparent))]";
 
   return (
-    <main data-cart-theme={normalizedTemplate} style={themeStyle} className="min-h-screen bg-[var(--cart-bg)] text-[var(--cart-fg)] transition-colors duration-300">
+    <main data-cart-theme={normalizedTemplate} data-catalog-themed={catalogTheme ? "true" : undefined} style={themeStyle} className={`${themeStyles.root} min-h-screen bg-[var(--cart-bg)] text-[var(--cart-fg)] transition-colors duration-300`}>
       <div className="mx-auto max-w-7xl px-5 pb-16 pt-6 sm:px-8 sm:pt-9">
         <Link href={`/c/${encodeURIComponent(publicId)}`} className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-[var(--cart-muted)] transition hover:text-[var(--cart-accent)]">
           <span aria-hidden="true">←</span> Seguir comprando
@@ -197,7 +208,7 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--cart-accent)]">Todavía está vacío</p>
             <h2 className="mt-3 font-serif text-3xl">Empieza por algo que te guste.</h2>
             <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[var(--cart-muted)]">Los productos que agregues aparecerán aquí para revisar cantidades y preparar tu pedido.</p>
-            <Link href={`/c/${encodeURIComponent(publicId)}`} className="mt-7 inline-flex min-h-12 items-center justify-center rounded-xl bg-[var(--cart-accent)] px-6 text-sm font-semibold text-[var(--cart-accent-fg)] transition hover:brightness-110">Explorar catálogo</Link>
+            <Link href={`/c/${encodeURIComponent(publicId)}`} className="mt-7 inline-flex min-h-12 items-center justify-center rounded-xl bg-[var(--cart-accent)] px-6 text-sm font-semibold text-[var(--cart-accent-fg)] transition hover:brightness-[var(--catalog-hover-brightness,1.1)]">Explorar catálogo</Link>
           </section>
         ) : (
           <div className="grid items-start gap-10 pt-7 lg:grid-cols-[minmax(0,1fr)_minmax(340px,0.7fr)] lg:gap-16 lg:pt-10">
@@ -218,9 +229,9 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
                           {product.regularPrice !== null && <p className="text-[10px] tabular-nums text-[var(--cart-muted)] line-through">${product.regularPrice.toLocaleString("es-CO")}</p>}
                         </div>
                         <div className="mt-3 flex items-center gap-2">
-                          <button type="button" onClick={() => changeQuantity(product, -1)} aria-label={`Quitar una unidad de ${product.name}`} className="grid size-9 place-items-center rounded-lg border border-[var(--cart-border)] bg-[var(--cart-bg)] text-lg transition hover:border-[var(--cart-accent)]">−</button>
+                          <button type="button" onClick={() => changeQuantity(product, -1)} aria-label={`Quitar una unidad de ${product.name}`} className="grid size-9 place-items-center rounded-lg border border-[var(--catalog-border,var(--cart-border))] bg-[var(--cart-bg)] text-lg transition hover:border-[var(--cart-accent)]">−</button>
                           <span aria-live="polite" className="w-7 text-center text-sm tabular-nums">{quantities[product.id]}</span>
-                          <button type="button" onClick={() => changeQuantity(product, 1)} aria-label={`Añadir una unidad de ${product.name}`} className="grid size-9 place-items-center rounded-lg border border-[var(--cart-border)] bg-[var(--cart-bg)] text-lg transition hover:border-[var(--cart-accent)]">+</button>
+                          <button type="button" onClick={() => changeQuantity(product, 1)} aria-label={`Añadir una unidad de ${product.name}`} className="grid size-9 place-items-center rounded-lg border border-[var(--catalog-border,var(--cart-border))] bg-[var(--cart-bg)] text-lg transition hover:border-[var(--cart-accent)]">+</button>
                         </div>
                       </div>
                       <p className="col-start-2 row-start-2 self-end text-sm font-semibold tabular-nums sm:col-start-3 sm:row-start-1 sm:self-center">${(product.price * quantities[product.id]).toLocaleString("es-CO")}</p>
@@ -248,12 +259,12 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
                     <label className="block text-sm font-medium">Dirección de entrega<textarea required minLength={5} maxLength={300} autoComplete="street-address" rows={3} value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} className={areaClass} /></label>
                     <label className="block text-sm font-medium">Nota <span className="font-normal text-[var(--cart-muted)]">(opcional)</span><textarea maxLength={500} rows={2} value={notes} onChange={(event) => setNotes(event.target.value)} className={areaClass} /></label>
                     <label className="flex items-start gap-2.5 text-xs leading-5 text-[var(--cart-muted)]"><input required type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} className="mt-0.5 size-4 accent-[var(--cart-accent)]" /><span>Autorizo guardar estos datos para gestionar este pedido. Después podré abrir WhatsApp y enviar al vendedor la lista, mi teléfono y mi dirección.</span></label>
-                    {error && <p role="alert" className="bg-[#fff1ec] px-3 py-2 text-sm text-[#a5432a]">{error}</p>}
-                    <div className="border-t border-[#e3e7e0] pt-4">
+                    {error && <p role="alert" className="bg-[var(--catalog-danger-surface,#fff1ec)] px-3 py-2 text-sm text-[var(--catalog-danger,#a5432a)]">{error}</p>}
+                    <div className="border-t border-[var(--catalog-border-subtle,#e3e7e0)] pt-4">
                       <p className="flex justify-between text-sm text-[var(--cart-muted)]"><span>Subtotal</span><span className="tabular-nums">${cartTotal.toLocaleString("es-CO")}</span></p>
                       <p className="mt-2 flex justify-between text-base font-semibold"><span>Total</span><span className="tabular-nums">${cartTotal.toLocaleString("es-CO")}</span></p>
                     </div>
-                    <button type="submit" disabled={submitting || !catalog.whatsappPhone} className="min-h-12 w-full rounded-xl bg-[var(--cart-accent)] px-4 text-sm font-semibold text-[var(--cart-accent-fg)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Preparando pedido..." : "Confirmar pedido"}</button>
+                    <button type="submit" disabled={submitting || !catalog.whatsappPhone} className="min-h-12 w-full rounded-xl bg-[var(--cart-accent)] px-4 text-sm font-semibold text-[var(--cart-accent-fg)] transition hover:brightness-[var(--catalog-hover-brightness,1.1)] disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Preparando pedido..." : "Confirmar pedido"}</button>
                     {!catalog.whatsappPhone && <p className="text-xs leading-5 text-[var(--cart-danger)]">La tienda todavía no configuró WhatsApp para recibir pedidos.</p>}
                     <p className="text-[11px] leading-5 text-[var(--cart-muted)]">La disponibilidad y la entrega quedan por confirmar con el vendedor. No se solicitan pagos ni datos bancarios; el pedido queda pendiente de confirmación.</p>
                   </form>

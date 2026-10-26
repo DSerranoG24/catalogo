@@ -26,6 +26,7 @@ function catalog(v: unknown): v is PublicCatalog {
     && [v.description, v.logoUrl, v.whatsappPhone, v.whatsappMessage, v.phone, v.address,
       v.businessHours, v.instagramUrl, v.facebookUrl, v.tiktokUrl, v.email, v.mapUrl].every(optionalText)
     && ["TECH", "FASHION", "BEAUTY", "GLAMOUR", "EDITORIAL", "GRID", "BOUTIQUE"].includes(String(v.template))
+    && (v.themePreset === undefined || optionalText(v.themePreset))
     && Array.isArray(v.categories) && v.categories.every(category)
     && Array.isArray(v.products) && v.products.every(product);
 }

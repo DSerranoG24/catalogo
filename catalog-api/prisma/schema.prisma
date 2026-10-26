@@ -96,6 +96,7 @@ model Catalog {
   email         String?
   mapUrl        String?
   template      String          @default("EDITORIAL")
+  themePreset   String?
   active        Boolean         @default(true)
    archivedAt    DateTime?
   createdAt     DateTime        @default(now())

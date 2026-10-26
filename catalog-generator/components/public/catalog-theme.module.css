@@ -1,0 +1,4 @@
+.root[data-catalog-themed="true"] :is(a, button, input, select, textarea):not([href^="https://wa.me/"]):focus-visible {
+  outline: 2px solid var(--catalog-focus);
+  outline-offset: 3px;
+}

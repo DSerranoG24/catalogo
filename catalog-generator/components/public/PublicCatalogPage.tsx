@@ -11,6 +11,8 @@ import BeautyTemplate from "@/components/public/BeautyTemplate";
 import GlamourTemplate from "@/components/public/GlamourTemplate";
 import { CatalogTemplateId, normalizeCatalogTemplate } from "@/lib/catalogTemplates";
 import { PublicCatalogTemplateProps } from "@/components/public/PublicCatalogTemplateProps";
+import type { CatalogThemeStyle } from "@/lib/catalog-theme";
+import themeStyles from "./catalog-theme.module.css";
 
 const templateComponents: Record<CatalogTemplateId, ComponentType<PublicCatalogTemplateProps>> = {
   TECH: TechnologyTemplate,
@@ -19,7 +21,7 @@ const templateComponents: Record<CatalogTemplateId, ComponentType<PublicCatalogT
   GLAMOUR: GlamourTemplate,
 };
 
-export default function PublicCatalogPage({ publicId, initialCatalog: catalog }: { publicId: string; initialCatalog: PublicCatalog }) {
+export default function PublicCatalogPage({ publicId, initialCatalog: catalog, themeStyle }: { publicId: string; initialCatalog: PublicCatalog; themeStyle?: CatalogThemeStyle }) {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [cartReady, setCartReady] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("");
@@ -134,9 +136,9 @@ export default function PublicCatalogPage({ publicId, initialCatalog: catalog }:
   const Template = templateComponents[templateId] ?? EditorialTemplate;
 
   return (
-    <main className="min-h-screen pb-12">
+    <main style={themeStyle} data-catalog-themed={themeStyle ? "true" : undefined} className={`${themeStyles.root} min-h-screen pb-12 bg-[var(--catalog-background)] text-[var(--catalog-text)]`}>
       <Template {...templateProps} />
-      <footer className="border-t border-[#dce4dc] px-5 py-5 text-center text-xs text-[#849087]">Catálogo compartido por su vendedor</footer>
+      <footer className="border-t border-[var(--catalog-border-subtle,#dce4dc)] px-5 py-5 text-center text-xs text-[var(--catalog-text-muted,#849087)]">Catálogo compartido por su vendedor</footer>
       <FloatingWhatsAppButton catalog={catalog} />
     </main>
   );

@@ -8,6 +8,8 @@ import { FormEvent, useRef, useState } from "react";
 import Image from "next/image";
 import { apiRequest, Catalog } from "@/lib/api";
 import { catalogTemplateOptions } from "@/lib/catalogTemplates";
+import CatalogPaletteSelector from "./CatalogPaletteSelector";
+import { isCatalogThemeCompatible } from "@/lib/catalog-theme-choice";
 
 type Template = Catalog["template"];
 
@@ -67,6 +69,9 @@ export default function CatalogSettings({
     mapUrl: catalog.mapUrl ?? "",
   });
   const [template, setTemplate] = useState<Template>(initialTemplate(catalog.template));
+  const [themePreset, setThemePreset] = useState<string | null>(catalog.themePreset ?? null);
+  const [persistedThemePreset, setPersistedThemePreset] = useState<string | null>(catalog.themePreset ?? null);
+  const themeCompatible = isCatalogThemeCompatible(template, themePreset);
   const [logoUrl, setLogoUrl] = useState(catalog.logoUrl);
   const [logoBusy, setLogoBusy] = useState(false);
   const logoInput = useRef<HTMLInputElement>(null);
@@ -83,6 +88,11 @@ export default function CatalogSettings({
 
   async function saveSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return;
+    if (!themeCompatible) {
+      setError("Elige una paleta compatible o Predeterminado antes de guardar.");
+      return;
+    }
     setSaving(true);
     setError("");
     setMessage("");
@@ -105,9 +115,10 @@ export default function CatalogSettings({
       };
       await apiRequest(`/catalogs/${catalog.id}`, {
         method: "PUT",
-        body: JSON.stringify({ ...updatedProfile, template }),
+        body: JSON.stringify({ ...updatedProfile, template, themePreset }),
       });
-      onUpdated({ ...updatedProfile, template });
+      setPersistedThemePreset(themePreset);
+      onUpdated({ ...updatedProfile, template, themePreset });
       setMessage("Cambios guardados.");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "No se pudieron guardar los cambios.");
@@ -180,6 +191,7 @@ export default function CatalogSettings({
               key={item.id}
               type="button"
               role="radio"
+              disabled={saving}
               aria-checked={template === item.id}
               onClick={() => setTemplate(item.id)}
               className={uiStyles.templateChoice}
@@ -200,6 +212,8 @@ export default function CatalogSettings({
         </div>
 
         {publicUrl && <a href={publicUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#d6dfd7] px-4 text-sm font-semibold text-[#315e4f] transition hover:bg-[#f4f7f2]">Ver catálogo público <span aria-hidden="true">↗</span></a>}
+
+        <CatalogPaletteSelector template={template} value={themePreset} persistedValue={persistedThemePreset} onChange={setThemePreset} disabled={saving} />
 
         <section className="space-y-4 border-t border-[#e2e8e1] pt-6">
           <div>
@@ -287,7 +301,7 @@ export default function CatalogSettings({
 
         {error && <p role="alert" className="rounded-md bg-[#fff1ec] px-3 py-2 text-sm text-[#a5432a]">{error}</p>}
         {message && <p role="status" className="text-sm text-[#17665c]">{message}</p>}
-        <Button variant="primary" size="lg" type="submit" disabled={saving} >
+        <Button variant="primary" size="lg" type="submit" disabled={saving || !themeCompatible} >
           {saving ? "Guardando..." : "Guardar cambios"}
         </Button>
       </form>

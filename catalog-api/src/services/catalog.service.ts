@@ -39,6 +39,7 @@ export async function createCatalogService(data: {
   email?: string;
   mapUrl?: string;
   template?: CatalogTemplate;
+  themePreset?: string | null;
 }) {
   return createCatalog({ ...data, template: toPersistedTemplate(data.template) });
 }
@@ -76,6 +77,7 @@ export async function updateCatalogService(
     email?: string | null;
     mapUrl?: string | null;
     template?: CatalogTemplate;
+    themePreset?: string | null;
   }
 ) {
   return updateCatalog(id, userId, { ...data, template: toPersistedTemplate(data.template) });

@@ -21,27 +21,27 @@ export default function PublicCategoryFilter({
   cartTotal: number;
 }) {
   const selectedClass = variant === "tech"
-    ? "border-[#56e0c0] bg-[#56e0c0] text-[#071421]"
+    ? "border-[var(--catalog-primary,#56e0c0)] bg-[var(--catalog-primary,#56e0c0)] text-[var(--catalog-on-primary,#071421)]"
     : variant === "fashion"
-      ? "border-[#322c29] bg-[#322c29] text-white"
+      ? "border-[var(--catalog-primary,#322c29)] bg-[var(--catalog-primary,#322c29)] text-[var(--catalog-on-primary,#ffffff)]"
       : variant === "beauty"
-        ? "border-[#b55271] bg-[#b55271] text-white"
+        ? "border-[var(--catalog-primary,#b55271)] bg-[var(--catalog-primary,#b55271)] text-[var(--catalog-on-primary,#ffffff)]"
         : variant === "boutique"
-    ? "border-[#bd4d36] bg-[#bd4d36] text-white"
+    ? "border-[var(--catalog-primary,#bd4d36)] bg-[var(--catalog-primary,#bd4d36)] text-[var(--catalog-on-primary,#ffffff)]"
     : variant === "grid"
-      ? "border-[#315c53] bg-[#315c53] text-white"
-      : "border-[#263b31] bg-[#263b31] text-white";
+      ? "border-[var(--catalog-primary,#315c53)] bg-[var(--catalog-primary,#315c53)] text-[var(--catalog-on-primary,#ffffff)]"
+      : "border-[var(--catalog-primary,#263b31)] bg-[var(--catalog-primary,#263b31)] text-[var(--catalog-on-primary,#ffffff)]";
 
   const barStyle = variant === "tech"
-    ? "border-[#26394a] bg-[#101e2d]/95 text-[#e5f2ff]"
+    ? "border-[var(--catalog-border-subtle,#26394a)] bg-[var(--catalog-surface-alpha-95,color-mix(in_oklab,#101e2d_95%,transparent))] text-[var(--catalog-text,#e5f2ff)]"
     : variant === "fashion"
-      ? "border-[#e5d9d0] bg-[#fffdfa]/95 text-[#322c29]"
+      ? "border-[var(--catalog-border-subtle,#e5d9d0)] bg-[var(--catalog-surface-alpha-95,color-mix(in_oklab,#fffdfa_95%,transparent))] text-[var(--catalog-text,#322c29)]"
       : variant === "beauty"
-        ? "border-[#eed5dc] bg-[#fffaf9]/95 text-[#552e48]"
-        : "border-[#d8ded6] bg-[#fbfcf9]/95";
+        ? "border-[var(--catalog-border-subtle,#eed5dc)] bg-[var(--catalog-surface-alpha-95,color-mix(in_oklab,#fffaf9_95%,transparent))] text-[var(--catalog-text,#552e48)]"
+        : "border-[var(--catalog-border-subtle,#d8ded6)] bg-[var(--catalog-surface-alpha-95,color-mix(in_oklab,#fbfcf9_95%,transparent))]";
   const idleClass = variant === "tech"
-    ? "border-transparent bg-transparent text-[#a9bccd] hover:border-[#56e0c0]/40 hover:bg-[#1b2c3d] hover:text-white"
-    : "border-transparent bg-transparent text-[#526157] hover:border-[#cbd4cb] hover:bg-white";
+    ? "border-transparent bg-transparent text-[var(--catalog-text-muted,#a9bccd)] hover:border-[var(--catalog-primary-alpha-40,color-mix(in_oklab,#56e0c0_40%,transparent))] hover:bg-[var(--catalog-primary-hover,#1b2c3d)] hover:text-[var(--catalog-on-primary,#ffffff)]"
+    : "border-transparent bg-transparent text-[var(--catalog-text-muted,#526157)] hover:border-[var(--catalog-border-subtle,#cbd4cb)] hover:bg-[var(--catalog-surface,#ffffff)]";
 
   return (
     <nav aria-label="Filtrar por categoría" className={`sticky top-0 z-10 border-y py-2 backdrop-blur-sm ${barStyle}`}>
@@ -56,7 +56,7 @@ export default function PublicCategoryFilter({
               className={`flex min-h-11 shrink-0 snap-start items-center gap-2 border px-3 text-xs font-semibold transition sm:px-4 ${selectedId === category.id ? selectedClass : idleClass}`}
             >
               {category.imageUrl && (
-                <span className="relative size-8 shrink-0 overflow-hidden border border-black/10 bg-white/30">
+                <span className="relative size-8 shrink-0 overflow-hidden border border-[var(--catalog-border-subtle-alpha-10,color-mix(in_oklab,var(--color-black)_10%,transparent))] bg-[var(--catalog-surface-alpha-30,color-mix(in_oklab,var(--color-white)_30%,transparent))]">
                   <Image src={category.imageUrl} alt="" fill unoptimized sizes="32px" className="object-cover" />
                 </span>
               )}
@@ -64,13 +64,13 @@ export default function PublicCategoryFilter({
             </button>
           ))}
         </div>
-        <Link href={`/c/${encodeURIComponent(publicId)}/carrito`} aria-label={`Carrito de compras, ${cartCount} ${cartCount === 1 ? "producto" : "productos"}`} title="Abrir carrito" className={`flex min-h-10 shrink-0 items-center gap-2 border-l pl-3 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 sm:pl-5 ${variant === "tech" ? "border-[#34495c] text-[#e5f2ff] hover:text-[#56e0c0] focus-visible:outline-[#56e0c0]" : "border-[#d8ded6] text-[#263b31] hover:text-[#bd4d36] focus-visible:outline-[#315c53]"}`}>
+        <Link href={`/c/${encodeURIComponent(publicId)}/carrito`} aria-label={`Carrito de compras, ${cartCount} ${cartCount === 1 ? "producto" : "productos"}`} title="Abrir carrito" className={`flex min-h-10 shrink-0 items-center gap-2 border-l pl-3 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 sm:pl-5 ${variant === "tech" ? "border-[var(--catalog-border-subtle,#34495c)] text-[var(--catalog-text,#e5f2ff)] hover:text-[var(--catalog-primary,#56e0c0)] focus-visible:outline-[var(--catalog-focus,#56e0c0)]" : "border-[var(--catalog-border-subtle,#d8ded6)] text-[var(--catalog-text,#263b31)] hover:text-[var(--catalog-primary,#bd4d36)] focus-visible:outline-[var(--catalog-focus,#315c53)]"}`}>
           <span className="relative grid size-8 place-items-center">
             <ShoppingCart aria-hidden="true" size={21} strokeWidth={2} />
-            <span className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-[#bd4d36] px-1 text-[9px] font-bold leading-4 text-white">{cartCount > 99 ? "99+" : cartCount}</span>
+            <span className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-[var(--catalog-primary,#bd4d36)] px-1 text-[9px] font-bold leading-4 text-[var(--catalog-on-primary,#ffffff)]">{cartCount > 99 ? "99+" : cartCount}</span>
           </span>
           <span>Carrito</span>
-          {cartCount > 0 && <span className="hidden tabular-nums text-[#647268] sm:inline">${cartTotal.toLocaleString("es-CO")}</span>}
+          {cartCount > 0 && <span className="hidden tabular-nums text-[var(--catalog-text-muted,#647268)] sm:inline">${cartTotal.toLocaleString("es-CO")}</span>}
         </Link>
       </div>
     </nav>

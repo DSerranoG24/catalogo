@@ -23,5 +23,8 @@ export default async function SharedCatalogPage({ params }: Props) {
     if (!(error instanceof CatalogUnavailableError)) throw error;
     return <CatalogUnavailable href={`/c/${encodeURIComponent(publicId)}`} />;
   }
-  return <PublicCatalogPage key={publicId} publicId={publicId} initialCatalog={catalog} />;
+  const themeStyle = catalog.themePreset
+    ? (await import("@/lib/catalog-theme")).resolveCatalogTheme(catalog.template, catalog.themePreset)
+    : undefined;
+  return <PublicCatalogPage key={publicId} publicId={publicId} initialCatalog={catalog} themeStyle={themeStyle} />;
 }

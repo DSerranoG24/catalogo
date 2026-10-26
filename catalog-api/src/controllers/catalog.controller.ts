@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
+import { CatalogThemeError } from "../schemas/catalog-theme";
 import { signCatalogLogo, uploadCatalogLogoService, deleteCatalogLogoService } from "../services/catalog.service";
 import { AuthenticatedRequest } from "../types/auth.types";
 import {
@@ -35,6 +36,7 @@ export async function createCatalogController(
       catalog,
     });
   } catch (error) {
+    if (error instanceof CatalogThemeError) return res.status(400).json({ success: false, message: error.message });
     console.error(error);
 
     return res.status(400).json({
@@ -119,14 +121,15 @@ export async function deleteCatalogLogoController(req: AuthenticatedRequest, res
   }
 }
 
-export async function updateCatalogController(
+export function makeUpdateCatalogController(update = updateCatalogService) {
+return async function updateCatalogController(
   req: AuthenticatedRequest,
   res: Response
 ) {
   try {
     const data = updateCatalogSchema.parse(req.body);
 
-    const result = await updateCatalogService(
+    const result = await update(
       req.params.id as string,
       req.user!.id,
       data
@@ -151,6 +154,7 @@ export async function updateCatalogController(
         issues: error.issues.map(({ path, message }) => ({ field: path.join("."), message })),
       });
     }
+    if (error instanceof CatalogThemeError) return res.status(400).json({ success: false, message: error.message });
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return res.status(409).json({ success: false, message: "Ya existe un catálogo con ese nombre o dirección." });
     }
@@ -162,6 +166,9 @@ export async function updateCatalogController(
     });
   }
 }
+}
+
+export const updateCatalogController = makeUpdateCatalogController();
 
 export async function deleteCatalogController(
   req: AuthenticatedRequest,

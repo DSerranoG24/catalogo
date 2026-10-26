@@ -13,6 +13,7 @@ const testFiles = [
   "src/routes/product-list.routes.test.ts",
   "src/app.test.ts",
   "src/schemas/catalog.schema.test.ts",
+  "src/repositories/catalog-theme.test.ts",
   "src/schemas/order.schema.test.ts",
   "src/repositories/order-idempotency.test.ts",
   "src/services/order-calculation.test.ts",

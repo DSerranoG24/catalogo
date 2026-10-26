@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { themePresetSchema } from "./catalog-theme";
 
 const phoneSchema = z.string().trim().max(30).regex(/^\+?[0-9\s().-]+$/).refine(
   (value) => value.replace(/\D/g, "").length >= 7,
@@ -45,6 +46,7 @@ export const createCatalogSchema = z.object({
   email: z.string().trim().email().max(254).optional(),
   mapUrl: httpUrlSchema.optional(),
   template: catalogTemplateSchema.optional(),
+  themePreset: themePresetSchema,
 });
 
 export const updateCatalogSchema = z.object({
@@ -72,4 +74,5 @@ export const updateCatalogSchema = z.object({
   email: z.string().trim().email().max(254).nullable().optional(),
   mapUrl: httpUrlSchema.nullable().optional(),
   template: catalogTemplateSchema.optional(),
+  themePreset: themePresetSchema,
 });

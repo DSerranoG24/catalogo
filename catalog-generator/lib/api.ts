@@ -29,6 +29,7 @@ export type Catalog = {
   email: string | null;
   mapUrl: string | null;
   template: StoredCatalogTemplate;
+  themePreset?: string | null;
   active: boolean;
   archivedAt: string | null;
 };
@@ -128,6 +129,7 @@ export type PublicCatalog = Pick<
   | "email"
   | "mapUrl"
   | "template"
+  | "themePreset"
 > & {
   categories: Category[];
   products: PublicProduct[];

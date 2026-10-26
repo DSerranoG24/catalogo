@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { cardFixture, verifyPublicCards } from "./public-product-card-checks.mjs";
+import { themeFixture, verifyPublicThemes } from "./public-theme-checks.mjs";
+import { verifyPaletteSettings } from "./palette-settings-checks.mjs";
 const publicCards = process.argv.includes("--public-cards");
+const publicThemes = process.argv.includes("--public-themes");
+const paletteSettings = process.argv.includes("--palette-settings");
 import fs from "node:fs";
 import http from "node:http";
 import https from "node:https";
@@ -21,10 +25,12 @@ const catalog = { id: "local-catalog", publicId: "demo", name: "Catálogo local"
     model: null, categoryId: null, category: null, price: 1000, regularPrice: null, discountPercent: null, saleEndsAt: null, images: [] }] };
 const privateProduct = { ...catalog.products[0], catalogId: catalog.id, sku: "LOCAL-1", stock: 4, active: true, needsCompletion: false, salePrice: null, saleStartsAt: null };
 const categoryFixture = { id: "local-category", name: "Categoría local", slug: "categoria", imageUrl: null, position: 0 };
+let settingsCatalog = { ...catalog, template: "FASHION", themePreset: null };
+const paletteSaves = [];
 const handlePublic = (req, res) => {
   const id = req.url.split("/").pop();
   res.setHeader("Content-Type", "application/json");
-  res.end(JSON.stringify({ catalog: publicCards ? cardFixture(catalog, id) : { ...catalog, publicId: id, template: templates.includes(id) ? id : "TECH" } }));
+  res.end(JSON.stringify({ catalog: publicThemes ? themeFixture(catalog, id) : publicCards ? cardFixture(catalog, id) : { ...catalog, publicId: id, template: templates.includes(id) ? id : "TECH" } }));
 };
 const secureApi = process.argv.includes("--https-api");
 let api, caPath;
@@ -136,9 +142,11 @@ try {
         const portrait = url.pathname.includes("portrait");
         const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="'+(portrait?180:400)+'" height="'+(portrait?400:180)+'"><rect width="100%" height="100%" fill="#e8f3ef"/><circle cx="90" cy="90" r="60" fill="#0F6B57"/></svg>';
         interception("Fetch.fulfillRequest", { requestId, responseCode: 200, responseHeaders: [{name:"Content-Type",value:"image/svg+xml"}], body:Buffer.from(svg).toString("base64") });
+      } else if (publicThemes && url.pathname.includes("/reviews")) {
+        interception("Fetch.fulfillRequest", { requestId, responseCode: 200, responseHeaders: [{name:"Content-Type",value:"application/json"},{name:"Access-Control-Allow-Origin",value:base}], body: Buffer.from(JSON.stringify({ reviews: [], reviewCount: 0, averageRating: null })).toString("base64") });
       } else if (url.pathname.startsWith("/api/public/catalogs/")) {
         const id = url.pathname.split("/").pop();
-        interception("Fetch.fulfillRequest", { requestId, responseCode: 200, responseHeaders: [{ name: "Content-Type", value: "application/json" }, { name: "Access-Control-Allow-Origin", value: base }], body: Buffer.from(JSON.stringify({ catalog: publicCards ? cardFixture(catalog, id) : { ...catalog, publicId: id, template: templates.includes(id) ? id : "TECH" } })).toString("base64") });
+        interception("Fetch.fulfillRequest", { requestId, responseCode: 200, responseHeaders: [{ name: "Content-Type", value: "application/json" }, { name: "Access-Control-Allow-Origin", value: base }], body: Buffer.from(JSON.stringify({ catalog: publicThemes ? themeFixture(catalog, id) : publicCards ? cardFixture(catalog, id) : { ...catalog, publicId: id, template: templates.includes(id) ? id : "TECH" } })).toString("base64") });
       } else if (url.pathname.startsWith("/api/backend/")) {
         if (request.method !== "GET") mutations.push(request.method);
         let body;
@@ -146,7 +154,14 @@ try {
         else if (url.pathname.includes("/photos/pending")) body = { products: [{ ...privateProduct, needsCompletion: true, active: false }], count: 1, page: 1, pages: 1 };
         else if (url.pathname.includes("/products/catalog/") && url.pathname.endsWith("/list")) body = { products: [privateProduct], page: 1, pageSize: 24, totalProducts: 1, totalFiltered: 1, totalPages: 1, needsCompletionCount: 1 };
         else if (url.pathname.includes("/categories/catalog/")) body = { categories: [categoryFixture] };
-        else if (url.pathname.includes("/catalogs/")) body = { catalog: { ...catalog, template: "TECH" } };
+        else if (url.pathname.includes("/catalogs/")) {
+          if (paletteSettings && request.method === "PUT") {
+            const patch = JSON.parse(request.postData);
+            paletteSaves.push(patch);
+            settingsCatalog = { ...settingsCatalog, ...patch };
+            body = { success: true, message: "Cambios guardados." };
+          } else body = { catalog: paletteSettings ? settingsCatalog : { ...catalog, template: "TECH" } };
+        }
         else if (url.pathname.includes("/reviews/")) body = { reviews: [] };
         else if (url.pathname.includes("/orders/")) body = { orders: [] };
         else body = { catalogs: [{ ...catalog, template: "TECH" }] };
@@ -156,7 +171,11 @@ try {
   });
   await command("Page.enable"); await command("Runtime.enable");
   await command("Fetch.enable", { patterns: [{ urlPattern: "*" }] });
-  if (!publicCards) {
+  if (paletteSettings) {
+    await command("Page.addScriptToEvaluateOnNewDocument", { source: `localStorage.setItem('catalogo-session',JSON.stringify({user:{id:'local-user',email:'test@example.invalid',name:'Prueba local'}}));` });
+    result.paletteSettings = await verifyPaletteSettings({ command, evaluate, poll, pause, fill, clickText, base, folder, saves: paletteSaves });
+  }
+  if (!publicCards && !publicThemes && !paletteSettings) {
   await command("Page.addScriptToEvaluateOnNewDocument", { source: `localStorage.setItem('catalogo-session',JSON.stringify({user:{id:'local-user',email:'test@example.invalid',name:'Prueba local'}}));` });
   await command("Page.navigate", { url: base + "/dashboard" });
   await poll(() => evaluate(`Boolean(document.querySelector('button[aria-label="Archivar Catálogo local"]'))`));
@@ -230,9 +249,11 @@ try {
   }
   assert.ok(!process.argv.includes("--baseline-css"), "Use --public-cards --card-baseline FILE for visual invariants");
   if (publicCards) result.publicCards = await verifyPublicCards({ command, evaluate, poll, pause: ms => pause(ms), base, folder });
+  if (publicThemes) result.publicThemes = await verifyPublicThemes({ command, evaluate, poll, pause, base, folder });
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ success: true, ...result }, null, 2));
 } catch (error) {
+  if (paletteSettings && socket?.readyState === WebSocket.OPEN) result.paletteDebug = { saves: paletteSaves.length, state: await evaluate(`({active:document.activeElement?.outerHTML.slice(0,350),checked:[...document.querySelectorAll('input[name="themePreset"]')].filter(e=>e.checked).map(e=>e.value),alerts:[...document.querySelectorAll('[role="alert"]')].map(e=>e.textContent),submitDisabled:document.querySelector('form button[type="submit"]')?.disabled})`) };
   if (socket?.readyState === WebSocket.OPEN) {
     result.debug = await evaluate(`({focused:document.activeElement?.getAttribute('aria-label'),dialogs:[...document.querySelectorAll('[role="dialog"],[role="alertdialog"]')].map(e=>({role:e.getAttribute('role'),title:e.textContent.slice(0,100)})),url:location.pathname})`);
   }
