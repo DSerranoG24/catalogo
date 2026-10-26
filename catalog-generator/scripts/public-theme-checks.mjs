@@ -28,15 +28,38 @@ export async function verifyPublicThemes({ command, evaluate, poll, pause, base,
   const baseline = recording ? {} : JSON.parse(fs.readFileSync(process.argv[compareAt + 1], "utf8"));
   let comparisons = 0;
   await command("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+  async function navigateDocument(url) {
+    const navigation = await command("Page.navigate", { url });
+    assert.ok(!navigation.errorText, "Navigation must succeed");
+    if (navigation.loaderId) await poll(async () => {
+      const { frameTree } = await command("Page.getFrameTree");
+      return frameTree.frame.loaderId === navigation.loaderId && frameTree.frame.url === url;
+    });
+    await poll(() => evaluate(`location.href===${JSON.stringify(url)}&&document.readyState==='complete'`));
+  }
   async function navigate(id, kind) {
-    await command("Page.navigate", { url: `${base}/c/${id}` });
+    await navigateDocument(`${base}/c/${id}`);
     await poll(() => evaluate(`Boolean(document.querySelector('[data-product-card]'))`));
     if (kind.startsWith("cart")) {
-      await evaluate(`sessionStorage.setItem(${JSON.stringify(`catalogo-cart-${id}`)},${JSON.stringify(kind === "cart-full" ? '{"p1":2,"p2":1}' : '{}')})`);
-      await command("Page.navigate", { url: `${base}/c/${id}/carrito` });
-      await poll(() => evaluate(`document.querySelector('h1')?.textContent==='Carrito'&&Boolean(document.querySelector(${JSON.stringify(kind === "cart-full" ? "form" : "main section h2")}))`));
+      let quantities = kind === "cart-full" ? { p1: 2, p2: 1 } : {};
+      if (kind === "cart-full" && process.env.CATALOG_THEME_LOCAL_API) {
+        const data = await (await fetch(`${process.env.CATALOG_THEME_LOCAL_API}/public/catalogs/${encodeURIComponent(id)}`)).json();
+        quantities = { [data.catalog.products[0].id]: 2, [data.catalog.products[1].id]: 1 };
+      }
+      const seed = await command("Page.addScriptToEvaluateOnNewDocument", {
+        source: `if(location.pathname===${JSON.stringify(`/c/${id}/carrito`)})sessionStorage.setItem(${JSON.stringify(`catalogo-cart-${id}`)},${JSON.stringify(JSON.stringify(quantities))})`,
+      });
+      try {
+        await navigateDocument(`${base}/c/${id}/carrito`);
+        await poll(() => evaluate(`document.querySelector('h1')?.textContent==='Carrito'&&Boolean(document.querySelector(${JSON.stringify(kind === "cart-full" ? "form" : "main section h2")}))`));
+      } catch {
+        const state = await evaluate(`({heading:document.querySelector('h1')?.textContent,form:Boolean(document.querySelector('form')),empty:Boolean(document.querySelector('main section h2')),error:document.querySelector('main')?.textContent.slice(0,180)})`);
+        throw new Error(`LOCAL_CART_STATE:${kind}:` + JSON.stringify(state).replace(/(?:postgres(?:ql)?|https?):\/\/\S+/g, "[redacted-url]"));
+      } finally {
+        await command("Page.removeScriptToEvaluateOnNewDocument", { identifier: seed.identifier });
+      }
     } else if (kind === "detail") {
-      await command("Page.navigate", { url: `${base}/c/${id}/producto/producto-1` });
+      await navigateDocument(`${base}/c/${id}/producto/producto-1`);
       await poll(() => evaluate(`Boolean(document.getElementById('reviews-heading'))`));
     }
     await evaluate("document.fonts.ready.then(()=>true)");
@@ -117,7 +140,7 @@ export async function verifyPublicThemes({ command, evaluate, poll, pause, base,
   }
   const paletteResults = [];
   let fallbackComparisons = 0;
-  if (!recording) {
+  if (!recording && !process.argv.includes("--null-themes-only")) {
     if (!process.argv.includes("--theme-palettes-only")) {
       await command("Emulation.setDeviceMetricsOverride", { width: 320, height: 1000, deviceScaleFactor: 1, mobile: false });
       const fallbackCases = templates.flatMap(template => ["absent", "unknown"].map(preset => [template, preset])).concat([["TECH", "forest"], ["GRID", "forest"]]);

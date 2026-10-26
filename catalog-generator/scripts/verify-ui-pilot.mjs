@@ -5,6 +5,14 @@ import { verifyPaletteSettings } from "./palette-settings-checks.mjs";
 const publicCards = process.argv.includes("--public-cards");
 const publicThemes = process.argv.includes("--public-themes");
 const paletteSettings = process.argv.includes("--palette-settings");
+const localThemeApi = process.env.CATALOG_THEME_LOCAL_API;
+if (localThemeApi) {
+  const target = new URL(localThemeApi);
+  assert.equal(target.protocol, "http:"); assert.equal(target.hostname, "127.0.0.1");
+  assert.equal(target.pathname, "/api"); assert.equal(target.username + target.password + target.search + target.hash, "");
+  assert.ok(target.port);
+  assert.ok(publicThemes && process.argv.includes("--null-themes-only"));
+}
 import fs from "node:fs";
 import http from "node:http";
 import https from "node:https";
@@ -27,10 +35,20 @@ const privateProduct = { ...catalog.products[0], catalogId: catalog.id, sku: "LO
 const categoryFixture = { id: "local-category", name: "Categoría local", slug: "categoria", imageUrl: null, position: 0 };
 let settingsCatalog = { ...catalog, template: "FASHION", themePreset: null };
 const paletteSaves = [];
-const handlePublic = (req, res) => {
+async function publicResponse(id) {
+  if (localThemeApi) {
+    assert.ok(templates.includes(id));
+    const response = await fetch(`${localThemeApi}/public/catalogs/${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(5000), redirect: "error" });
+    assert.equal(response.status, 200);
+    return response.json();
+  }
+  return { catalog: publicThemes ? themeFixture(catalog, id) : publicCards ? cardFixture(catalog, id) : { ...catalog, publicId: id, template: templates.includes(id) ? id : "TECH" } };
+}
+const handlePublic = async (req, res) => {
   const id = req.url.split("/").pop();
   res.setHeader("Content-Type", "application/json");
-  res.end(JSON.stringify({ catalog: publicThemes ? themeFixture(catalog, id) : publicCards ? cardFixture(catalog, id) : { ...catalog, publicId: id, template: templates.includes(id) ? id : "TECH" } }));
+  try { res.end(JSON.stringify(await publicResponse(id))); }
+  catch { res.writeHead(503); res.end('{}'); }
 };
 const secureApi = process.argv.includes("--https-api");
 let api, caPath;
@@ -48,7 +66,7 @@ let cancelNativeDialogs = false;
 const pending = new Map();
 const errors = [];
 const mutations = [];
-const result = { keyboard: [], publicStyles: [], backend: "simulated loopback", externalRequests: [] };
+const result = { keyboard: [], publicStyles: [], backend: localThemeApi ? "local API bridge" : "simulated loopback", externalRequests: [] };
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function poll(fn) {
   for (let i = 0; i < 120; i++) { if (await fn()) return; await pause(100); }
@@ -142,11 +160,19 @@ try {
         const portrait = url.pathname.includes("portrait");
         const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="'+(portrait?180:400)+'" height="'+(portrait?400:180)+'"><rect width="100%" height="100%" fill="#e8f3ef"/><circle cx="90" cy="90" r="60" fill="#0F6B57"/></svg>';
         interception("Fetch.fulfillRequest", { requestId, responseCode: 200, responseHeaders: [{name:"Content-Type",value:"image/svg+xml"}], body:Buffer.from(svg).toString("base64") });
+      } else if (localThemeApi && url.pathname.includes("/reviews")) {
+        const localPath = url.pathname.replace(/^\/api/, "");
+        void fetch(localThemeApi + localPath, { signal: AbortSignal.timeout(5000), redirect: "error" }).then(async response => {
+          assert.equal(response.status, 200);
+          interception("Fetch.fulfillRequest", { requestId, responseCode: 200, responseHeaders: [{name:"Content-Type",value:"application/json"},{name:"Access-Control-Allow-Origin",value:base}], body: Buffer.from(await response.text()).toString("base64") });
+        }).catch(() => { errors.push("LOCAL_REVIEWS_API_FAILED"); interception("Fetch.failRequest", { requestId, errorReason: "Failed" }); });
       } else if (publicThemes && url.pathname.includes("/reviews")) {
         interception("Fetch.fulfillRequest", { requestId, responseCode: 200, responseHeaders: [{name:"Content-Type",value:"application/json"},{name:"Access-Control-Allow-Origin",value:base}], body: Buffer.from(JSON.stringify({ reviews: [], reviewCount: 0, averageRating: null })).toString("base64") });
       } else if (url.pathname.startsWith("/api/public/catalogs/")) {
         const id = url.pathname.split("/").pop();
-        interception("Fetch.fulfillRequest", { requestId, responseCode: 200, responseHeaders: [{ name: "Content-Type", value: "application/json" }, { name: "Access-Control-Allow-Origin", value: base }], body: Buffer.from(JSON.stringify({ catalog: publicThemes ? themeFixture(catalog, id) : publicCards ? cardFixture(catalog, id) : { ...catalog, publicId: id, template: templates.includes(id) ? id : "TECH" } })).toString("base64") });
+        void publicResponse(id).then(body => interception("Fetch.fulfillRequest", { requestId, responseCode: 200, responseHeaders: [{ name: "Content-Type", value: "application/json" }, { name: "Access-Control-Allow-Origin", value: base }], body: Buffer.from(JSON.stringify(body)).toString("base64") })).catch(() => {
+          errors.push("LOCAL_PUBLIC_API_FAILED"); interception("Fetch.failRequest", { requestId, errorReason: "Failed" });
+        });
       } else if (url.pathname.startsWith("/api/backend/")) {
         if (request.method !== "GET") mutations.push(request.method);
         let body;
