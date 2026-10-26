@@ -135,9 +135,13 @@ test("a user cannot select another user's verification target or enumerate actio
 test("mail log mode never calls the provider or logs destination/token; action URLs use only configured origin and fragments", async () => {
   const previous = process.env.MAIL_MODE; process.env.MAIL_MODE = "log";
   const original = console.info, lines: unknown[][] = []; console.info = (...args: unknown[]) => { lines.push(args); };
+  const originalFetch = globalThis.fetch;
+  let networkCalls = 0;
+  globalThis.fetch = async () => { networkCalls++; throw new Error("NETWORK_FORBIDDEN_IN_LOG_MODE"); };
   const token = createActionToken();
   try { await accountMailer.send({ purpose: "VERIFY_EMAIL", to: "never-send@example.invalid", token }); }
-  finally { console.info = original; if (previous === undefined) delete process.env.MAIL_MODE; else process.env.MAIL_MODE = previous; }
+  finally { globalThis.fetch = originalFetch; console.info = original; if (previous === undefined) delete process.env.MAIL_MODE; else process.env.MAIL_MODE = previous; }
+  assert.equal(networkCalls, 0);
   assert.ok(!JSON.stringify(lines).includes(token)); assert.ok(!JSON.stringify(lines).includes("never-send"));
   assert.equal(lines.length, 1);
   const url = new URL(accountActionUrl("RESET_PASSWORD", token, "https://app.example.invalid"));

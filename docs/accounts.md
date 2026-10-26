@@ -49,24 +49,53 @@ Limpieza recomendada: eliminar periódicamente tokens con `expiresAt` anterior a
 
 ## Despacho y límites operativos
 
-La solicitud pública encola toda la búsqueda/reserva/envío; su respuesta no espera a Resend ni cambia según exista el correo. Cola acotada a 100 trabajos y dos ejecutores, con fallos capturados y sin reintentos automáticos de envíos inciertos. Cada llamada al proveedor tiene un timeout de ocho segundos. Hay límites adicionales por IP para cada ruta; no se amplía `trust proxy` y siguen vigentes sus limitaciones documentadas.
+La solicitud pública encola toda la búsqueda/reserva/envío; su respuesta no espera a Brevo ni cambia según exista el correo. Cola acotada a 100 trabajos y dos ejecutores, con fallos capturados y sin reintentos automáticos de envíos inciertos. Cada llamada al proveedor tiene un timeout de ocho segundos. Hay límites adicionales por IP para cada ruta; no se amplía `trust proxy` y siguen vigentes sus limitaciones documentadas. Los topes de 100/día y 3000/mes son límites PROPIOS de Vitrinaya, no cuotas del proveedor Brevo.
 
 La cola vive en memoria de la instancia: un reinicio puede perder trabajos aceptados. Los tokens y límites ya reservados sí persisten. El usuario puede volver a solicitar después del cooldown. No se garantiza entrega durable ni se promete que HTTP 202 signifique correo entregado. Una cola durable necesitaría un outbox cifrado o infraestructura adicional para no persistir tokens en claro; queda fuera de este bloque. Vigilar resultados seguros de entrega y cuota al habilitar el servicio.
 
 ## Configuración de correo
 
-Solo la API instala el SDK oficial `resend`. Variables documentadas en `.env.example`:
+Solo la API contacta con Brevo mediante `fetch` de Node 24: `POST https://api.brevo.com/v3/smtp/email`, cabecera privada `api-key` y JSON con `sender`, `to`, `replyTo`, `subject` y `textContent`. No necesita SDK ni dependencias adicionales de correo. Se retiraron el SDK y la clave del proveedor anterior. Variables documentadas con placeholders en `.env.example` y `.env.production.example`:
 
 | Variable | Uso |
 |---|---|
-| `MAIL_MODE` | `log` en desarrollo; producción debe configurarlo explícitamente |
-| `RESEND_API_KEY` | Clave privada, solo backend; nunca `NEXT_PUBLIC_*` |
-| `MAIL_FROM` | Inicialmente `Vitrinaya <onboarding@resend.dev>`; cambiar por remitente de dominio verificado al habilitar terceros |
+| `MAIL_MODE` | Solo `log` o `brevo`; desarrollo usa `log` y producción debe configurarlo explícitamente |
+| `BREVO_API_KEY` | Clave API privada de Brevo, solo backend; nunca `NEXT_PUBLIC_*` ni una clave SMTP |
+| `BREVO_SENDER_EMAIL` | Correo del remitente verificado en Brevo; fuente del campo `sender.email` |
+| `BREVO_SENDER_NAME` | Nombre del remitente; fuente del campo `sender.name` |
+| `MAIL_FROM` | Opcional; si está definido debe coincidir con `BREVO_SENDER_NAME <BREVO_SENDER_EMAIL>` |
 | `APP_PUBLIC_URL` | Origen del frontend, por ejemplo `https://catalogo-pink.vercel.app`; HTTPS en producción, sin ruta/query/fragmento/credenciales |
 
-Contacto y Reply-To: `vitrinaya983@gmail.com`. No puede utilizarse Gmail como dominio de envío propio de Resend: no controlamos su DNS. No se ha inventado un remitente verificado. `resend.dev` solo permite pruebas a destinatarios autorizados por Resend; no sirve para los vendedores externos. El dominio propio sigue pendiente. La cuota gratuita publicada es 3000/mes y 100/día, compartida con futuras notificaciones, que también deberán reservar presupuesto mediante este mecanismo.
+Contacto y Reply-To: `vitrinaya983@gmail.com`. Para la configuración operativa indicada por el responsable, el remitente es ese correo y el nombre es `Vitrinaya`; el remitente debe estar verificado y el envío transaccional habilitado en Brevo. No se ha comprobado remotamente esa configuración. Los límites de Vitrinaya son 3000/mes y 100/día, compartidos con futuras notificaciones, que también deberán reservar presupuesto mediante este mecanismo. No se adaptan automáticamente a las cuotas del plan Brevo.
 
-En `MAIL_MODE=log` no se crea un cliente Resend ni se realiza ninguna llamada externa. Solo se registra finalidad y resultado `simulated`; no destinatario, token, cuerpo o enlace. El envío real está deshabilitado fuera de producción incluso si se selecciona accidentalmente `resend`. Las pruebas usan un mailer en memoria. En producción no se imprimen errores del proveedor ni credenciales. No se ha enviado correo real durante el desarrollo.
+El mailer recorta espacios exteriores en correo/nombre y compara `MAIL_FROM.trim()` exactamente con el remitente compuesto: no analiza un segundo remitente ni ignora discrepancias. Si falta la clave, el remitente es inválido o hay contradicción, lanza `MAIL_NOT_CONFIGURED` antes de hacer red. El modo anterior ya no es válido.
+
+En `MAIL_MODE=log` no se realiza ninguna llamada externa ni se requieren credenciales de Brevo. Solo se registra finalidad y resultado `simulated`; no destinatario, token, cuerpo o enlace. El envío real está deshabilitado fuera de producción incluso si se selecciona accidentalmente `brevo`. Las pruebas interceptan `fetch` y simulan aceptación, error y timeout. Los errores del proveedor, de JSON y de red se traducen a `MAIL_DELIVERY_FAILED` sin imprimir sus respuestas. Los fallos quedan contenidos por el despachador; una solicitud aceptada no garantiza entrega. No se ha enviado correo real durante el desarrollo.
+
+### Prueba real posterior, manual y autorizada
+
+Este procedimiento NO se ejecuta como parte de las pruebas automáticas. Usar una base y una API de prueba aisladas, con el esquema de cuentas ya disponible; no cambiar producción ni aplicar migraciones como parte de este procedimiento.
+
+1. Confirmar en Brevo que el remitente `vitrinaya983@gmail.com` está verificado y el envío transaccional permitido. Configurar una clave API vigente en el entorno privado de la API, sin pegarla en comandos, capturas, logs ni archivos versionados. La clave SMTP no sirve para esta petición HTTP.
+2. Configurar `BREVO_SENDER_EMAIL=vitrinaya983@gmail.com`, `BREVO_SENDER_NAME=Vitrinaya`, `MAIL_FROM="Vitrinaya <vitrinaya983@gmail.com>"` y `APP_PUBLIC_URL` con el origen real del frontend de pruebas. Para frontend local puede ser `http://localhost:3001` durante desarrollo, pero al ejecutar el mailer con `NODE_ENV=production` debe ser un origen HTTPS accesible. No derivarlo de Host.
+3. Preparar en esa base aislada una cuenta local con contraseña y el correo `vitrinaya983@gmail.com`. Mantener primero `MAIL_MODE=log`. Si se acaba de registrar o ya se solicitó correo, esperar al menos 60 segundos y comprobar que no se agotaron los límites por hora, tokens activos ni presupuesto global. No reintentar repetidamente para intentar saltarse los límites.
+4. Compilar la API con `npm.cmd run build`. Detener únicamente la instancia de API de prueba anterior para evitar competir por el puerto. En PowerShell, desde `catalog-api`, ejecutar temporalmente el proceso con envío real habilitado:
+
+```powershell
+$previousMailMode = $env:MAIL_MODE
+$previousNodeEnv = $env:NODE_ENV
+try {
+  $env:MAIL_MODE = 'brevo'
+  $env:NODE_ENV = 'production'
+  npm.cmd start
+} finally {
+  $env:MAIL_MODE = $previousMailMode
+  $env:NODE_ENV = $previousNodeEnv
+}
+```
+
+5. En el frontend de pruebas conectado a esa API, abrir «Olvidé mi contraseña», introducir únicamente `vitrinaya983@gmail.com` y pulsar una sola vez «Solicitar instrucciones». Esto usa la ruta normal, conserva los presupuestos y genera un enlace válido. HTTP 202 no demuestra entrega: revisar el buzón/spam y el resultado en Brevo. No copiar el enlace de recuperación a logs o capturas. No es necesario consumirlo para comprobar el transporte.
+6. Terminar la API de prueba con Ctrl+C. El bloque `finally` restaura los valores de esa sesión; comprobar que el modo del entorno de pruebas vuelve a `log` y reiniciar la API en ese modo antes de seguir desarrollando. Si el proceso no se inició desde ese bloque, restaurar `MAIL_MODE=log` manualmente en la configuración privada correspondiente. No dejar un proceso de pruebas enviando correo real.
 
 ## Páginas de acción
 
@@ -76,6 +105,6 @@ GET no consume nada. El formulario exige un POST explícito; el de reset exige l
 
 ## Verificación y despliegue
 
-Ejecutar build/test de API y lint/build del frontend, además de las pruebas de navegador. Las pruebas de unidad/HTTP usan dobles y las de navegador una API simulada: no acreditan migración ni concurrencia con PostgreSQL real, entrega Resend ni configuración DNS.
+Ejecutar build/test de API y lint/build del frontend cuando corresponda, además de las pruebas de navegador. Las pruebas de unidad/HTTP usan dobles y las de navegador una API simulada: no acreditan migración ni concurrencia con PostgreSQL real, entrega Brevo ni configuración del remitente. En el cambio de transporte no se modifican esquema ni frontend; no requiere migración.
 
 Orden: respaldo y revisión autorizada de base destino → aplicar migración por separado → generar cliente/build y desplegar API → frontend. No desplegar la API antes del esquema: las lecturas User ya requieren las columnas nuevas. La migración no se ha aplicado en desarrollo ni producción. No revertirla borrando datos si se necesita volver al binario anterior; dejar los campos y tablas aditivos. Tras un reset, volver a una API antigua que ignore versiones de sesión reactivaría JWT antiguos: ese rollback necesita conservar el control de versión o invalidar globalmente las sesiones.

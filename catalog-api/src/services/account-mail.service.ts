@@ -1,4 +1,4 @@
-import { Resend } from "resend";
+import { z } from "zod";
 import type { ActionPurpose } from "./account-action";
 
 export type AccountMail = { purpose: ActionPurpose; to: string; token: string };
@@ -43,17 +43,33 @@ export const accountMailer: AccountMailer = { async send(mail) {
     console.info("[account-mail]", { operation: mail.purpose, result: "simulated" });
     return;
   }
-  if (mode !== "resend" || !process.env.RESEND_API_KEY) throw new Error("MAIL_NOT_CONFIGURED");
+  const config = z.object({
+    key: z.string().trim().min(1).regex(/^[^\r\n]+$/),
+    email: z.string().trim().email(),
+    name: z.string().trim().min(1).max(100).regex(/^[^\r\n]+$/),
+  }).safeParse({ key: process.env.BREVO_API_KEY, email: process.env.BREVO_SENDER_EMAIL, name: process.env.BREVO_SENDER_NAME });
+  if (mode !== "brevo" || !config.success) throw new Error("MAIL_NOT_CONFIGURED");
+  const { key, email, name } = config.data;
+  if (process.env.MAIL_FROM !== undefined && process.env.MAIL_FROM.trim() !== `${name} <${email}>`) throw new Error("MAIL_NOT_CONFIGURED");
   if (process.env.NODE_ENV !== "production") throw new Error("REAL_MAIL_DISABLED_IN_DEVELOPMENT");
   const url = accountActionUrl(mail.purpose, mail.token);
   const verification = mail.purpose === "VERIFY_EMAIL";
-  const client = new Resend(process.env.RESEND_API_KEY);
-  const result = await client.emails.send({
-    from: process.env.MAIL_FROM ?? "Vitrinaya <onboarding@resend.dev>",
-    replyTo: "vitrinaya983@gmail.com",
-    to: mail.to,
-    subject: verification ? "Verifica tu correo en Vitrinaya" : "Recupera tu acceso a Vitrinaya",
-    text: `${verification ? "Confirma tu correo" : "Establece una contraseña nueva"} abriendo este enlace y confirmando en la página:\n${url}\n\nCaduca en ${verification ? "24 horas" : "30 minutos"}. Si no lo solicitaste, ignora este mensaje.`,
-  }, { signal: AbortSignal.timeout(8000) });
-  if (result.error) throw new Error("MAIL_DELIVERY_FAILED");
+  try {
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST", redirect: "error", signal: AbortSignal.timeout(8000),
+      headers: { "api-key": key, accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({
+        sender: { email, name },
+        replyTo: { email: "vitrinaya983@gmail.com" },
+        to: [{ email: mail.to }],
+        subject: verification ? "Verifica tu correo en Vitrinaya" : "Recupera tu acceso a Vitrinaya",
+        textContent: `${verification ? "Confirma tu correo" : "Establece una contraseña nueva"} abriendo este enlace y confirmando en la página:\n${url}\n\nCaduca en ${verification ? "24 horas" : "30 minutos"}. Si no lo solicitaste, ignora este mensaje.`,
+      }),
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error("MAIL_DELIVERY_FAILED");
+    }
+    if (!z.object({ messageId: z.string().min(1) }).safeParse(await response.json()).success) throw new Error("MAIL_DELIVERY_FAILED");
+  } catch { throw new Error("MAIL_DELIVERY_FAILED"); }
 } };

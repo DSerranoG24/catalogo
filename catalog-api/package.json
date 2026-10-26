@@ -35,7 +35,6 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.4.0",
     "pdfkit": "0.20.2",
-    "resend": "^6.34.1",
     "zod": "4.6.6"
   },
   "devDependencies": {
