@@ -96,6 +96,7 @@ export async function updateProduct(
     const current = await tx.product.findFirst({ where: { id, catalog: { userId } }, select: { catalogId: true } });
     if (!current) return { count: 0 };
     await lockCatalogWrites(tx, current.catalogId, userId);
+    if (data.active === true && await tx.product.findFirst({ where: { id, catalog: { userId }, needsCompletion: true }, select: { id: true } })) throw new Error("PRODUCT_INCOMPLETE");
     return tx.product.updateMany({
       where: { id, catalog: { userId } },
       data,

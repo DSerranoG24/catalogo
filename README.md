@@ -68,6 +68,7 @@ Consulta la [matriz de pruebas](docs/testing.md): reúne comandos por paquete, p
 | Rol de administración | [Protección API/frontend y promoción manual](docs/admin-role.md) |
 | Métricas agregadas de plataforma | [Definiciones, confirmaciones y límites](docs/platform-metrics.md) |
 | Importar Excel | [Contrato API](docs/product-import.md), [lector/plantilla](catalog-generator/docs/product-import-reader.md), [flujo UI](catalog-generator/docs/product-import-ui.md) |
+| Cargar productos por fotos | [Compresión, provisionales, completado y límites](docs/product-photos.md) |
 | Publicación y diseños | [SEO/OG](catalog-generator/docs/public-seo.md), [añadir diseños](catalog-generator/docs/agregar-disenos-de-catalogo.md) |
 | Consultar verificaciones anteriores | [Historial fechado](docs/historial/README.md), incluido el parche Zod |
 

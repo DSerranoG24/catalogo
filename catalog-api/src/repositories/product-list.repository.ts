@@ -43,11 +43,12 @@ export async function listProductPage(catalogId: string, userId: string, query: 
     if (!await tx.catalog.findFirst({ where: { id: catalogId, userId }, select: { id: true } })) return null;
     const where = productListWhere(catalogId, userId, query);
     const totalProducts = await tx.product.count({ where: { catalogId, catalog: { userId } } });
+    const needsCompletionCount = await tx.product.count({ where: { catalogId, catalog: { userId }, needsCompletion: true } });
     const totalFiltered = await tx.product.count({ where });
     const totalPages = Math.max(1, Math.ceil(totalFiltered / query.pageSize));
     const page = Math.min(query.page, totalPages);
     const products = await readProductPage(tx, where, { ...query, page });
-    return { products, page, pageSize: query.pageSize, totalProducts, totalFiltered, totalPages };
+    return { products, page, pageSize: query.pageSize, totalProducts, totalFiltered, totalPages, needsCompletionCount };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
 }
 

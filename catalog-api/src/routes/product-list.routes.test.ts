@@ -15,7 +15,7 @@ const foreignId = "00000000-0000-4000-8000-000000000002";
 function product(index: number): ListedProduct {
   return { id: String(index).padStart(4, "0"), catalogId, categoryId: null, name: `Producto ${index}`, slug: `producto-${index}`,
     description: null, brand: index === 26 ? "Acme" : null, model: null, sku: `SKU-${index}`, price: index, salePrice: null,
-    saleStartsAt: null, saleEndsAt: null, stock: index % 2, active: index % 2 === 0, specs: null,
+    saleStartsAt: null, saleEndsAt: null, stock: index % 2, active: index % 2 === 0, needsCompletion: index < 4, specs: null,
     createdAt: new Date(0), updatedAt: new Date(0), category: null, images: [{ id: `image-${index}`, productId: String(index), url: `private/${index}`, alt: null, position: 0, createdAt: new Date(0) }] };
 }
 
@@ -67,7 +67,7 @@ test("HTTP listing returns server totals, clamps deleted last page and signs onl
   let filtered = false;
   const count = async (args: Prisma.ProductCountArgs) => {
     assert.deepEqual(args.where?.catalog, { userId: "owner-a" }); assert.equal(args.where?.catalogId, catalogId);
-    return args.where?.active === false ? fixtures.filter(p => !p.active).length : fixtures.length;
+    return args.where?.needsCompletion === true ? fixtures.filter(p => p.needsCompletion).length : args.where?.active === false ? fixtures.filter(p => !p.active).length : fixtures.length;
   };
   const findMany = async (args: Prisma.ProductFindManyArgs) => {
     assert.deepEqual(args.where?.catalog, { userId: "owner-a" }); assert.equal(args.where?.catalogId, catalogId);
@@ -112,11 +112,11 @@ test("HTTP listing returns server totals, clamps deleted last page and signs onl
     const response = await get(`${catalogId}/list?page=2`);
     const page = await response.json();
     assert.equal(response.headers.get("cache-control"), "private, no-store");
-    assert.equal(page.totalProducts, 27); assert.equal(page.totalFiltered, 27); assert.equal(page.pageSize, 24);
+    assert.equal(page.totalProducts, 27); assert.equal(page.totalFiltered, 27); assert.equal(page.pageSize, 24); assert.equal(page.needsCompletionCount, 3);
     assert.equal(page.products.length, 3); assert.equal(page.products[0].id, "0025"); assert.equal(signed.length, 3);
     assert.equal(page.products[0].images[0].url, "https://images.example.invalid/private/25");
     const result = await (await get(`${catalogId}/list?status=inactive&page=999`)).json();
-    assert.equal(result.totalProducts, 27); assert.equal(result.totalFiltered, 14); assert.equal(result.page, 1); assert.equal(result.products.length, 14);
+    assert.equal(result.totalProducts, 27); assert.equal(result.totalFiltered, 14); assert.equal(result.page, 1); assert.equal(result.products.length, 14); assert.equal(result.needsCompletionCount, 3);
     fixtures.splice(0);
     const empty = await (await get(`${catalogId}/list?page=2`)).json();
     assert.equal(empty.totalProducts, 0); assert.equal(empty.totalFiltered, 0); assert.equal(empty.page, 1); assert.deepEqual(empty.products, []);

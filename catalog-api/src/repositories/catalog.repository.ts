@@ -121,8 +121,8 @@ export async function deleteCatalog(
 }
 
 
-export async function findPublicCatalog(publicId: string) {
-  return prisma.catalog.findFirst({
+export async function findPublicCatalog(publicId: string, database = prisma) {
+  return database.catalog.findFirst({
     where: { publicId, active: true, archivedAt: null },
     select: {
       publicId: true,

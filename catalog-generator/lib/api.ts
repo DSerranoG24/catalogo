@@ -62,6 +62,7 @@ export type ProductImage = {
 };
 
 export type Product = {
+  needsCompletion: boolean;
   id: string;
   catalogId: string;
   categoryId: string | null;
@@ -82,6 +83,7 @@ export type Product = {
 };
 
 export type ProductPage = {
+  needsCompletionCount: number;
   products: Product[];
   page: number;
   pageSize: number;

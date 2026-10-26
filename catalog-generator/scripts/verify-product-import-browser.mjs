@@ -19,6 +19,7 @@ const folder = fs.mkdtempSync(path.join(os.tmpdir(), "catalogo-import-browser-")
 const catalogId = "11111111-1111-4111-8111-111111111111";
 const catalog = { id: catalogId, publicId: catalogId, name: "Catálogo ficticio", slug: "prueba-local", active: true, archivedAt: null, template: "TECH", description: null, logoUrl: null };
 const products = new Map();
+const photoProducts = new Map(); let photoUploads = 0, photoDelay = false;
 let emailVerified = false, verificationRequests = 0, verificationConfirms = 0, passwordResets = 0, forgotRequests = 0;
 let adminAllowed = true, adminBackendFailed = false;
 let metricsFailed = false, metricsEmpty = false, metricsReads = 0;
@@ -119,6 +120,10 @@ try {
       if (req.url === `/api/categories/catalog/${catalogId}`) return reply({ categories: categoryPresent ? [category] : [] });
       if (req.url === `/api/products/catalog/${catalogId}`) return reply({ products: [...products.values()] });
       const url = new URL(req.url, "https://localhost");
+      if (url.pathname === `/api/products/catalog/${catalogId}/photos/pending`) {
+        const rows = [...photoProducts.values()].filter(product => product.needsCompletion);
+        return reply({ products: rows, count: rows.length, page: 1, pages: 1 });
+      }
       if (url.pathname === `/api/products/catalog/${catalogId}/list`) {
         const params = url.searchParams, q = (params.get("q") ?? "").toLowerCase();
         let rows = [...products.values()].filter(p => (!q || [p.name, p.sku, p.brand, p.model].some(f => f?.toLowerCase().includes(q)))
@@ -136,7 +141,7 @@ try {
         const totalFiltered = rows.length, pageSize = Number(params.get("pageSize") ?? 24);
         const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize)), page = Math.min(Number(params.get("page") ?? 1), totalPages);
         if (q === "producto") await wait(700);
-        return reply({ products: rows.slice((page - 1) * pageSize, page * pageSize), page, pageSize, totalProducts: products.size, totalFiltered, totalPages });
+        return reply({ products: rows.slice((page - 1) * pageSize, page * pageSize), page, pageSize, totalProducts: products.size, totalFiltered, totalPages, needsCompletionCount: [...products.values()].filter(p => p.needsCompletion).length });
       }
       if (url.pathname === `/api/products/catalog/${catalogId}/suggestions`) {
         const q = (url.searchParams.get("q") ?? "").toLowerCase();
@@ -148,6 +153,29 @@ try {
         return reply({ products: scored.slice(0, 5).map(item => item.p) });
       }
       if (req.url.startsWith("/api/product-images/product/")) return reply({ images: [] });
+    }
+    if (req.method === "POST" && req.url === `/api/products/catalog/${catalogId}/photos/plan`) {
+      const chunks = []; for await (const chunk of req) chunks.push(chunk);
+      const body = JSON.parse(Buffer.concat(chunks).toString());
+      assert.ok(body.count > 0 && body.count <= 30); return reply({ token: "local-photo-plan", count: body.count });
+    }
+    if (req.method === "POST" && req.url === `/api/products/catalog/${catalogId}/photos/item`) {
+      const chunks = []; for await (const chunk of req) chunks.push(chunk); const data = Buffer.concat(chunks);
+      assert.ok(data.length < 2 * 1024 * 1024 + 64 * 1024); assert.ok(data.includes(Buffer.from("local-photo-plan")));
+      assert.ok(data.includes(Buffer.from("image/webp"))); assert.ok(data.includes(Buffer.from("RIFF")));
+      const marker = Buffer.from("Content-Type: image/webp\r\n\r\n"), contentStart = data.indexOf(marker) + marker.length;
+      assert.ok(contentStart >= marker.length);
+      const encodedImage = data.subarray(contentStart, data.lastIndexOf(Buffer.from("\r\n--"))).toString("base64");
+      photoUploads++; if (photoDelay) await wait(700);
+      const id = `photo-${photoUploads}`, row = { ...product("Lámpara provisional", id), id, needsCompletion: true, active: false, price: 0, images: [{ id: "photo-image", url: `data:image/webp;base64,${encodedImage}`, alt: null }] };
+      photoProducts.set(id, row); products.set(id, row); return reply({ product: row }, 201);
+    }
+    if (req.method === "PUT" && req.url.startsWith("/api/products/photo-")) {
+      const chunks = []; for await (const chunk of req) chunks.push(chunk); const body = JSON.parse(Buffer.concat(chunks).toString());
+      const id = req.url.split("/")[3], row = photoProducts.get(id); assert.ok(row);
+      if (req.url.endsWith("/complete")) { assert.equal(body.reviewed, true); Object.assign(row, { ...body, needsCompletion: false, active: false }); }
+      else { assert.equal(body.active, true); assert.equal(row.needsCompletion, false); row.active = true; }
+      return reply({ product: row });
     }
     if (req.method === "DELETE" && req.url === `/api/categories/${categoryId}`) {
       categoryDeletes++;
@@ -541,6 +569,53 @@ try {
   await command("Page.navigate", { url: workspaceUrl });
   await poll(() => rangeIs("Mostrando 1–1 de 1"));
   summary.scenarios.push("57 products: server page sizes/counts, keyboard paging, draft preservation, remote editor match outside page and stale response discarded, debounce, combined filters, empty reset, URL refresh/back, four widths, deletion clamps last page, no per-product image HTTP calls (simulated API)");
+  step("product-photos-canvas-and-completion");
+  await click("Cargar varias fotos");
+  step("product-photos-open");
+  await poll(() => evaluate(`document.getElementById('product-photo-panel').textContent.includes('Faltan 0 productos')`));
+  const choosePhotos = async (count, corrupt = false) => evaluate(`(async()=>{
+    const canvas=document.createElement('canvas');canvas.width=2400;canvas.height=1200;const ctx=canvas.getContext('2d');ctx.fillStyle='#d32a45';ctx.fillRect(500,200,1500,800);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));const files=new DataTransfer();
+    for(let i=0;i<${count};i++)files.items.add(new File([${corrupt}&&i===1?'not an image':blob], 'Lampara '+i+'.png',{type:'image/png'}));
+    const input=document.querySelector('#product-photo-panel input[type=file]');input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));canvas.width=0;canvas.height=0;return true;
+  })()`);
+  await choosePhotos(3, true);
+  step("product-photos-upload");
+  assert.equal(await click("Cargar 3 fotos"), true);
+  await poll(() => evaluate(`document.getElementById('product-photo-panel').textContent.includes('Faltan 2 productos')&&document.getElementById('product-photo-panel').textContent.includes('No se pudo preparar')`));
+  assert.equal(photoUploads, 2); assert.ok([...photoProducts.values()].every(row => !row.active && row.needsCompletion));
+  assert.ok(await evaluate(`(async()=>{const img=document.querySelector('#product-photo-panel img');const bitmap=await createImageBitmap(await(await fetch(img.src)).blob());const c=document.createElement('canvas');c.width=bitmap.width;c.height=bitmap.height;const ctx=c.getContext('2d');ctx.drawImage(bitmap,0,0);const valid=bitmap.width===1800&&bitmap.height===900&&ctx.getImageData(0,0,1,1).data[3]===0;bitmap.close();return valid;})()`), "Native Canvas compression resizes to 1800px and preserves alpha");
+  for (const width of [320, 390, 1024, 1440]) {
+    await command("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 500 });
+    assert.ok(await evaluate(`document.documentElement.scrollWidth<=innerWidth+1`), `Photo panel fits ${width}px`);
+  }
+  await input('#product-photo-panel input[maxlength="150"]', 'Lámpara revisada');
+  step("product-photos-complete");
+  await input('#product-photo-panel input[type="number"]', '45000');
+  await evaluate(`document.querySelector('#product-photo-panel input[type=checkbox]').click()`);
+  await evaluate(`[...document.querySelectorAll('#product-photo-panel button')].find(b=>b.textContent==='Guardar y siguiente').focus()`);
+  await command("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" });
+  await command("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+  await poll(() => evaluate(`document.getElementById('product-photo-panel').textContent.includes('Faltan 1 productos')`));
+  assert.equal([...photoProducts.values()].filter(row => !row.needsCompletion && !row.active).length, 1);
+  assert.ok(await evaluate(`document.getElementById('product-photo-panel').textContent.includes('2 creados')`), "Refresh preserves photo report");
+  step("product-photos-publish");
+  await click("Cerrar");
+  await poll(() => evaluate(`Boolean([...document.querySelectorAll('button')].find(b=>b.textContent==='Publicar'&&!b.disabled))`));
+  assert.equal(await click("Publicar"), true);
+  await poll(async () => [...photoProducts.values()].filter(row => row.active).length === 1);
+  await click("Cargar varias fotos"); await poll(() => evaluate(`document.getElementById('product-photo-panel').textContent.includes('Faltan 1 productos')`));
+  await choosePhotos(2); photoDelay = true; const beforeStop = photoUploads;
+  step("product-photos-stop");
+  await click("Cargar 2 fotos"); await poll(async () => photoUploads === beforeStop + 1);
+  await click("Detener después de la foto actual");
+  await poll(() => evaluate(`document.getElementById('product-photo-panel').textContent.includes('No procesado')&&![...document.querySelectorAll('#product-photo-panel button')].find(b=>b.textContent==='Cerrar').disabled`));
+  assert.equal(photoUploads, beforeStop + 1); photoDelay = false;
+  await choosePhotos(31);
+  assert.ok(await evaluate(`document.querySelector('#product-photo-panel [role=alert]').textContent.includes('máximo 30')`));
+  await click("Cerrar"); photoProducts.clear(); products.clear(); products.set("EXISTENTE", product("Existente", "EXISTENTE"));
+  await command("Page.navigate", { url: workspaceUrl }); await poll(() => rangeIs("Mostrando 1–1 de 1"));
+  summary.scenarios.push("photo flow: actual Canvas/WebP compression 2400→1800px with transparency, corrupt image does not stop siblings, server pending counts, completion via keyboard without publication, explicit publish, stop after current photo, client 31 rejected and four widths without overflow (local simulated API)");
   step("category-delete");
   const productCountBeforeDelete = products.size;
   await evaluate(`window.confirm=()=>false`);
@@ -684,7 +759,7 @@ try {
   assert.ok(!(await command("Network.getCookies", { urls: ["http://localhost:4328/"] })).cookies.some(cookie => cookie.name === "catalogo_session"));
   summary.scenarios.push("main-panel keyboard logout clears local metadata and redirects after same-origin logout");
   summary.passed = true;
-} catch (error) { summary.failure = error instanceof Error ? error.message : "BROWSER_CHECK_FAILED"; summary.failedStage = stage; summary.browserErrors = browserErrors; summary.apiReadCount = apiReads.length; summary.previewBatches = previewCalls; if (socket?.readyState === WebSocket.OPEN) { try { summary.pageState = await evaluate(`({path:location.pathname,hasVisualSession:localStorage.getItem('catalogo-session')!==null})`); summary.importResponses = []; for (const response of importResponses) { const data = await command("Network.getResponseBody", { requestId: response.requestId }); const body = JSON.parse(data.body); summary.importResponses.push({ status: response.status, success: body.success, errorCode: body.error, ready: body.ready, hasToken: Boolean(body.previewToken), rows: body.rows?.map(row=>({rowNumber:row.rowNumber,action:row.action})) }); } summary.visibleStatus = await status(); summary.visibleAlert = await evaluate(`document.querySelector('[role="alert"]')?.textContent||''`); summary.pageHeading = await evaluate(`document.querySelector('h1')?.textContent||''`); } catch { /* Browser may already be closed. */ } } process.exitCode = 1; }
+} catch (error) { summary.failure = error instanceof Error ? error.message : "BROWSER_CHECK_FAILED"; summary.failedStage = stage; summary.photoUploads = photoUploads; if (socket?.readyState === WebSocket.OPEN) { try { summary.photoState = await evaluate(`document.getElementById('product-photo-panel')?.textContent?.slice(0,2400)||''`); } catch {} } summary.browserErrors = browserErrors; summary.apiReadCount = apiReads.length; summary.previewBatches = previewCalls; if (socket?.readyState === WebSocket.OPEN) { try { summary.pageState = await evaluate(`({path:location.pathname,hasVisualSession:localStorage.getItem('catalogo-session')!==null})`); summary.importResponses = []; for (const response of importResponses) { const data = await command("Network.getResponseBody", { requestId: response.requestId }); const body = JSON.parse(data.body); summary.importResponses.push({ status: response.status, success: body.success, errorCode: body.error, ready: body.ready, hasToken: Boolean(body.previewToken), rows: body.rows?.map(row=>({rowNumber:row.rowNumber,action:row.action})) }); } summary.visibleStatus = await status(); summary.visibleAlert = await evaluate(`document.querySelector('[role="alert"]')?.textContent||''`); summary.pageHeading = await evaluate(`document.querySelector('h1')?.textContent||''`); } catch { /* Browser may already be closed. */ } } process.exitCode = 1; }
 finally {
   if (socket?.readyState === WebSocket.OPEN) { try { await command("Browser.close"); } catch { /* Chrome may close its connection before replying. */ } socket.close(); }
   if (chrome && chrome.exitCode === null) chrome.kill();

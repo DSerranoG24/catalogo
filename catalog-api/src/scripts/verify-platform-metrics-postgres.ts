@@ -75,7 +75,7 @@ async function main() {
   assert.equal(namespace?.correct, true);
   temporaryDirectory = await mkdtemp(path.join(tmpdir(), "vitrinaya-metrics-"));
   const migrationRoot = path.resolve("prisma/migrations");
-  const migrationNames = (await readdir(migrationRoot, { withFileTypes: true })).filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
+  const migrationNames = (await readdir(migrationRoot, { withFileTypes: true })).filter(entry => entry.isDirectory()).map(entry => entry.name).filter(name => name <= "20261025200000_platform_metrics").sort();
   assert.equal(migrationNames.length, 16);
   assert.equal(migrationNames[15], "20261025200000_platform_metrics");
   await writeFile(path.join(temporaryDirectory, "schema.prisma"), await readFile("prisma/schema.prisma"));

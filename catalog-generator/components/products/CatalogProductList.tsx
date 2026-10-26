@@ -23,6 +23,7 @@ export default function CatalogProductList({
   importDisabled,
   mutationDisabled,
   importButtonRef,
+  onPhotos, photoOpen, photosDisabled, photoButtonRef, onPublish,
 }: {
   result: ProductPage;
   categories: Category[];
@@ -38,6 +39,11 @@ export default function CatalogProductList({
   importDisabled: boolean;
   mutationDisabled: boolean;
   importButtonRef: RefObject<HTMLButtonElement | null>;
+  onPhotos: () => void;
+  photoOpen: boolean;
+  photosDisabled: boolean;
+  photoButtonRef: RefObject<HTMLButtonElement | null>;
+  onPublish: (product: Product) => void;
 }) {
   const { products, totalProducts, totalFiltered } = result;
   const filtered = productFiltersActive(query);
@@ -51,6 +57,7 @@ export default function CatalogProductList({
         </div>
         <div className="flex flex-wrap items-center justify-end gap-3"><span className="text-xs tabular-nums text-[#52655a]">{totalProducts} en total{filtered && !loading && !error ? ` · ${totalFiltered} coinciden` : ""}</span><button ref={importButtonRef} type="button" onClick={onImport} disabled={importDisabled} aria-expanded={importOpen} aria-controls="product-import-panel" className="min-h-11 rounded-lg bg-[var(--brand-emerald)] px-3 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-emerald-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)] disabled:cursor-not-allowed disabled:opacity-50">Importar Excel</button></div>
       </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3"><button ref={photoButtonRef} type="button" onClick={onPhotos} disabled={photosDisabled} aria-expanded={photoOpen} aria-controls="product-photo-panel" className="min-h-11 rounded-lg border border-[var(--brand-emerald)] px-3 py-2 text-sm font-semibold text-[var(--brand-emerald)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)] disabled:opacity-50">Cargar varias fotos</button>{!loading && !error && Number.isSafeInteger(result.needsCompletionCount) && <span className="text-sm tabular-nums">{result.needsCompletionCount} sin completar (total)</span>}</div>
       <ProductListControls query={query} categories={categories} disabled={mutationDisabled} onChange={onQueryChange} />
       {error && <div role="alert" className="mt-4 rounded-xl bg-[#fff4ef] p-4 text-sm text-[#a5432a]"><p>{error}</p><button type="button" onClick={onRetry} className="mt-2 min-h-11 rounded-lg px-3 font-semibold focus-visible:outline-2">Reintentar</button></div>}
       {loading ? <div role="status" aria-label="Cargando productos" className="mt-4 grid grid-cols-2 gap-3 animate-pulse xl:grid-cols-3">{[0, 1, 2, 3, 4, 5].map((item) => <div key={item} className="overflow-hidden rounded-2xl border border-[#e2e8e0] bg-white"><div className="aspect-square bg-[#e8eee5]" /><div className="space-y-2 p-3"><div className="h-3 w-3/4 rounded-full bg-[#e8eee5]" /><div className="h-3 w-1/2 rounded-full bg-[#f0f3ee]" /><div className="h-3 w-1/3 rounded-full bg-[#f0f3ee]" /></div></div>)}</div> : error ? null : products.length === 0 ? (
@@ -67,6 +74,7 @@ export default function CatalogProductList({
               </div>
               <div className="flex min-w-0 flex-1 flex-col p-3">
                 <p className="truncate text-sm font-semibold text-[#202b27]">{product.name}</p>
+                {product.needsCompletion ? <p className="mt-1 text-xs font-semibold text-[var(--brand-coral-text)]">Sin completar · Inactivo</p> : !product.active && <p className="mt-1 text-xs">Inactivo · Sin publicar</p>}
                 <p className="mt-1 truncate text-[10px] text-[#849087]">{product.category?.name || "Sin categoría"} · {product.stock} en stock</p>
                 <div className="mt-2 min-h-8">
                   {getSellerPromotionStatus(product) === "active" ? <><p className="text-xs font-bold tabular-nums text-[#c62828]">${product.salePrice!.toLocaleString("es-CO")} <span className="font-normal text-[#7b8580] line-through">${product.price.toLocaleString("es-CO")}</span></p><p className="mt-0.5 text-[9px] font-bold uppercase text-[#c62828]">-{getDiscountPercent(product.price, product.salePrice!)}% activa</p></> : <p className="text-xs font-semibold tabular-nums text-[#202b27]">${product.price.toLocaleString("es-CO")}</p>}
@@ -75,6 +83,7 @@ export default function CatalogProductList({
                 </div>
                 {product.description && <p className="mt-1 line-clamp-2 min-h-8 text-[10px] leading-4 text-[#68756e]">{product.description}</p>}
                 {!product.description && <span className="min-h-8" aria-hidden="true" />}
+                {!product.needsCompletion && !product.active && <button type="button" disabled={mutationDisabled} onClick={() => onPublish(product)} className="my-2 min-h-11 rounded-lg bg-[var(--brand-emerald)] px-2 text-xs font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50">Publicar</button>}
                 <div className="mt-auto flex gap-2 border-t border-[#edf1ec] pt-2.5 text-[10px] font-semibold">
                   <button type="button" disabled={mutationDisabled} onClick={() => onEdit(product)} className="min-h-8 flex-1 rounded-lg bg-[var(--brand-emerald-soft)] px-2 text-[#315e4f] transition hover:bg-[#e1ece1] disabled:opacity-50">Editar</button>
                   <button type="button" disabled={mutationDisabled} onClick={() => onDelete(product)} className="min-h-8 rounded-lg px-2 text-[#ad4d35] transition hover:bg-[#fff1ec] disabled:opacity-50">Eliminar</button>

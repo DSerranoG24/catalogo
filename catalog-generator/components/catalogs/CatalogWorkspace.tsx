@@ -23,6 +23,7 @@ import CatalogProductList from "@/components/products/CatalogProductList";
 import { useProductListQuery } from "@/lib/use-product-list-query";
 import { productQueryString } from "@/lib/product-list-query";
 import ProductImportPanel from "@/components/products/ProductImportPanel";
+import ProductPhotoPanel from "@/components/products/ProductPhotoPanel";
 import { ProductImportFlow, importBusy } from "@/lib/product-import-flow";
 import { requestImportBatch } from "@/lib/product-import-api";
 import { readProductImport } from "@/lib/product-import/reader";
@@ -48,7 +49,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
   const router = useRouter();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [productPage, setProductPage] = useState<ProductPage>({ products: [], page: 1, pageSize: 24, totalProducts: 0, totalFiltered: 0, totalPages: 1 });
+  const [productPage, setProductPage] = useState<ProductPage>({ products: [], page: 1, pageSize: 24, totalProducts: 0, totalFiltered: 0, totalPages: 1, needsCompletionCount: 0 });
   const [productsLoading, setProductsLoading] = useState(true);
   const [productsError, setProductsError] = useState("");
   const { query, update: updateQuery } = useProductListQuery();
@@ -61,11 +62,15 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [savingProduct, setSavingProduct] = useState(false);
   const [activeTab, setActiveTab] = useState<"products" | "orders" | "reviews" | "settings">("products");
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const photoButtonRef = useRef<HTMLButtonElement>(null);
   const importButtonRef = useRef<HTMLButtonElement>(null);
   const refreshAfterImport = useCallback(() => setReloadKey(key => key + 1), []);
   const importFlow = useMemo(() => new ProductImportFlow(catalogId, { read: readProductImport, request: requestImportBatch, refresh: refreshAfterImport }), [catalogId, refreshAfterImport]);
   const importState = useSyncExternalStore(importFlow.subscribe, importFlow.getSnapshot, importFlow.getSnapshot);
   const importActive = importBusy(importState.phase);
+  const workActive = importActive || photoBusy;
 
   useEffect(() => { importFlow.activate(); return () => importFlow.dispose(); }, [importFlow]);
   useEffect(() => {
@@ -82,6 +87,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
       const session = getSession();
       if (!session) {
         if (importFlow.getSnapshot().open) { importFlow.sessionExpired(); return; }
+        if (photoOpen) { setError("La sesión ha expirado. Conserva el reporte de fotos antes de volver a iniciar sesión."); return; }
         router.replace("/login");
         return;
       }
@@ -101,6 +107,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
         if (!active) return;
         if (requestError instanceof ApiError && requestError.status === 401) {
           if (importFlow.getSnapshot().open) { importFlow.sessionExpired(); return; }
+          if (photoOpen) { setError("La sesión ha expirado. Los productos guardados se conservan; revisa el reporte antes de salir."); return; }
           clearSession();
           router.replace("/login");
           return;
@@ -115,7 +122,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
     return () => {
       active = false;
     };
-  }, [catalogId, reloadKey, router, importFlow]);
+  }, [catalogId, reloadKey, router, importFlow, photoOpen]);
 
   const loadedCatalogId = catalog?.id;
   useEffect(() => {
@@ -134,6 +141,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
         if (controller.signal.aborted) return;
         if (requestError instanceof ApiError && requestError.status === 401) {
           if (importFlow.getSnapshot().open) { importFlow.sessionExpired(); return; }
+          if (photoOpen) { setProductsError("La sesión ha expirado. Revisa el reporte de fotos antes de salir."); return; }
           clearSession(); router.replace("/login"); return;
         }
         setProductsError(requestError instanceof Error ? requestError.message : "No se pudieron cargar los productos.");
@@ -143,7 +151,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
     }
     void loadProducts();
     return () => controller.abort();
-  }, [catalogId, loadedCatalogId, listQuery, reloadKey, importFlow, router, updateQuery]);
+  }, [catalogId, loadedCatalogId, listQuery, reloadKey, importFlow, router, updateQuery, photoOpen]);
 
   function resetProductForm() {
     setForm(emptyProduct);
@@ -245,6 +253,10 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
 
   function editProduct(product: Product) {
     if (importBusy(importFlow.getSnapshot().phase)) return;
+    if (product.needsCompletion) {
+      if (importFlow.getSnapshot().open) { setError("Cierra el panel de Excel antes de completar productos por foto."); return; }
+      setPhotoOpen(true); return;
+    }
     setEditingProduct(product);
     setForm({
       name: product.name,
@@ -276,6 +288,16 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
     }
   }
 
+  async function publishProduct(product: Product) {
+    if (workActive || photoOpen || product.needsCompletion || savingProduct) return;
+    setSavingProduct(true);
+    try {
+      await apiRequest(`/products/${product.id}`, { method: "PUT", body: JSON.stringify({ active: true }) });
+      setReloadKey(key => key + 1);
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "No se pudo publicar el producto."); }
+    finally { setSavingProduct(false); }
+  }
+
   if (loading && !catalog) {
     return <main role="status" aria-label="Cargando catálogo" className="mx-auto w-full max-w-7xl animate-pulse px-5 py-10 sm:px-8 sm:py-12"><div className="h-3 w-36 rounded-full bg-[#dce5dc]" /><div className="mt-7 h-40 rounded-3xl border border-[#e2e8e0] bg-white" /><div className="mt-6 flex gap-2 rounded-2xl border border-[#e2e8e0] bg-white p-2">{[0, 1, 2, 3].map((item) => <div key={item} className="h-10 w-28 rounded-xl bg-[#e8eee5]" />)}</div><div className="mt-8 grid gap-8 lg:grid-cols-2"><div className="h-[34rem] rounded-3xl border border-[#e2e8e0] bg-white" /><div className="h-[34rem] rounded-3xl border border-[#e2e8e0] bg-white" /></div></main>;
   }
@@ -291,7 +313,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
 
   return (
     <main className="mx-auto w-full max-w-7xl px-5 py-8 sm:px-8 sm:py-12">
-      <div className="mb-6 flex items-center gap-2 text-xs font-medium text-[#7b8780]"><Link href="/dashboard" aria-disabled={importActive} tabIndex={importActive ? -1 : undefined} onClick={event => { if (importActive) event.preventDefault(); }} className="transition hover:text-[#315e4f]">Catálogos</Link><span className="text-[#c2cbc3]">/</span><span className="max-w-48 truncate text-[#35473d]">{catalog.name}</span></div>
+      <div className="mb-6 flex items-center gap-2 text-xs font-medium text-[#7b8780]"><Link href="/dashboard" aria-disabled={workActive} tabIndex={workActive ? -1 : undefined} onClick={event => { if (workActive) event.preventDefault(); }} className="transition hover:text-[#315e4f]">Catálogos</Link><span className="text-[#c2cbc3]">/</span><span className="max-w-48 truncate text-[#35473d]">{catalog.name}</span></div>
       <section className="relative overflow-hidden rounded-3xl border border-[#e2e8e0] bg-white p-6 shadow-[0_18px_54px_-44px_rgba(36,63,47,0.45)] sm:p-8">
         <div className="pointer-events-none absolute -right-16 -top-24 size-64 rounded-full border border-[#eaf0e8]" /><div className="pointer-events-none absolute -right-3 -top-12 size-40 rounded-full border border-[#eaf0e8]" />
         <div className="relative flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
@@ -309,16 +331,17 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
           ["reviews", "Reseñas", MessageSquareText],
           ["settings", "Tienda y diseño", Settings2],
         ] as const).map(([tab, label, Icon]) => (
-          <button key={tab} type="button" disabled={importActive && activeTab !== tab} onClick={() => setActiveTab(tab)} aria-current={activeTab === tab ? "page" : undefined} className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-xs font-semibold transition disabled:opacity-50 sm:px-4 sm:text-sm ${activeTab === tab ? "bg-[var(--brand-emerald)] text-white shadow-sm" : "text-[#68756e] hover:bg-[#f0f4ee] hover:text-[#202b27]"}`}>
+          <button key={tab} type="button" disabled={workActive && activeTab !== tab} onClick={() => setActiveTab(tab)} aria-current={activeTab === tab ? "page" : undefined} className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-xs font-semibold transition disabled:opacity-50 sm:px-4 sm:text-sm ${activeTab === tab ? "bg-[var(--brand-emerald)] text-white shadow-sm" : "text-[#68756e] hover:bg-[#f0f4ee] hover:text-[#202b27]"}`}>
             <Icon className="size-4" aria-hidden="true" /> {label}
           </button>
         ))}
       </nav>
 
       <div id="product-import-panel" hidden={!importState.open || activeTab !== "products"}>{importState.open && <ProductImportPanel flow={importFlow} state={importState} archived={Boolean(catalog.archivedAt)} onClose={() => { if (importFlow.close()) importButtonRef.current?.focus(); }} />}</div>
+      <div id="product-photo-panel" hidden={!photoOpen || activeTab !== "products"}>{photoOpen && <ProductPhotoPanel catalogId={catalogId} categories={categories} onRefresh={refreshAfterImport} onBusy={setPhotoBusy} onClose={() => { setPhotoOpen(false); photoButtonRef.current?.focus(); }} />}</div>
 
       {activeTab === "products" && <div className="mt-8 grid items-start gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <fieldset disabled={importActive} className="min-w-0 space-y-5"><legend className="sr-only">Edición manual de productos y categorías</legend>
+        <fieldset disabled={importActive || photoOpen} className="min-w-0 space-y-5"><legend className="sr-only">Edición manual de productos y categorías</legend>
           <CatalogProductEditor
             value={form}
             categories={categories}
@@ -348,7 +371,8 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
         </fieldset>
 
         <CatalogProductList result={productPage} loading={productsLoading} error={productsError} onRetry={() => setReloadKey(key => key + 1)} categories={categories} query={query} onQueryChange={updateQuery} onEdit={editProduct} onDelete={removeProduct}
-          importButtonRef={importButtonRef} importOpen={importState.open} importDisabled={Boolean(catalog.archivedAt) || savingProduct || importActive} mutationDisabled={importActive}
+          onPublish={publishProduct} photoOpen={photoOpen} photosDisabled={Boolean(catalog.archivedAt) || savingProduct || importState.open || workActive} photoButtonRef={photoButtonRef} onPhotos={() => { if (importState.open) return; setPhotoOpen(true); if (photoOpen) document.getElementById("photo-title")?.focus(); }}
+          importButtonRef={importButtonRef} importOpen={importState.open} importDisabled={Boolean(catalog.archivedAt) || savingProduct || importActive || photoOpen} mutationDisabled={workActive || photoOpen || savingProduct}
           onImport={() => { importFlow.open(); if (importState.open) document.getElementById("product-import-title")?.focus(); }} />
       </div>}
       {activeTab === "orders" && <div className="mt-8"><OrdersPanel catalogId={catalogId} /></div>}
