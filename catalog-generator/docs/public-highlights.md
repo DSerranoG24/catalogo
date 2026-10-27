@@ -17,7 +17,9 @@ Los banners se limitan a tres y los destacados no dependen de `pageProducts`.
 
 Las cuatro plantillas llaman componentes comunes, sin cambiar sus títulos,
 fondos, tipografías ni decoraciones editoriales. Orden:
-identidad/cabecera, banners, destacados, categorías/listado y contacto.
+franja única de carrito, identidad/cabecera, banners, destacados,
+categorías/listado y contacto. Las categorías conservan su posición pero dejan
+de ser sticky; véase [acceso superior al carrito](public-cart-access.md).
 Los alias siguen normalizándose; las plantillas antiguas no se eliminan.
 
 ## Carrusel e identidad

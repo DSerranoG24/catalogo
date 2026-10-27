@@ -1,7 +1,5 @@
 import { Category } from "@/lib/api";
-import Link from "next/link";
 import Image from "next/image";
-import { ShoppingCart } from "lucide-react";
 import { publicCategoryHref } from "@/lib/public-category";
 
 export default function PublicCategoryFilter({
@@ -10,16 +8,12 @@ export default function PublicCategoryFilter({
   variant,
   onSelect,
   publicId,
-  cartCount,
-  cartTotal,
 }: {
   categories: Category[];
   selectedId: string;
   variant: "editorial" | "grid" | "boutique" | "tech" | "fashion" | "beauty";
   onSelect: (categoryId: string) => void;
   publicId: string;
-  cartCount: number;
-  cartTotal: number;
 }) {
   const selectedClass = variant === "tech"
     ? "border-[var(--catalog-primary,#56e0c0)] bg-[var(--catalog-primary,#56e0c0)] text-[var(--catalog-on-primary,#071421)]"
@@ -45,7 +39,7 @@ export default function PublicCategoryFilter({
     : "border-transparent bg-transparent text-[var(--catalog-text-muted,#526157)] hover:border-[var(--catalog-border-subtle,#cbd4cb)] hover:bg-[var(--catalog-surface,#ffffff)]";
 
   return (
-    <nav aria-label="Filtrar por categoría" className={`sticky top-0 z-10 border-y py-2 backdrop-blur-sm ${barStyle}`}>
+    <nav aria-label="Filtrar por categoría" className={`border-y py-2 backdrop-blur-sm ${barStyle}`}>
       <div className="mx-auto flex max-w-7xl items-center gap-2 px-3 sm:gap-4 sm:px-8">
         <div className="flex min-w-0 flex-1 snap-x gap-1 overflow-x-auto px-2 sm:gap-2">
           {[{ id: "", name: "Todos", imageUrl: null }, ...categories].map((category) => (
@@ -67,14 +61,7 @@ export default function PublicCategoryFilter({
             </a>
           ))}
         </div>
-        <Link href={`/c/${encodeURIComponent(publicId)}/carrito`} aria-label={`Carrito de compras, ${cartCount} ${cartCount === 1 ? "producto" : "productos"}`} title="Abrir carrito" className={`flex min-h-10 shrink-0 items-center gap-2 border-l pl-3 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 sm:pl-5 ${variant === "tech" ? "border-[var(--catalog-border-subtle,#34495c)] text-[var(--catalog-text,#e5f2ff)] hover:text-[var(--catalog-primary,#56e0c0)] focus-visible:outline-[var(--catalog-focus,#56e0c0)]" : "border-[var(--catalog-border-subtle,#d8ded6)] text-[var(--catalog-text,#263b31)] hover:text-[var(--catalog-primary,#bd4d36)] focus-visible:outline-[var(--catalog-focus,#315c53)]"}`}>
-          <span className="relative grid size-8 place-items-center">
-            <ShoppingCart aria-hidden="true" size={21} strokeWidth={2} />
-            <span className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-[var(--catalog-primary,#bd4d36)] px-1 text-[9px] font-bold leading-4 text-[var(--catalog-on-primary,#ffffff)]">{cartCount > 99 ? "99+" : cartCount}</span>
-          </span>
-          <span>Carrito</span>
-          {cartCount > 0 && <span className="hidden tabular-nums text-[var(--catalog-text-muted,#647268)] sm:inline">${cartTotal.toLocaleString("es-CO")}</span>}
-        </Link>
+
       </div>
     </nav>
   );

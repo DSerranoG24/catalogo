@@ -5,7 +5,7 @@ import { PublicCatalogTemplateProps } from "@/components/public/PublicCatalogTem
 import PublicProductToolbar from "@/components/public/PublicProductToolbar";
 import PublicCatalogContact from "@/components/public/PublicCatalogContact";
 
-export default function EditorialTemplate({ catalog, products, totalProducts, searchQuery, sortOrder, onSearchChange, onSortChange, page, pageCount, onPageChange, quantities, categories, selectedCategory, onSelectCategory, onAdd, cartCount, cartTotal }: PublicCatalogTemplateProps) {
+export default function EditorialTemplate({ catalog, products, totalProducts, searchQuery, sortOrder, onSearchChange, onSortChange, page, pageCount, onPageChange, quantities, categories, selectedCategory, onSelectCategory, onAdd }: PublicCatalogTemplateProps) {
   return (
     <div className="min-h-screen bg-[#f4f3eb] text-[#263b31]">
       <header className="border-b border-[#d6d8ca]">
@@ -28,7 +28,7 @@ export default function EditorialTemplate({ catalog, products, totalProducts, se
           </div>
         </div>
       </header>
-      <PublicCategoryFilter categories={categories} selectedId={selectedCategory} variant="editorial" onSelect={onSelectCategory} publicId={catalog.publicId} cartCount={cartCount} cartTotal={cartTotal} />
+      <PublicCategoryFilter categories={categories} selectedId={selectedCategory} variant="editorial" onSelect={onSelectCategory} publicId={catalog.publicId} />
       <section id="productos" className="mx-auto max-w-7xl scroll-mt-16 px-5 py-7 sm:px-8 sm:py-10">
         <div className="mb-5 flex items-end justify-between gap-3">
           <div><p className="text-[10px] font-semibold uppercase text-[#ad553b]">La colección</p><h2 className="mt-1 font-serif text-2xl">Piezas para descubrir</h2></div>

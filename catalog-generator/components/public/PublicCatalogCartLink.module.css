@@ -1,0 +1,25 @@
+.bar {
+  --cart-link-surface: #fffdfa;
+  --cart-link-text: #322c29;
+  --cart-link-primary: #322c29;
+  --cart-link-label: #ffffff;
+  --cart-link-border: #e5d9d0;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  padding-top: env(safe-area-inset-top, 0px);
+  border-bottom: 1px solid var(--catalog-border-subtle, var(--cart-link-border));
+  background: var(--catalog-surface, var(--cart-link-surface));
+  color: var(--catalog-text, var(--cart-link-text));
+}
+.bar[data-template="TECH"] { --cart-link-surface: #101e2d; --cart-link-text: #e5f2ff; --cart-link-primary: #56e0c0; --cart-link-label: #071421; --cart-link-border: #26394a; }
+.bar[data-template="BEAUTY"] { --cart-link-surface: #fffaf9; --cart-link-text: #552e48; --cart-link-primary: #b55271; --cart-link-border: #eed5dc; }
+.bar[data-template="GLAMOUR"] { --cart-link-surface: #fffaf9; --cart-link-text: #45182f; --cart-link-primary: #c12868; --cart-link-border: #efd0dc; }
+.inner { display: flex; justify-content: flex-end; align-items: center; height: 64px; max-width: 80rem; margin-inline: auto; padding-left: max(1rem, env(safe-area-inset-left, 0px)); padding-right: max(1rem, env(safe-area-inset-right, 0px)); }
+.link { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; min-width: 44px; min-height: 44px; padding: .375rem .5rem; border: 1px solid var(--catalog-border, var(--cart-link-border)); border-radius: .5rem; color: inherit; font-size: .875rem; font-weight: 600; text-decoration: none; }
+.link:hover { text-decoration: underline; text-underline-offset: .2em; }
+.link:focus-visible { outline: 2px solid var(--catalog-focus, var(--cart-link-primary)); outline-offset: 3px; }
+.count { display: inline-grid; place-items: center; min-width: 2.5rem; height: 1.75rem; padding-inline: .25rem; border-radius: 1rem; background: var(--catalog-primary, var(--cart-link-primary)); color: var(--catalog-on-primary, var(--cart-link-label)); font-variant-numeric: tabular-nums; }
+.total { display: none; min-width: 8rem; text-align: right; font-variant-numeric: tabular-nums; }
+.announcement { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@media (min-width: 768px) { .total { display: inline; } }

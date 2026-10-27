@@ -1,5 +1,7 @@
 "use client";
 
+import PublicCatalogCartLink from "./PublicCatalogCartLink";
+
 import { startTransition, useDeferredValue, useEffect, useState, type ComponentType } from "react";
 import { PublicCatalog, PublicProduct, rememberPublicCatalogTemplate } from "@/lib/api";
 import EditorialTemplate from "@/components/public/EditorialTemplate";
@@ -147,14 +149,13 @@ export default function PublicCatalogPage({ publicId, initialCatalog: catalog, t
     selectedCategory,
     onSelectCategory: selectCategory,
     onAdd: (product: PublicProduct) => changeQuantity(product, 1),
-    cartCount,
-    cartTotal,
   };
   const templateId = normalizeCatalogTemplate(catalog.template);
   const Template = templateComponents[templateId] ?? EditorialTemplate;
 
   return (
     <main style={themeStyle} data-catalog-themed={themeStyle ? "true" : undefined} className={`${themeStyles.root} min-h-screen pb-12 bg-[var(--catalog-background)] text-[var(--catalog-text)]`}>
+      <PublicCatalogCartLink publicId={publicId} template={templateId} cartCount={cartCount} cartTotal={cartTotal} />
       <Template {...templateProps} />
       <footer className="border-t border-[var(--catalog-border-subtle,#dce4dc)] px-5 py-5 text-center text-xs text-[var(--catalog-text-muted,#849087)]">Catálogo compartido por su vendedor</footer>
       <FloatingWhatsAppButton catalog={catalog} />

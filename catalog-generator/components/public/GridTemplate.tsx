@@ -5,7 +5,7 @@ import { PublicCatalogTemplateProps } from "@/components/public/PublicCatalogTem
 import PublicProductToolbar from "@/components/public/PublicProductToolbar";
 import PublicCatalogContact from "@/components/public/PublicCatalogContact";
 
-export default function GridTemplate({ catalog, products, totalProducts, searchQuery, sortOrder, onSearchChange, onSortChange, page, pageCount, onPageChange, quantities, categories, selectedCategory, onSelectCategory, onAdd, cartCount, cartTotal }: PublicCatalogTemplateProps) {
+export default function GridTemplate({ catalog, products, totalProducts, searchQuery, sortOrder, onSearchChange, onSortChange, page, pageCount, onPageChange, quantities, categories, selectedCategory, onSelectCategory, onAdd }: PublicCatalogTemplateProps) {
   return (
     <div className="min-h-screen bg-[#f2f5f2] text-[#1e302a]">
       <header className="border-b border-[#cbd7d0] bg-[#d7eb7a]">
@@ -23,7 +23,7 @@ export default function GridTemplate({ catalog, products, totalProducts, searchQ
           </div>
         </div>
       </header>
-      <PublicCategoryFilter categories={categories} selectedId={selectedCategory} variant="grid" onSelect={onSelectCategory} publicId={catalog.publicId} cartCount={cartCount} cartTotal={cartTotal} />
+      <PublicCategoryFilter categories={categories} selectedId={selectedCategory} variant="grid" onSelect={onSelectCategory} publicId={catalog.publicId} />
       <section className="mx-auto max-w-7xl px-5 py-7 sm:px-8 sm:py-10">
         <div className="mb-5 flex items-center justify-between border-b border-[#d7ded8] pb-3">
           <h2 className="text-xs font-bold uppercase text-[#315c53]">Explorar productos</h2>

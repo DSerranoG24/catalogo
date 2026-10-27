@@ -17,6 +17,4 @@ export type PublicCatalogTemplateProps = {
   selectedCategory: string;
   onSelectCategory: (categoryId: string) => void;
   onAdd: (product: PublicProduct) => void;
-  cartCount: number;
-  cartTotal: number;
 };

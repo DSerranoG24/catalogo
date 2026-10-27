@@ -2,3 +2,8 @@
   outline: 2px solid var(--catalog-focus);
   outline-offset: 3px;
 }
+.root:has(> [data-catalog-cart-bar]) :is([id], a, button, input, select, textarea, [tabindex]) {
+  scroll-margin-top: calc(80px + env(safe-area-inset-top, 0px));
+  scroll-margin-bottom: 1rem;
+}
+

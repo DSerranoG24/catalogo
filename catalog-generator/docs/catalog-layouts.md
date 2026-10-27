@@ -44,8 +44,9 @@ completo permanece al final en las tres variantes.
 Por debajo de 1024 px, el aside usa `display: contents`, conserva la barra
 horizontal y oculta el resumen adicional de contacto. Desde 1024 px aparece
 la columna de 256 px (Lateral) o 192 px (Compacta). No se utiliza matchMedia,
-ni se remonta el árbol al redimensionar. El carrito permanece accesible en la
-navegación, con presentación vertical en escritorio. Lateral apila la toolbar;
+ni se remonta el árbol al redimensionar. Desde el bloque de acceso superior,
+el carrito se renderiza una sola vez antes de la plantilla, en su franja sticky;
+las categorías conservan su ubicación pero ya no son sticky. Lateral apila la toolbar;
 Compacta la conserva encima del listado. Los controles no se duplican.
 
 Solo las variantes laterales activan un contenedor CSS `catalog-products`.
@@ -68,6 +69,11 @@ capturados antes del cambio. `verify-public-layouts-browser.mjs --record-classic
 sirve para capturarlos sobre un build de referencia deliberado. Ejecutarlo
 sin ese argumento compara estilos computados y geometría con esos hashes;
 no se debe regenerar para aceptar una regresión. No es una comparación de píxeles.
+El verificador descuenta la altura de la franja superior autorizada al comparar
+la geometría histórica. Desde ese bloque utiliza `public-layout-classic-content.json`,
+derivado de la misma captura original: omite coordenadas internas SVG sensibles
+al redondeo de 0,01 px al trasladar la página; conserva estilos y geometría HTML.
+Los hashes originales de `public-layout-classic.json` permanecen intactos.
 La referencia comprende cabecera, destacados, listado y contacto; la barra de
 categorías conserva su componente sin modificaciones y se comprueba funcionalmente.
 

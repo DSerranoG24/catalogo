@@ -5,7 +5,7 @@ import { PublicCatalogTemplateProps } from "@/components/public/PublicCatalogTem
 import PublicProductToolbar from "@/components/public/PublicProductToolbar";
 import PublicCatalogContact from "@/components/public/PublicCatalogContact";
 
-export default function BoutiqueTemplate({ catalog, products, totalProducts, searchQuery, sortOrder, onSearchChange, onSortChange, page, pageCount, onPageChange, quantities, categories, selectedCategory, onSelectCategory, onAdd, cartCount, cartTotal }: PublicCatalogTemplateProps) {
+export default function BoutiqueTemplate({ catalog, products, totalProducts, searchQuery, sortOrder, onSearchChange, onSortChange, page, pageCount, onPageChange, quantities, categories, selectedCategory, onSelectCategory, onAdd }: PublicCatalogTemplateProps) {
   return (
     <div className="min-h-screen bg-[#fbf2e8] text-[#3c372f]">
       <header className="mx-auto max-w-7xl px-5 pb-7 pt-5 sm:px-8 sm:pb-10 sm:pt-7">
@@ -19,7 +19,7 @@ export default function BoutiqueTemplate({ catalog, products, totalProducts, sea
           <p className="border-l-2 border-[#d7eb7a] pl-4 font-serif text-xl leading-7 text-[#526047] sm:ml-auto sm:max-w-48">Hecho para elegir con calma.</p>
         </div>
       </header>
-      <PublicCategoryFilter categories={categories} selectedId={selectedCategory} variant="boutique" onSelect={onSelectCategory} publicId={catalog.publicId} cartCount={cartCount} cartTotal={cartTotal} />
+      <PublicCategoryFilter categories={categories} selectedId={selectedCategory} variant="boutique" onSelect={onSelectCategory} publicId={catalog.publicId} />
       <section className="mx-auto max-w-7xl px-5 pb-12 pt-7 sm:px-8 sm:pb-16 sm:pt-10">
         <div className="mb-5 flex items-end justify-between gap-3">
           <div><p className="text-[10px] font-bold uppercase text-[#bd4d36]">El inventario</p><h2 className="mt-1 font-serif text-2xl">Elegidos para ti</h2></div>
