@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma";
-import { lockCatalogWrites } from "./catalog-write-lock";
+import { lockCatalogWrites, lockHighlightWrites } from "./catalog-write-lock";
 
 export async function createProduct(data: {
   catalogId: string;
@@ -20,7 +20,7 @@ export async function createProduct(data: {
   specs?: Prisma.InputJsonValue;
 }, userId: string, database = prisma) {
   return database.$transaction(async tx => {
-    await lockCatalogWrites(tx, data.catalogId, userId);
+    await (data.featured === undefined ? lockCatalogWrites : lockHighlightWrites)(tx, data.catalogId, userId);
     if (data.featured && await tx.product.count({ where: { catalogId: data.catalogId, featured: true } }) >= 5) throw new Error("FEATURED_LIMIT");
     return tx.product.create({ data });
   });
@@ -98,7 +98,7 @@ export async function updateProduct(
   return database.$transaction(async tx => {
     const current = await tx.product.findFirst({ where: { id, catalog: { userId } }, select: { catalogId: true } });
     if (!current) return { count: 0 };
-    await lockCatalogWrites(tx, current.catalogId, userId);
+    await (data.featured === undefined ? lockCatalogWrites : lockHighlightWrites)(tx, current.catalogId, userId);
     if (data.featured === true && await tx.product.count({ where: { catalogId: current.catalogId, featured: true, id: { not: id } } }) >= 5) throw new Error("FEATURED_LIMIT");
     if (data.active === true && await tx.product.findFirst({ where: { id, catalog: { userId }, needsCompletion: true }, select: { id: true } })) throw new Error("PRODUCT_INCOMPLETE");
     return tx.product.updateMany({

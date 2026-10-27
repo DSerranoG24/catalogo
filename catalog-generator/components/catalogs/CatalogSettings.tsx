@@ -6,7 +6,8 @@ import uiStyles from "@/components/ui/ui.module.css";
 
 import { FormEvent, useRef, useState } from "react";
 import Image from "next/image";
-import { apiRequest, Catalog } from "@/lib/api";
+import { apiRequest, Catalog, type Category } from "@/lib/api";
+import CatalogBannersPanel from "./CatalogBannersPanel";
 import { catalogTemplateOptions } from "@/lib/catalogTemplates";
 import CatalogPaletteSelector from "./CatalogPaletteSelector";
 import { isCatalogThemeCompatible } from "@/lib/catalog-theme-choice";
@@ -48,8 +49,10 @@ function TemplatePreview({ template, colors }: { template: Template; colors: rea
 export default function CatalogSettings({
   catalog,
   onUpdated,
+  categories,
 }: {
   catalog: Catalog;
+  categories: Category[];
   onUpdated: (patch: Partial<Catalog>) => void;
 }) {
   const [profile, setProfile] = useState({
@@ -178,6 +181,7 @@ export default function CatalogSettings({
 
   return (
     <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.72fr)]">
+      <div className="min-w-0 space-y-6">
       <form onSubmit={saveSettings} className="space-y-7 rounded-3xl border border-[#e2e8e0] bg-white p-5 shadow-[0_18px_54px_-44px_rgba(36,63,47,0.4)] sm:p-7">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--brand-coral-text)]">Diseño de tu tienda</p>
@@ -305,6 +309,8 @@ export default function CatalogSettings({
           {saving ? "Guardando..." : "Guardar cambios"}
         </Button>
       </form>
+      <CatalogBannersPanel catalogId={catalog.id} categories={categories} archived={Boolean(catalog.archivedAt)} />
+      </div>
 
       <aside className="rounded-3xl border border-[#dce4dc] bg-[#e8eee5] p-5 sm:sticky sm:top-6 sm:p-6">
         <p className="text-xs font-semibold uppercase text-[var(--brand-coral-text)]">Enlace personal</p>

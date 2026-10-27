@@ -1,12 +1,14 @@
 export const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
-export async function compressProductPhoto(file: File): Promise<File> {
+export async function compressProductPhoto(file: File, options: { maxDimension?: number } = {}): Promise<File> {
+  const maxDimension = options.maxDimension ?? 1800;
+  if (!Number.isInteger(maxDimension) || maxDimension < 1 || maxDimension > 2400) throw new Error("Dimensión de imagen no válida.");
   if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new Error("Solo JPG, PNG o WebP. Convierte HEIC antes de seleccionarlo.");
   if (file.size > 20 * 1024 * 1024 || file.size === 0) throw new Error("El archivo original debe ocupar entre 1 byte y 20 MiB.");
   const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
   const canvas = document.createElement("canvas");
   try {
     if (!bitmap.width || !bitmap.height || bitmap.width * bitmap.height > 40_000_000) throw new Error("La imagen supera los 40 megapíxeles o no se puede leer.");
-    const scale = Math.min(1, 1800 / Math.max(bitmap.width, bitmap.height));
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
     canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
     const context = canvas.getContext("2d");
     if (!context) throw new Error("Este navegador no permite preparar la imagen.");

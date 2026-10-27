@@ -9,3 +9,9 @@ export async function lockCatalogWrites(tx: Prisma.TransactionClient, catalogId:
   if (!catalog) throw new Error("CATALOG_NOT_FOUND");
   return catalog;
 }
+
+export async function lockHighlightWrites(tx: Prisma.TransactionClient, catalogId: string, userId: string) {
+  const catalog = await lockCatalogWrites(tx, catalogId, userId);
+  if (catalog.archivedAt) throw new Error("CATALOG_ARCHIVED");
+  return catalog;
+}

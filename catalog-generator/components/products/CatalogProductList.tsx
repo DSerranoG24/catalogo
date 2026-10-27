@@ -11,6 +11,7 @@ import { productFiltersActive, type ProductListQuery } from "@/lib/product-list-
 import ProductListControls from "./ProductListControls";
 import ProductListPagination from "./ProductListPagination";
 import { getDiscountPercent, getSellerPromotionStatus } from "@/lib/product-pricing";
+import type { useCatalogFeatured } from "@/lib/use-catalog-featured";
 
 export default function CatalogProductList({
   result,
@@ -28,6 +29,7 @@ export default function CatalogProductList({
   mutationDisabled,
   importButtonRef,
   onPhotos, photoOpen, photosDisabled, photoButtonRef, onPublish,
+  featured, archived,
 }: {
   result: ProductPage;
   categories: Category[];
@@ -48,6 +50,8 @@ export default function CatalogProductList({
   photosDisabled: boolean;
   photoButtonRef: RefObject<HTMLButtonElement | null>;
   onPublish: (product: Product) => void;
+  featured: ReturnType<typeof useCatalogFeatured>;
+  archived: boolean;
 }) {
   const { products, totalProducts, totalFiltered } = result;
   const filtered = productFiltersActive(query);
@@ -63,6 +67,13 @@ export default function CatalogProductList({
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-3"><Button variant="outline" ref={photoButtonRef} type="button" onClick={onPhotos} disabled={photosDisabled} aria-expanded={photoOpen} aria-controls="product-photo-panel" >Cargar varias fotos</Button>{!loading && !error && Number.isSafeInteger(result.needsCompletionCount) && <span className="text-sm tabular-nums">{result.needsCompletionCount} sin completar (total)</span>}</div>
       <ProductListControls query={query} categories={categories} disabled={mutationDisabled} onChange={onQueryChange} />
+      <div className="mt-3 space-y-2 text-sm" aria-live="polite" aria-atomic="true">
+        <p data-featured-count>{featured.status ? `${featured.status.selectedCount} de 5 destacados` : "Consultando destacados…"}</p>
+        {featured.status && featured.status.validCount < 3 && <p>Los destacados no se mostrarán en el catálogo público hasta tener al menos 3 productos activos seleccionados.</p>}
+        {featured.status?.selectedCount === 5 && <p id="featured-limit">Límite de 5 alcanzado. Quita un destacado para seleccionar otro.</p>}
+        {archived && <p>Reactiva el catálogo para gestionar sus destacados.</p>}
+      </div>
+      {featured.error && <div role="alert" className="mt-2 text-sm text-[#9f1239]"><p>{featured.error}</p><Button type="button" variant="outline" disabled={featured.pendingId !== null} onClick={() => void featured.refresh()}>Consultar contador</Button></div>}
       {error && <div role="alert" className="mt-4 rounded-xl bg-[#fff4ef] p-4 text-sm text-[#a5432a]"><p>{error}</p><Button variant="ghost" type="button" onClick={onRetry} className="mt-2">Reintentar</Button></div>}
       {loading ? <div role="status" aria-label="Cargando productos" className="mt-4 grid grid-cols-2 gap-3 animate-pulse xl:grid-cols-3">{[0, 1, 2, 3, 4, 5].map((item) => <div key={item} className="overflow-hidden rounded-2xl border border-[#e2e8e0] bg-white"><div className="aspect-square bg-[#e8eee5]" /><div className="space-y-2 p-3"><div className="h-3 w-3/4 rounded-full bg-[#e8eee5]" /><div className="h-3 w-1/2 rounded-full bg-[#f0f3ee]" /><div className="h-3 w-1/3 rounded-full bg-[#f0f3ee]" /></div></div>)}</div> : error ? null : products.length === 0 ? (
         <div className="mt-4 rounded-2xl border border-dashed border-[#cbd7cc] bg-white/70 px-5 py-10 text-center">
@@ -89,6 +100,9 @@ export default function CatalogProductList({
                 {!product.description && <span className="min-h-8" aria-hidden="true" />}
                 {!product.needsCompletion && !product.active && <Button variant="primary" size="sm" type="button" disabled={mutationDisabled} onClick={() => onPublish(product)} className="my-2">Publicar</Button>}
                 <div className="mt-auto flex flex-wrap gap-2 border-t border-[#edf1ec] pt-2.5 text-[10px] font-semibold">
+                  <Button variant="outline" size="sm" type="button" className="w-full" aria-pressed={featured.status?.products.some(row => row.id === product.id) ?? product.featured ?? false} aria-label={`${featured.status?.products.some(row => row.id === product.id) ? "Quitar destacado" : "Destacar"}: ${product.name}`} aria-describedby={featured.status?.selectedCount === 5 ? "featured-limit" : undefined} disabled={archived || mutationDisabled || !featured.available || (featured.status?.selectedCount === 5 && !featured.status.products.some(row => row.id === product.id))} onClick={() => void featured.toggle(product)}>
+                    {featured.pendingId === product.id ? "Guardando destacado…" : featured.status?.products.some(row => row.id === product.id) ? "Quitar destacado" : "Destacar"}
+                  </Button>
                   <Button variant="secondary" size="sm" type="button" disabled={mutationDisabled} onClick={() => onEdit(product)} className="flex-1">Editar</Button>
                   <Button variant="destructive-ghost" size="sm" type="button" disabled={mutationDisabled} onClick={() => onDelete(product)} className="shrink-0">Eliminar</Button>
                 </div>

@@ -63,6 +63,7 @@ export type ProductImage = {
 };
 
 export type Product = {
+  featured: boolean;
   needsCompletion: boolean;
   id: string;
   catalogId: string;

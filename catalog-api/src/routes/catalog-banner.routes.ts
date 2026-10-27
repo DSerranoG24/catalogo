@@ -50,9 +50,10 @@ export function makeBannerRouter(service: BannerService) {
       BANNER_LIMIT: "Solo puedes guardar tres banners.", BANNER_POSITION_OCCUPIED: "La posición ya está ocupada.",
       BANNER_TARGET_INVALID: "El destino no está disponible en este catálogo.", BANNER_IMAGE_REQUIRED: "Selecciona una imagen.",
       BANNER_ORDER_INVALID: "Incluye todos los banners del catálogo una sola vez.",
+      CATALOG_ARCHIVED: "Reactiva el catálogo antes de gestionar sus anuncios.",
     };
     const invalidUpload = error instanceof MulterError || (typeof error === "object" && error !== null && "code" in error && error.code === "INVALID_IMAGE_TYPE");
-    const status = code.endsWith("NOT_FOUND") ? 404 : code === "BANNER_LIMIT" || code === "BANNER_POSITION_OCCUPIED" ? 409 : error instanceof ZodError || code in messages || invalidUpload ? 400 : 500;
+    const status = code.endsWith("NOT_FOUND") ? 404 : code === "BANNER_LIMIT" || code === "BANNER_POSITION_OCCUPIED" || code === "CATALOG_ARCHIVED" ? 409 : error instanceof ZodError || code in messages || invalidUpload ? 400 : 500;
     res.status(status).json({ success: false, message: messages[code] ?? (status === 400 ? "Revisa los datos y la imagen del banner (máximo 5 MiB)." : "No se pudo guardar el banner.") });
   });
   return router;

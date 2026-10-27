@@ -24,6 +24,7 @@ import CatalogCategories from "@/components/catalogs/CatalogCategories";
 import CatalogProductEditor, { ProductFormState } from "@/components/products/CatalogProductEditor";
 import CatalogProductList from "@/components/products/CatalogProductList";
 import { useProductListQuery } from "@/lib/use-product-list-query";
+import { useCatalogFeatured } from "@/lib/use-catalog-featured";
 import { productQueryString } from "@/lib/product-list-query";
 import ProductImportPanel from "@/components/products/ProductImportPanel";
 import ProductPhotoPanel from "@/components/products/ProductPhotoPanel";
@@ -60,6 +61,10 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
   const listQuery = productQueryString(query);
   const [loading, setLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
+  const confirmFeatured = useCallback((id: string, selected: boolean) => {
+    setProductPage(current => ({ ...current, products: current.products.map(product => product.id === id ? { ...product, featured: selected } : product) }));
+  }, []);
+  const featured = useCatalogFeatured(catalogId, catalog?.id === catalogId, reloadKey, confirmFeatured);
   const [error, setError] = useState("");
   const [form, setForm] = useState<ProductFormState>(emptyProduct);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -375,12 +380,13 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
 
         <CatalogProductList result={productPage} loading={productsLoading} error={productsError} onRetry={() => setReloadKey(key => key + 1)} categories={categories} query={query} onQueryChange={updateQuery} onEdit={editProduct} onDelete={product => setPendingDelete(product)}
           onPublish={publishProduct} photoOpen={photoOpen} photosDisabled={Boolean(catalog.archivedAt) || savingProduct || importState.open || workActive} photoButtonRef={photoButtonRef} onPhotos={() => { if (importState.open) return; setPhotoOpen(true); if (photoOpen) document.getElementById("photo-title")?.focus(); }}
-          importButtonRef={importButtonRef} importOpen={importState.open} importDisabled={Boolean(catalog.archivedAt) || savingProduct || importActive || photoOpen} mutationDisabled={workActive || photoOpen || savingProduct}
+          featured={featured} archived={Boolean(catalog.archivedAt)}
+          importButtonRef={importButtonRef} importOpen={importState.open} importDisabled={Boolean(catalog.archivedAt) || savingProduct || importActive || photoOpen} mutationDisabled={workActive || photoOpen || savingProduct || featured.pendingId !== null}
           onImport={() => { importFlow.open(); if (importState.open) document.getElementById("product-import-title")?.focus(); }} />
       </div>}
       {activeTab === "orders" && <div className="mt-8"><OrdersPanel catalogId={catalogId} /></div>}
       {activeTab === "reviews" && <div className="mt-8"><ReviewModerationPanel catalogId={catalogId} /></div>}
-      {activeTab === "settings" && <div className="mt-8"><CatalogSettings key={catalog.id} catalog={catalog} onUpdated={(patch) => setCatalog((current) => current ? { ...current, ...patch } : current)} /></div>}
+      {activeTab === "settings" && <div className="mt-8"><CatalogSettings key={catalog.id} catalog={catalog} categories={categories} onUpdated={(patch) => setCatalog((current) => current ? { ...current, ...patch } : current)} /></div>}
       <DestructiveConfirm open={pendingDelete !== null} onOpenChange={open => { if (!open) setPendingDelete(null); }} title="Eliminar producto"
         description={`¿Eliminar “${pendingDelete?.name ?? ""}”?`}
         onConfirm={() => { if (pendingDelete) void removeProduct(pendingDelete); }} />

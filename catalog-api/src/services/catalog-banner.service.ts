@@ -6,7 +6,7 @@ import type { BannerInput } from "../schemas/catalog-banner.schema";
 
 type BannerDependencies = {
   list: typeof listBanners; save: typeof saveBanner; remove: typeof removeBanner; reorder: typeof reorderBanners; featured: typeof featuredStatus;
-  owner: (catalogId: string, userId: string) => Promise<{ id: string } | null>;
+  owner: (catalogId: string, userId: string) => Promise<{ id: string; archivedAt?: Date | null } | null>;
   upload: (buffer: Buffer, path: string, mime: string) => Promise<unknown>;
   deleteImage: (path: string) => Promise<unknown>;
   sign: (path: string) => Promise<string>;
@@ -26,7 +26,9 @@ export function makeBannerService(deps: BannerDependencies = {
       return Promise.all(banners.map(async banner => ({ ...banner, imageUrl: await deps.sign(banner.imagePath) })));
     },
     async save(catalogId: string, userId: string, id: string | undefined, input: Partial<BannerInput>, file?: { buffer: Buffer; mimetype: string }) {
-      if (!await deps.owner(catalogId, userId)) throw new Error("CATALOG_NOT_FOUND");
+      const catalog = await deps.owner(catalogId, userId);
+      if (!catalog) throw new Error("CATALOG_NOT_FOUND");
+      if (catalog.archivedAt) throw new Error("CATALOG_ARCHIVED");
       let path: string | undefined;
       if (file) {
         const extension = file.mimetype === "image/jpeg" ? "jpg" : file.mimetype === "image/png" ? "png" : "webp";

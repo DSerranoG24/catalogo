@@ -16,11 +16,13 @@ import type { AuthenticatedRequest } from "../types/auth.types";
 import { imageDimensions } from "../utils/image-validation";
 import { findPublicCatalog } from "../repositories/catalog.repository";
 import { makePublicCatalogController } from "../controllers/public-catalog.controller";
+import { makeUpdateProductController } from "../controllers/product.controller";
 
 const catalogId = randomUUID(), productId = randomUUID(), categoryId = randomUUID();
 const input = { title: "Novedades", linkType: "EXTERNAL" as const, linkValue: "https://example.invalid/oferta" };
 
 function fixture(featured = 0, count = 0) {
+  let archived = false, targetAvailable = true;
   const products = new Set(Array.from({ length: featured }, (_, index) => `p${index}`));
   const banners = new Map<string, CatalogBanner>();
   for (let i = 0; i < count; i++) { const id = randomUUID(); banners.set(id, { ...input, id, catalogId, imagePath: `old/${id}`, subtitle: null, position: i, active: true, createdAt: new Date(0) }); }
@@ -34,12 +36,12 @@ function fixture(featured = 0, count = 0) {
       assert.match(sql.join(""), /WHERE id = .*AND "userId" = .*FOR UPDATE/s);
       assert.equal(values[0], catalogId);
       if (values[1] !== "owner") return [];
-      locked = true; return [{ id: catalogId, archivedAt: null }];
+      locked = true; return [{ id: catalogId, archivedAt: archived ? new Date() : null }];
     };
     if (key === "product") return {
       findFirst: async (args: { where: { id: string; catalogId?: string; needsCompletion?: boolean } }) => {
         if (args.where.needsCompletion) return null;
-        if (args.where.catalogId) return args.where.id === productId ? { id: productId } : null;
+        if (args.where.catalogId) return targetAvailable && args.where.id === productId ? { id: productId } : null;
         return { catalogId };
       },
       count: async (args: { where: { id?: { not: string } } }) => { assert.ok(locked); return [...products].filter(id => id !== args.where.id?.not).length; },
@@ -60,8 +62,40 @@ function fixture(featured = 0, count = 0) {
     };
     throw new Error(`Unexpected database operation ${String(key)}`);
   } });
-  return { database, products, banners };
+  return { database, products, banners, archive() { archived = true; }, removeTarget() { targetAvailable = false; } };
 }
+
+test("archived catalogs reject featured writes and all banner mutations under the owner lock", async () => {
+  const f = fixture(1, 1); f.archive();
+  await assert.rejects(updateProduct("p0", "owner", { featured: true }, f.database), /CATALOG_ARCHIVED/);
+  await assert.rejects(updateProduct("p0", "owner", { featured: false }, f.database), /CATALOG_ARCHIVED/);
+  await assert.rejects(createProduct({ catalogId, name: "Nuevo", slug: "nuevo", price: 1, featured: true }, "owner", f.database), /CATALOG_ARCHIVED/);
+  const id = [...f.banners.keys()][0];
+  await assert.rejects(saveBanner(catalogId, "owner", undefined, input, "path", f.database), /CATALOG_ARCHIVED/);
+  await assert.rejects(saveBanner(catalogId, "owner", id, { active: false }, undefined, f.database), /CATALOG_ARCHIVED/);
+  await assert.rejects(removeBanner(catalogId, "owner", id, f.database), /CATALOG_ARCHIVED/);
+  await assert.rejects(reorderBanners(catalogId, "owner", [id], f.database), /CATALOG_ARCHIVED/);
+  assert.equal(f.products.size, 1); assert.equal(f.banners.size, 1);
+});
+
+test("a deleted banner destination can be disabled; any newly submitted invalid destination is rejected", async () => {
+  const f = fixture();
+  const saved = await saveBanner(catalogId, "owner", undefined, { ...input, linkType: "PRODUCT", linkValue: productId }, "path", f.database);
+  f.removeTarget();
+  const disabled = await saveBanner(catalogId, "owner", saved.banner.id, { active: false }, undefined, f.database);
+  assert.equal(disabled.banner.active, false);
+  await saveBanner(catalogId, "owner", saved.banner.id, { active: false, linkType: "PRODUCT", linkValue: productId }, undefined, f.database);
+  await assert.rejects(saveBanner(catalogId, "owner", saved.banner.id, { linkValue: randomUUID() }, undefined, f.database), /BANNER_TARGET_INVALID/);
+  await assert.rejects(saveBanner(catalogId, "owner", saved.banner.id, { linkType: "EXTERNAL", linkValue: "javascript:alert(1)" }, undefined, f.database));
+});
+
+test("banner order includes inactive IDs; omitting one is rejected", async () => {
+  const f = fixture(0, 2); const ids = [...f.banners.keys()];
+  await saveBanner(catalogId, "owner", ids[1], { active: false }, undefined, f.database);
+  await assert.rejects(reorderBanners(catalogId, "owner", [ids[0]], f.database), /BANNER_ORDER_INVALID/);
+  await reorderBanners(catalogId, "owner", [...ids].reverse(), f.database);
+  assert.equal(f.banners.get(ids[1])?.position, 0);
+});
 
 test("featured writes serialize: concurrent fifth selections allow only one, sixth fails, repeat and unmark succeed", async () => {
   const f = fixture(4);
@@ -247,5 +281,27 @@ test("banner HTTP upload enforces MIME/signature/dimensions and preserves metada
     assert.equal((await fetch(`${base}/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "Actualizado" }) })).status, 200);
     assert.equal(f.banners.get(id)?.title, "Actualizado");
     assert.equal((await fetch(`${base}/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ linkValue: "javascript:alert(1)" }) })).status, 400);
+  } finally { server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+});
+
+test("HTTP rejects archived banner POST/featured marking, fourth banner and sixth featured with actionable 409 messages", async () => {
+  const f = serviceFixture(), selections = fixture(5);
+  const app = express(); app.use(express.json());
+  app.use((req: AuthenticatedRequest, _res, next) => { req.user = { id: "owner", email: "test@example.invalid", emailVerifiedAt: null, hasLocalPassword: false }; next(); });
+  app.use("/catalogs/:id/banners", makeBannerRouter(f.service));
+  app.put("/products/:id", makeUpdateProductController((id, user, data) => updateProduct(id, user, { featured: data.featured }, selections.database)));
+  const server = app.listen(0, "127.0.0.1"); await once(server, "listening");
+  const address = server.address(); assert.ok(address && typeof address !== "string");
+  const base = `http://127.0.0.1:${address.port}`;
+  const post = () => { const body = new FormData(); for (const [key, value] of Object.entries(input)) body.set(key, value); body.set("image", new Blob([new Uint8Array(png(100, 100))], { type: "image/png" }), "banner.png"); return fetch(`${base}/catalogs/${catalogId}/banners`, { method: "POST", body }); };
+  const mark = () => fetch(`${base}/products/${randomUUID()}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ featured: true }) });
+  try {
+    for (let i = 0; i < 3; i++) assert.equal((await post()).status, 201);
+    const fourth = await post(); assert.equal(fourth.status, 409); assert.match((await fourth.json()).message, /tres banners/);
+    const sixth = await mark(); assert.equal(sixth.status, 409); assert.match((await sixth.json()).message, /cinco productos/);
+    f.archive(); selections.archive();
+    const archivedPost = await post(); assert.equal(archivedPost.status, 409); assert.match((await archivedPost.json()).message, /Reactiva/);
+    const archivedMark = await mark(); assert.equal(archivedMark.status, 409); assert.match((await archivedMark.json()).message, /Reactiva/);
+    assert.equal(f.banners.size, 3); assert.equal(selections.products.size, 5);
   } finally { server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 });

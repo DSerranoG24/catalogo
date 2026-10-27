@@ -31,6 +31,7 @@ export async function createProductController(
     });
   } catch (error) {
     if (error instanceof Error && error.message === "FEATURED_LIMIT") return res.status(409).json({ success: false, message: "Solo puedes seleccionar cinco productos destacados." });
+    if (error instanceof Error && error.message === "CATALOG_ARCHIVED") return res.status(409).json({ success: false, message: "Reactiva el catálogo antes de gestionar sus destacados." });
     console.error(error);
 
     if (error instanceof Error) {
@@ -118,14 +119,15 @@ export async function getProductController(
   }
 }
 
-export async function updateProductController(
+export function makeUpdateProductController(update = updateProductService) {
+  return async function (
   req: AuthenticatedRequest,
   res: Response
 ) {
   try {
     const data = updateProductSchema.parse(req.body);
 
-    const result = await updateProductService(
+    const result = await update(
       req.params.id as string,
       req.user!.id,
       data
@@ -138,6 +140,7 @@ export async function updateProductController(
     });
   } catch (error) {
     if (error instanceof Error && error.message === "PRODUCT_INCOMPLETE") return res.status(409).json({ success: false, message: "Completa el nombre y el precio antes de publicar este producto." });
+    if (error instanceof Error && error.message === "CATALOG_ARCHIVED") return res.status(409).json({ success: false, message: "Reactiva el catálogo antes de gestionar sus destacados." });
     if (error instanceof Error && error.message === "FEATURED_LIMIT") return res.status(409).json({ success: false, message: "Solo puedes seleccionar cinco productos destacados." });
     console.error(error);
 
@@ -169,7 +172,9 @@ export async function updateProductController(
       message: "No se pudo actualizar el producto",
     });
   }
+  };
 }
+export const updateProductController = makeUpdateProductController();
 
 export async function deleteProductController(
   req: AuthenticatedRequest,

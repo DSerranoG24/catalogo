@@ -1,6 +1,6 @@
 import { prisma } from "../config/prisma";
-import { lockCatalogWrites } from "./catalog-write-lock";
-import { createBannerSchema, type BannerInput } from "../schemas/catalog-banner.schema";
+import { lockHighlightWrites } from "./catalog-write-lock";
+import { bannerFieldsSchema, createBannerSchema, type BannerInput } from "../schemas/catalog-banner.schema";
 import type { Prisma } from "@prisma/client";
 
 async function validateTarget(tx: Prisma.TransactionClient, catalogId: string, data: BannerInput) {
@@ -15,11 +15,14 @@ export async function listBanners(catalogId: string, userId: string, database = 
 
 export async function saveBanner(catalogId: string, userId: string, id: string | undefined, input: Partial<BannerInput>, imagePath?: string, database = prisma) {
   return database.$transaction(async tx => {
-    await lockCatalogWrites(tx, catalogId, userId);
+    await lockHighlightWrites(tx, catalogId, userId);
     const current = id ? await tx.catalogBanner.findFirst({ where: { id, catalogId, catalog: { userId } } }) : null;
     if (id && !current) throw new Error("BANNER_NOT_FOUND");
-    const data = createBannerSchema.parse({ ...current, ...input });
-    await validateTarget(tx, catalogId, data);
+    const data = bannerFieldsSchema.parse({ ...current, ...input });
+    if (!current || data.linkType !== current.linkType || data.linkValue !== current.linkValue) {
+      createBannerSchema.parse(data);
+      await validateTarget(tx, catalogId, data);
+    }
     const banners = await tx.catalogBanner.findMany({ where: { catalogId }, select: { id: true, position: true } });
     if (!current && banners.length >= 3) throw new Error("BANNER_LIMIT");
     const position = data.position ?? [0, 1, 2].find(slot => !banners.some(banner => banner.position === slot));
@@ -36,7 +39,7 @@ export async function saveBanner(catalogId: string, userId: string, id: string |
 
 export async function removeBanner(catalogId: string, userId: string, id: string, database = prisma) {
   return database.$transaction(async tx => {
-    await lockCatalogWrites(tx, catalogId, userId);
+    await lockHighlightWrites(tx, catalogId, userId);
     const banner = await tx.catalogBanner.findFirst({ where: { id, catalogId, catalog: { userId } } });
     if (!banner) throw new Error("BANNER_NOT_FOUND");
     await tx.catalogBanner.delete({ where: { id: banner.id } });
@@ -46,7 +49,7 @@ export async function removeBanner(catalogId: string, userId: string, id: string
 
 export async function reorderBanners(catalogId: string, userId: string, ids: string[], database = prisma) {
   return database.$transaction(async tx => {
-    await lockCatalogWrites(tx, catalogId, userId);
+    await lockHighlightWrites(tx, catalogId, userId);
     const banners = await tx.catalogBanner.findMany({ where: { catalogId }, select: { id: true } });
     if (new Set(ids).size !== ids.length || banners.length !== ids.length || banners.some(banner => !ids.includes(banner.id))) throw new Error("BANNER_ORDER_INVALID");
     for (const [position, id] of ids.entries()) await tx.catalogBanner.update({ where: { id }, data: { position } });
