@@ -6,6 +6,7 @@ import uiStyles from "@/components/ui/ui.module.css";
 
 import { FormEvent, useRef, useState } from "react";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { apiRequest, Catalog, type Category } from "@/lib/api";
 import CatalogBannersPanel from "./CatalogBannersPanel";
 import { catalogTemplateOptions } from "@/lib/catalogTemplates";
@@ -15,6 +16,8 @@ import CatalogPaletteSelector from "./CatalogPaletteSelector";
 import { isCatalogThemeCompatible } from "@/lib/catalog-theme-choice";
 
 type Template = Catalog["template"];
+
+const CatalogLogoPaletteSuggestion = dynamic(() => import("./CatalogLogoPaletteSuggestion"), { ssr: false });
 
 function initialTemplate(value: Template): Template {
   if (value === "GRID") return "TECH";
@@ -79,6 +82,7 @@ export default function CatalogSettings({
   const [persistedThemePreset, setPersistedThemePreset] = useState<string | null>(catalog.themePreset ?? null);
   const themeCompatible = isCatalogThemeCompatible(template, themePreset);
   const [logoUrl, setLogoUrl] = useState(catalog.logoUrl);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoBusy, setLogoBusy] = useState(false);
   const logoInput = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
@@ -90,6 +94,14 @@ export default function CatalogSettings({
 
   function updateProfileField(field: keyof typeof profile, value: string) {
     setProfile((current) => ({ ...current, [field]: value }));
+  }
+
+  function focusPaletteSelector(preset?: string) {
+    const fieldset = document.getElementById("catalog-palette-title")?.closest("fieldset");
+    const inputs = Array.from(fieldset?.querySelectorAll<HTMLInputElement>('input[type="radio"]:not(:disabled)') ?? []);
+    const radio = inputs.find(input => preset === undefined ? input.checked : input.value === preset) ?? inputs[0];
+    radio?.scrollIntoView({ block: "center" });
+    radio?.focus({ preventScroll: true });
   }
 
   async function saveSettings(event: FormEvent<HTMLFormElement>) {
@@ -147,6 +159,7 @@ export default function CatalogSettings({
       body.append("image", file);
       const result = await apiRequest<{ logoUrl: string }>(`/catalogs/${catalog.id}/logo`, { method: "POST", body });
       setLogoUrl(result.logoUrl);
+      setLogoFile(file);
       onUpdated({ logoUrl: result.logoUrl });
       setMessage("Logo actualizado.");
     } catch (requestError) {
@@ -163,6 +176,7 @@ export default function CatalogSettings({
     try {
       await apiRequest(`/catalogs/${catalog.id}/logo`, { method: "DELETE" });
       setLogoUrl(null);
+      setLogoFile(null);
       onUpdated({ logoUrl: null });
       setMessage("Logo eliminado.");
     } catch (requestError) {
@@ -244,6 +258,10 @@ export default function CatalogSettings({
                 {logoUrl && <Button variant="destructive-ghost" type="button" disabled={logoBusy} onClick={() => void removeLogo()} >Quitar</Button>}
               </div>
             </div>
+            <CatalogLogoPaletteSuggestion logoUrl={logoUrl} logoFile={logoFile} template={template} value={themePreset} persistedValue={persistedThemePreset} disabled={saving || logoBusy} onUse={preset => {
+              setThemePreset(preset);
+              requestAnimationFrame(() => focusPaletteSelector(preset));
+            }} onChoose={() => focusPaletteSelector()} />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-medium text-[#37443d]">

@@ -1,5 +1,9 @@
 # Paletas del catálogo
 
+La sugerencia efímera desde el logo se describe en
+[Paleta sugerida desde el logo](logo-palette-suggestion.md): solo cambia el
+borrador tras aceptación y conserva el guardado mediante el formulario.
+
 Fases 2A y 2B, implementación local del 26 de octubre de 2026. No se ha aplicado
 la migración ni se ha desplegado el cambio.
 
