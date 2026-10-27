@@ -6,7 +6,7 @@ El dominio canónico es `https://catalogo-pink.vercel.app`. La raíz `/` es la l
 
 [app/robots.ts](../app/robots.ts) genera `/robots.txt` con `User-Agent: *`, `Allow: /` y la URL absoluta del sitemap. No usa `Disallow`: bloquear el rastreo impediría al buscador leer el `noindex` de login, dashboard y carrito. Rastreo permitido no significa indexación permitida; la exclusión de esas páginas se conserva en su metadata HTML. Robots no es un mecanismo de autorización.
 
-[app/sitemap.ts](../app/sitemap.ts) genera `/sitemap.xml` con exactamente una URL: `https://catalogo-pink.vercel.app/`. No incluye login, dashboard, carrito ni URLs de vendedores. No inventa `lastModified`. Ambas rutas usan `MetadataRoute`, son estáticas y no consultan API, base de datos, sesión ni cabeceras de la petición. El dominio procede de `SITE_URL`, coherente con `metadataBase`, y nunca de `Host`.
+[app/sitemap.ts](../app/sitemap.ts) genera `/sitemap.xml` con cuatro URLs: la raíz `https://catalogo-pink.vercel.app/` y `/contacto`, `/privacidad`, `/terminos`. No incluye login, dashboard, carrito ni URLs de vendedores. No inventa `lastModified`. Ambas rutas usan `MetadataRoute`, son estáticas y no consultan API, base de datos, sesión ni cabeceras de la petición. El dominio procede de `SITE_URL`, coherente con `metadataBase`, y nunca de `Host`.
 
 El `noindex` del layout raíz afecta a las páginas HTML que lo heredan; no filtra las entradas del sitemap ni se aplica al contenido XML/texto de estos manejadores. La landing lo sobrescribe explícitamente. La lista del sitemap debe mantenerse deliberadamente limitada a URLs canónicas indexables.
 

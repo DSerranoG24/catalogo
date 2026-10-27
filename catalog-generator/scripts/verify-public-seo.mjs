@@ -54,11 +54,21 @@ async function run() {
     assert.equal(sitemapResponse.status, 200);
     assert.match(sitemapResponse.headers.get("content-type"), /application\/xml/);
     const sitemap = await sitemapResponse.text();
-    assert.deepEqual([...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(match => match[1]), ["https://catalogo-pink.vercel.app/"]);
+    assert.deepEqual([...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(match => match[1]), ["/", "/contacto", "/privacidad", "/terminos"].map(path => new URL(path, "https://catalogo-pink.vercel.app").href));
     assert.ok(!/lastmod|\/login|\/dashboard|\/carrito|\/c\//.test(sitemap));
   }
   assert.equal([...counts.values()].reduce((sum, value) => sum + value, 0), readsBeforeMetadataRoutes, "Metadata routes must not query the API");
   console.log("robots/sitemap: static canonical URL only, no private paths, no API reads, unaffected by Host.");
+  for (const path of ["/contacto", "/privacidad", "/terminos"]) {
+    const response = await fetch(base + path);
+    assert.equal(response.status, 200);
+    const html = await response.text(), head = html.split("</head>")[0];
+    assert.match(head, /name="robots" content="index, follow"/);
+    assert.match(head, /<title>[^<]+Vitrinaya<\/title>/);
+    assert.ok(head.includes(`rel="canonical" href="https://catalogo-pink.vercel.app${path}"`));
+    assert.match(html, /<h1/);
+    if(path!=="/contacto")assert.ok(html.includes("[PENDIENTE DE REVISIÓN JURÍDICA]"));
+  }
   for (const ua of ["WhatsApp/2.24", "facebookexternalhit/1.1", "Mozilla/5.0"]) {
     const before = counts.get("demo") || 0;
     const response = await fetch(base + "/c/demo", { headers: { "User-Agent": ua } });

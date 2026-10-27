@@ -107,7 +107,7 @@ export default function LandingPage() {
           <div className="flex flex-wrap items-center justify-between gap-5">
             <BrandLogo variant="horizontal" theme="claro" iconSize={32} nameRatio={0.5} />
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-              <nav aria-label="Contacto y enlaces legales pendientes" aria-describedby="footer-coming-soon" className="flex flex-wrap gap-x-5 gap-y-2 text-sm">{["Contacto", "Privacidad", "Términos"].map(label => <span key={label} role="link" aria-disabled="true" className="inline-flex min-h-11 cursor-not-allowed items-center">{label}</span>)}</nav>
+              <nav aria-label="Contacto y páginas legales" className="flex flex-wrap gap-x-5 gap-y-2 text-sm">{[["/contacto", "Contacto"], ["/privacidad", "Privacidad"], ["/terminos", "Términos"]].map(([href, label]) => <a key={href} href={href} className={`inline-flex min-h-11 items-center underline underline-offset-4 ${focus}`}>{label}</a>)}</nav>
               <nav aria-label="Redes sociales de Vitrinaya" className="flex items-center gap-2">
                 <a href="https://www.instagram.com/vitrinaya.app/" target="_blank" rel="noopener noreferrer" aria-label="Instagram de Vitrinaya" aria-describedby="footer-social-new-tab" className={`inline-flex size-11 items-center justify-center rounded-xl text-[var(--brand-emerald)] transition hover:bg-[var(--brand-emerald-soft)] ${focus}`}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="5" /><circle cx="12" cy="12" r="4" /><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" /></svg>
@@ -119,7 +119,6 @@ export default function LandingPage() {
               <span id="footer-social-new-tab" className="sr-only">Se abre en una pestaña nueva.</span>
             </div>
           </div>
-          <p id="footer-coming-soon" className="mt-4 text-xs leading-6">Contacto, Privacidad y Términos: próximamente.</p>
           <p className="mt-6 flex items-center gap-2 text-xs"><Link2 size={14} aria-hidden="true" />Vitrinaya — Tu vitrina digital</p>
         </div>
       </footer>

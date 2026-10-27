@@ -1,0 +1,18 @@
+.page { min-height: 100vh; background: #f8fafc; color: #0f172a; font-size: 1rem; line-height: 1.75; overflow-wrap: anywhere; }
+.page header, .page main, .page footer { max-width: 54rem; margin-inline: auto; padding: 1.5rem 1.25rem; }
+.page main { padding-bottom: 3rem; }
+.page h1 { font-size: clamp(1.875rem, 5vw, 2.5rem); line-height: 1.2; font-weight: 700; margin-bottom: 1.5rem; }
+.page h2 { font-size: 1.375rem; line-height: 1.4; font-weight: 650; margin-top: 2rem; margin-bottom: .75rem; }
+.page p, .page ul, .page table { margin-block: .875rem; }
+.page ul { padding-left: 1.25rem; list-style: disc; }
+.page li + li { margin-top: .5rem; }
+.page a { color: #166534; text-decoration: underline; text-underline-offset: .2em; }
+.page a:focus-visible, .page :is(input, textarea, button):focus-visible { outline: 2px solid #166534; outline-offset: 3px; }
+.page table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+.page th, .page td { border: 1px solid #64748b; padding: .625rem; text-align: left; vertical-align: top; }
+.pending { border-left: 4px solid #92400e; padding: .875rem; background: #fffbeb; color: #78350f; }
+.form { display: grid; gap: 1rem; margin-top: 1.5rem; }
+.form label { display: grid; gap: .375rem; font-weight: 600; }
+.form input, .form textarea { width: 100%; min-width: 0; border: 1px solid #64748b; border-radius: .375rem; background: #fff; color: #0f172a; padding: .625rem; font-weight: 400; }
+.form button { justify-self: start; min-height: 44px; padding: .625rem 1rem; border-radius: .375rem; background: #166534; color: #fff; font-weight: 600; cursor: pointer; }
+.form button:disabled { cursor: not-allowed; background: #475569; }

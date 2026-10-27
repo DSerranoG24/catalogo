@@ -1,6 +1,7 @@
 "use client";
 
 import PublicCatalogCartLink from "./PublicCatalogCartLink";
+import LegalLinks from "@/components/legal/LegalLinks";
 
 import { startTransition, useDeferredValue, useEffect, useState, type ComponentType } from "react";
 import { PublicCatalog, PublicProduct, rememberPublicCatalogTemplate } from "@/lib/api";
@@ -157,7 +158,7 @@ export default function PublicCatalogPage({ publicId, initialCatalog: catalog, t
     <main style={themeStyle} data-catalog-themed={themeStyle ? "true" : undefined} className={`${themeStyles.root} min-h-screen pb-12 bg-[var(--catalog-background)] text-[var(--catalog-text)]`}>
       <PublicCatalogCartLink publicId={publicId} template={templateId} cartCount={cartCount} cartTotal={cartTotal} />
       <Template {...templateProps} />
-      <footer className="border-t border-[var(--catalog-border-subtle,#dce4dc)] px-5 py-5 text-center text-xs text-[var(--catalog-text-muted,#849087)]">Catálogo compartido por su vendedor</footer>
+      <footer className="border-t border-[var(--catalog-border-subtle,#dce4dc)] px-5 py-5 text-center text-xs text-[var(--catalog-text-muted,#849087)]"><p>Catálogo compartido por su vendedor</p><div className="mt-2 text-[var(--catalog-text,#263b31)]"><LegalLinks /></div></footer>
       <FloatingWhatsAppButton catalog={catalog} />
     </main>
   );
