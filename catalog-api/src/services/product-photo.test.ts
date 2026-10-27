@@ -117,7 +117,7 @@ function repositoryFixture() {
     if (key === "catalog") return { findFirst: async (args: Prisma.CatalogFindFirstArgs) => {
       if (args.select?.products) {
         assert.equal(typeof args.select.products === "object" && args.select.products.where?.active, true);
-        return { id: catalogId, products: row?.active ? [row] : [] };
+        return { id: catalogId, products: row?.active ? [row] : [], categories: [], banners: [] };
       }
       return { id: catalogId };
     } };

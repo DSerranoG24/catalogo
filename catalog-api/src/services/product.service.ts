@@ -35,6 +35,7 @@ export async function createProductService(data: {
   saleStartsAt?: string | null;
   saleEndsAt?: string | null;
   stock?: number;
+  featured?: boolean;
   specs?: Prisma.InputJsonValue;
   userId: string;
 }) {
@@ -77,6 +78,7 @@ export async function createProductService(data: {
     sku: data.sku,
     ...promotion,
     stock: data.stock,
+    featured: data.featured,
     specs: data.specs,
   }, data.userId);
 }
@@ -112,6 +114,7 @@ export async function updateProductService(
     saleEndsAt?: string | null;
     stock?: number;
     active?: boolean;
+    featured?: boolean;
     specs?: Prisma.InputJsonValue;
   }
 ) {

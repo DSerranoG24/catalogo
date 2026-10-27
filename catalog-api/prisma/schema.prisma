@@ -106,6 +106,7 @@ model Catalog {
   categories Category[]
   products   Product[]
   orders     Order[]
+    banners    CatalogBanner[]
 
   @@unique([userId, slug])
   @@index([userId])
@@ -147,6 +148,7 @@ model Product {
   saleEndsAt   DateTime?
   stock        Int       @default(0)
   active       Boolean   @default(true)
+  featured     Boolean   @default(false)
   needsCompletion Boolean @default(false)
   specs        Json?
   createdAt    DateTime  @default(now())
@@ -163,6 +165,25 @@ model Product {
   @@index([catalogId])
   @@index([categoryId])
   @@map("products")
+}
+
+model CatalogBanner {
+  id        String   @id @default(uuid())
+  catalogId String
+  imagePath String
+  title     String
+  subtitle  String?
+  linkType  String
+  linkValue String
+  position  Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  catalog Catalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+
+  @@unique([catalogId, position])
+  @@index([catalogId, position])
+  @@map("catalog_banners")
 }
 
 model ProductReview {

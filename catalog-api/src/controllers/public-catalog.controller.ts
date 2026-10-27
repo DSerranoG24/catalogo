@@ -9,15 +9,16 @@ import { quotationBaseUrl, quotationLabel, quotationUrl } from "../services/quot
 import { issueQuotation } from "../repositories/quotation-issue.repository";
 import { logQuotationFailure, quotationErrorCode, quotationRequestId } from "../services/quotation-errors";
 
-export async function getPublicCatalogController(req: Request, res: Response) {
+export function makePublicCatalogController(deps = { find: findPublicCatalog, sign: createProductImageSignedUrl, signCategory: signCategoryImage }) {
+  return async (req: Request, res: Response) => {
   try {
-    const catalog = await findPublicCatalog(req.params.publicId as string);
+    const catalog = await deps.find(req.params.publicId as string);
     if (!catalog) {
       return res.status(404).json({ success: false, message: "Catálogo no encontrado" });
     }
 
     const now = new Date();
-    const categories = await Promise.all(catalog.categories.map(signCategoryImage));
+    const categories = await Promise.all(catalog.categories.map(deps.signCategory));
     const products = await Promise.all(catalog.products.map(async (product) => {
       const { salePrice, saleStartsAt, saleEndsAt, ...publicProduct } = product;
       return {
@@ -25,16 +26,23 @@ export async function getPublicCatalogController(req: Request, res: Response) {
         ...getCurrentProductPricing({ price: product.price, salePrice, saleStartsAt, saleEndsAt }, now),
         images: await Promise.all(product.images.map(async (image) => ({
           ...image,
-          url: await createProductImageSignedUrl(image.url),
+          url: await deps.sign(image.url),
         }))),
       };
     }));
 
-    return res.json({ success: true, catalog: { ...catalog, logoUrl: catalog.logoUrl ? await createProductImageSignedUrl(catalog.logoUrl) : null, categories, products } });
+    const featuredIds = new Set(catalog.featuredProducts.map(product => product.id));
+    const banners = (await Promise.all(catalog.banners.map(async banner => {
+      try { return { ...banner, imageUrl: await deps.sign(banner.imagePath) }; }
+      catch { return null; }
+    }))).filter(banner => banner !== null);
+    return res.json({ success: true, catalog: { ...catalog, logoUrl: catalog.logoUrl ? await deps.sign(catalog.logoUrl) : null, categories, products, featuredProducts: products.filter(product => featuredIds.has(product.id)), banners } });
   } catch {
     return res.status(500).json({ success: false, message: "No se pudo cargar el catálogo" });
   }
+  };
 }
+export const getPublicCatalogController = makePublicCatalogController();
 
 export function makePublicOrderController(deps = {
   create: createPublicOrder, issue: issueQuotation, base: quotationBaseUrl, log: logQuotationFailure,

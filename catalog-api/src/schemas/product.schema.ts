@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const createProductSchema = z.object({
+  featured: z.boolean().optional(),
   categoryId: z.string().uuid().optional(),
 
   name: z.string().min(1).max(150),
@@ -36,6 +37,7 @@ export const createProductSchema = z.object({
 });
 
 export const updateProductSchema = z.object({
+  featured: z.boolean().optional(),
   categoryId: z.string().uuid().optional(),
 
   name: z.string().min(1).max(150).optional(),

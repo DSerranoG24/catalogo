@@ -1,6 +1,6 @@
 import multer from "multer";
 import { NextFunction, Request, Response } from "express";
-import { detectImageMimeType } from "../utils/image-validation";
+import { detectImageMimeType, imageDimensions } from "../utils/image-validation";
 
 const storage = multer.memoryStorage();
 
@@ -35,5 +35,14 @@ export function validateImageContent(req: Request, res: Response, next: NextFunc
     });
   }
 
+  next();
+}
+
+export function validateBannerDimensions(req: Request, res: Response, next: NextFunction) {
+  if (!req.file) return next();
+  const size = imageDimensions(req.file.buffer);
+  if (!size || Math.max(size.width, size.height) > 2400) {
+    return res.status(400).json({ success: false, error: "INVALID_BANNER_DIMENSIONS", message: "La imagen debe ser válida y medir como máximo 2400 px en su lado mayor." });
+  }
   next();
 }

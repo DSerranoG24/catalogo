@@ -1,6 +1,7 @@
 import { prisma } from "../config/prisma";
 import { quotationCatalogFieldsSchema } from "../schemas/catalog.schema";
 import { assertCatalogThemeCompatibility } from "../schemas/catalog-theme";
+import { resolvePublicHighlights } from "../services/public-catalog-highlights";
 
 export async function createCatalog(data: {
   userId: string;
@@ -146,7 +147,7 @@ export async function deleteCatalog(
 
 
 export async function findPublicCatalog(publicId: string, database = prisma) {
-  return database.catalog.findFirst({
+  const catalog = await database.catalog.findFirst({
     where: { publicId, active: true, archivedAt: null },
     select: {
       publicId: true,
@@ -166,6 +167,12 @@ export async function findPublicCatalog(publicId: string, database = prisma) {
       mapUrl: true,
       template: true,
       themePreset: true,
+      banners: {
+        where: { active: true },
+        select: { id: true, imagePath: true, title: true, subtitle: true, linkType: true, linkValue: true, position: true },
+        orderBy: [{ position: "asc" }, { id: "asc" }],
+        take: 3,
+      },
       categories: {
         where: { active: true },
         select: { id: true, name: true, slug: true, imageUrl: true, position: true },
@@ -175,6 +182,7 @@ export async function findPublicCatalog(publicId: string, database = prisma) {
         where: { active: true },
         select: {
           id: true,
+          featured: true,
           categoryId: true,
           name: true,
           slug: true,
@@ -195,4 +203,6 @@ export async function findPublicCatalog(publicId: string, database = prisma) {
       },
     },
   });
+  if (!catalog) return null;
+  return { ...catalog, ...resolvePublicHighlights(catalog.products, catalog.categories, catalog.banners) };
 }

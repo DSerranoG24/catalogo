@@ -30,6 +30,7 @@ export async function createProductController(
       product,
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "FEATURED_LIMIT") return res.status(409).json({ success: false, message: "Solo puedes seleccionar cinco productos destacados." });
     console.error(error);
 
     if (error instanceof Error) {
@@ -137,6 +138,7 @@ export async function updateProductController(
     });
   } catch (error) {
     if (error instanceof Error && error.message === "PRODUCT_INCOMPLETE") return res.status(409).json({ success: false, message: "Completa el nombre y el precio antes de publicar este producto." });
+    if (error instanceof Error && error.message === "FEATURED_LIMIT") return res.status(409).json({ success: false, message: "Solo puedes seleccionar cinco productos destacados." });
     console.error(error);
 
     if (error instanceof Error) {

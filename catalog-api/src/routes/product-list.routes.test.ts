@@ -15,7 +15,7 @@ const foreignId = "00000000-0000-4000-8000-000000000002";
 function product(index: number): ListedProduct {
   return { id: String(index).padStart(4, "0"), catalogId, categoryId: null, name: `Producto ${index}`, slug: `producto-${index}`,
     description: null, brand: index === 26 ? "Acme" : null, model: null, sku: `SKU-${index}`, price: index, salePrice: null,
-    saleStartsAt: null, saleEndsAt: null, stock: index % 2, active: index % 2 === 0, needsCompletion: index < 4, specs: null,
+    saleStartsAt: null, saleEndsAt: null, stock: index % 2, active: index % 2 === 0, featured: false, needsCompletion: index < 4, specs: null,
     createdAt: new Date(0), updatedAt: new Date(0), category: null, images: [{ id: `image-${index}`, productId: String(index), url: `private/${index}`, alt: null, position: 0, createdAt: new Date(0) }] };
 }
 
