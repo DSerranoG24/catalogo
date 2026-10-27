@@ -9,6 +9,8 @@ import Image from "next/image";
 import { apiRequest, Catalog, type Category } from "@/lib/api";
 import CatalogBannersPanel from "./CatalogBannersPanel";
 import { catalogTemplateOptions } from "@/lib/catalogTemplates";
+import CatalogLayoutSelector from "./CatalogLayoutSelector";
+import { normalizeCatalogLayout } from "@/lib/catalog-layout";
 import CatalogPaletteSelector from "./CatalogPaletteSelector";
 import { isCatalogThemeCompatible } from "@/lib/catalog-theme-choice";
 
@@ -72,6 +74,7 @@ export default function CatalogSettings({
     mapUrl: catalog.mapUrl ?? "",
   });
   const [template, setTemplate] = useState<Template>(initialTemplate(catalog.template));
+  const [layoutPreset, setLayoutPreset] = useState(() => normalizeCatalogLayout(catalog.layoutPreset));
   const [themePreset, setThemePreset] = useState<string | null>(catalog.themePreset ?? null);
   const [persistedThemePreset, setPersistedThemePreset] = useState<string | null>(catalog.themePreset ?? null);
   const themeCompatible = isCatalogThemeCompatible(template, themePreset);
@@ -118,10 +121,10 @@ export default function CatalogSettings({
       };
       await apiRequest(`/catalogs/${catalog.id}`, {
         method: "PUT",
-        body: JSON.stringify({ ...updatedProfile, template, themePreset }),
+        body: JSON.stringify({ ...updatedProfile, template, themePreset, layoutPreset }),
       });
       setPersistedThemePreset(themePreset);
-      onUpdated({ ...updatedProfile, template, themePreset });
+      onUpdated({ ...updatedProfile, template, themePreset, layoutPreset });
       setMessage("Cambios guardados.");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "No se pudieron guardar los cambios.");
@@ -218,6 +221,8 @@ export default function CatalogSettings({
         {publicUrl && <a href={publicUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#d6dfd7] px-4 text-sm font-semibold text-[#315e4f] transition hover:bg-[#f4f7f2]">Ver catálogo público <span aria-hidden="true">↗</span></a>}
 
         <CatalogPaletteSelector template={template} value={themePreset} persistedValue={persistedThemePreset} onChange={setThemePreset} disabled={saving} />
+
+        <CatalogLayoutSelector value={layoutPreset} onChange={setLayoutPreset} disabled={saving} />
 
         <section className="space-y-4 border-t border-[#e2e8e1] pt-6">
           <div>

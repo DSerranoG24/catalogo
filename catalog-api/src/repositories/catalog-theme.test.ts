@@ -128,7 +128,7 @@ test("HTTP controller rejects forged presets and incompatible partial updates wi
   const url = `http://127.0.0.1:${address.port}/catalogs/catalog`;
   const put = (body: unknown, headers: Record<string, string> = {}) => fetch(url, { method: "PUT", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) });
   try {
-    for (const body of [{ themePreset: "forest" }, { template: "TECH", themePreset: "forest" }, { themePreset: "unknown" }]) {
+    for (const body of [{ themePreset: "forest" }, { template: "TECH", themePreset: "forest" }, { themePreset: "unknown" }, { layoutPreset: "future-layout" }]) {
       assert.equal((await put(body)).status, 400);
     }
     assert.equal((await fetch(new URL("/catalogs", url), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Local", slug: "local", template: "TECH", themePreset: "forest" }) })).status, 400);
@@ -159,4 +159,39 @@ test("public catalog explicitly selects its preset and keeps publication filters
   await findPublicCatalog("public-id", database);
   assert.deepEqual(calls[0]?.where, { publicId: "public-id", active: true, archivedAt: null });
   assert.equal(calls[0]?.select.themePreset, true);
+});
+
+
+test("layout updates preserve omission, clear with null and keep owner filtering", async () => {
+  const row: { layoutPreset: string | null; name: string } = { layoutPreset: null, name: "Local" };
+  const database = new Proxy(prisma, { get(_target, key) {
+    if (key === "catalog") return { updateMany: async (args: { where: { id: string; userId: string }; data: { layoutPreset?: string | null; name?: string } }) => {
+      assert.equal(args.where.id, "catalog");
+      if (args.where.userId !== "owner") return { count: 0 };
+      if (args.data.layoutPreset !== undefined) row.layoutPreset = args.data.layoutPreset;
+      if (args.data.name !== undefined) row.name = args.data.name;
+      return { count: 1 };
+    } };
+    throw new Error("Unexpected database call");
+  } });
+  await updateCatalog("catalog", "owner", { layoutPreset: "sidebar" }, database);
+  await updateCatalog("catalog", "owner", { name: "Nuevo" }, database);
+  assert.deepEqual(row, { layoutPreset: "sidebar", name: "Nuevo" });
+  await updateCatalog("catalog", "owner", { layoutPreset: "sidebar-compact" }, database);
+  await updateCatalog("catalog", "other", { layoutPreset: null }, database);
+  assert.equal(row.layoutPreset, "sidebar-compact");
+  await updateCatalog("catalog", "owner", { layoutPreset: null }, database);
+  assert.equal(row.layoutPreset, null);
+});
+
+test("public catalog selects layoutPreset without interpreting unknown persisted identifiers", async () => {
+  const database = new Proxy(prisma, { get(_target, key) {
+    if (key === "catalog") return { findFirst: async (args: { select: { layoutPreset?: boolean } }) => {
+      assert.equal(args.select.layoutPreset, true);
+      return { layoutPreset: "future-layout", products: [], categories: [], banners: [] };
+    } };
+    throw new Error("Unexpected database call");
+  } });
+  const catalog = await findPublicCatalog("public", database);
+  assert.equal(catalog?.layoutPreset, "future-layout");
 });

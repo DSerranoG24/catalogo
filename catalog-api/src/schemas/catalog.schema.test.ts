@@ -37,3 +37,15 @@ test("theme presets accept only curated identifiers, null and omission on create
     }
   }
 });
+
+
+test("layout writes accept only supported identifiers, omission and null independently of template", () => {
+  for (const schema of [createCatalogSchema, updateCatalogSchema]) {
+    for (const template of ["TECH", "GRID", "FASHION", "BEAUTY", "GLAMOUR"]) {
+      const base = { name: "Local", slug: "local", template };
+      assert.equal(Object.hasOwn(schema.parse(base), "layoutPreset"), false);
+      for (const layoutPreset of [null, "sidebar", "sidebar-compact"]) assert.equal(schema.parse({ ...base, layoutPreset }).layoutPreset, layoutPreset);
+      for (const layoutPreset of ["classic", "GRID", "unknown", "", 1, {}]) assert.equal(schema.safeParse({ ...base, layoutPreset }).success, false);
+    }
+  }
+});

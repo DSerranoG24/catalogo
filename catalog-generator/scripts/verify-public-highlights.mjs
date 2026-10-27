@@ -11,6 +11,12 @@ try{
   const base={publicId:'demo',name:'Demo',slug:'demo',template:'TECH',themePreset:null,categories:[{id:'c1',name:'Uno',slug:'uno',imageUrl:null,position:0}],products};
   for(const key of ['description','logoUrl','whatsappPhone','whatsappMessage','phone','address','businessHours','instagramUrl','facebookUrl','tiktokUrl','email','mapUrl'])base[key]=null;
   assert.deepEqual(normalizePublicCatalog(base).banners,[]);assert.deepEqual(normalizePublicCatalog(base).featuredProducts,[]);
+  for (const layoutPreset of [undefined, null, 'future', 'GRID', {}, 123]) {
+    assert.equal(normalizePublicCatalog({...base, layoutPreset}).layoutPreset, null);
+  }
+  for (const template of ['TECH', 'FASHION', 'BEAUTY', 'GLAMOUR']) for (const layoutPreset of ['sidebar', 'sidebar-compact']) {
+    assert.equal(normalizePublicCatalog({...base, template, layoutPreset}).layoutPreset, layoutPreset);
+  }
   for(const value of [null,'wrong',{},[null,{},true]]){
     const normalized=normalizePublicCatalog({...base,banners:value,featuredProducts:value});assert.ok(normalized);assert.deepEqual(normalized.banners,[]);assert.deepEqual(normalized.featuredProducts,[]);
   }

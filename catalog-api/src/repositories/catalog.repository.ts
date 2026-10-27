@@ -22,6 +22,7 @@ export async function createCatalog(data: {
   mapUrl?: string;
   template?: string;
   themePreset?: string | null;
+  layoutPreset?: string | null;
 }, database = prisma) {
   assertCatalogThemeCompatibility(data.template ?? "EDITORIAL", data.themePreset);
   return database.catalog.create({
@@ -75,6 +76,7 @@ export async function updateCatalog(
     mapUrl?: string | null;
     template?: string;
     themePreset?: string | null;
+    layoutPreset?: string | null;
   },
   database = prisma
 ) {
@@ -167,6 +169,7 @@ export async function findPublicCatalog(publicId: string, database = prisma) {
       mapUrl: true,
       template: true,
       themePreset: true,
+      layoutPreset: true,
       banners: {
         where: { active: true },
         select: { id: true, imagePath: true, title: true, subtitle: true, linkType: true, linkValue: true, position: true },

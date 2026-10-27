@@ -30,6 +30,7 @@ export type Catalog = {
   mapUrl: string | null;
   template: StoredCatalogTemplate;
   themePreset?: string | null;
+  layoutPreset?: string | null;
   active: boolean;
   archivedAt: string | null;
 };
@@ -141,6 +142,7 @@ export type PublicCatalog = Pick<
   | "mapUrl"
   | "template"
   | "themePreset"
+  | "layoutPreset"
 > & {
   categories: Category[];
   products: PublicProduct[];

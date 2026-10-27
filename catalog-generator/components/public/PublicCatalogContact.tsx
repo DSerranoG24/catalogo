@@ -1,6 +1,6 @@
 import { PublicCatalog } from "@/lib/api";
 
-export default function PublicCatalogContact({ catalog }: { catalog: PublicCatalog }) {
+export default function PublicCatalogContact({ catalog, compact = false }: { catalog: PublicCatalog; compact?: boolean }) {
   const contactLinks = [
     catalog.phone && {
       label: catalog.phone,
@@ -17,6 +17,16 @@ export default function PublicCatalogContact({ catalog }: { catalog: PublicCatal
   ].filter((link): link is { label: string; href: string; external?: boolean } => Boolean(link));
 
   if (!contactLinks.length && !catalog.address && !catalog.businessHours) return null;
+
+  if (compact) return (
+    <section aria-label="Resumen de contacto">
+      <h2 className="text-sm font-semibold">Contacto</h2>
+      <ul className="mt-3 space-y-2 text-sm">
+        {contactLinks.slice(0, 2).map(link => <li key={link.href}><a href={link.href} target={link.external ? "_blank" : undefined} rel={link.external ? "noreferrer" : undefined} className="underline underline-offset-4">{link.label}</a></li>)}
+      </ul>
+      <a href="#contacto" className="mt-3 inline-flex min-h-11 items-center text-sm underline underline-offset-4">Información del negocio</a>
+    </section>
+  );
 
   return (
     <section id="contacto" aria-label="Información del negocio" className="border-t border-current/15 px-5 py-7 sm:px-8 sm:py-9">

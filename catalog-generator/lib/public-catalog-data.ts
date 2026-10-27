@@ -1,3 +1,4 @@
+import { normalizeCatalogLayout } from "./catalog-layout";
 import type { PublicCatalog, PublicProduct, PublicCatalogBanner, Category } from "./api";
 
 export const publicRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -56,5 +57,5 @@ export function normalizePublicCatalog(value: unknown): PublicCatalog | null {
     banners.push({ id: entry.id, title: entry.title, subtitle: entry.subtitle, imageUrl: entry.imageUrl, linkType: entry.linkType, linkValue: entry.linkValue, position: entry.position });
     if (banners.length === 3) break;
   }
-  return { ...value, banners, featuredProducts: selected.size >= 3 ? [...selected.values()] : [] };
+  return { ...value, layoutPreset: normalizeCatalogLayout(value.layoutPreset), banners, featuredProducts: selected.size >= 3 ? [...selected.values()] : [] };
 }

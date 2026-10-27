@@ -1,3 +1,4 @@
+import PublicCatalogLayout from "./PublicCatalogLayout";
 import PublicCatalogIdentity from "./PublicCatalogIdentity";
 import PublicCatalogHighlights from "./PublicCatalogHighlights";
 import PublicProductCard from "@/components/public/PublicProductCard";
@@ -32,13 +33,9 @@ export default function TechnologyTemplate({ catalog, products, totalProducts, s
         </div>
       </header>
       <PublicCatalogHighlights catalog={catalog} quantities={quantities} onAdd={onAdd} onSelectCategory={onSelectCategory} />
-      <PublicCategoryFilter categories={categories} selectedId={selectedCategory} variant="tech" onSelect={onSelectCategory} publicId={catalog.publicId} cartCount={cartCount} cartTotal={cartTotal} />
-      <section id="productos" className="mx-auto max-w-7xl scroll-mt-16 px-5 py-8 sm:px-8 sm:py-12">
-        <div className="mb-5 flex items-end justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--catalog-primary,#56e0c0)]">Hardware seleccionado</p><h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--catalog-text,#ffffff)] sm:text-3xl">Explora el catálogo</h2></div><span className="hidden font-mono text-xs text-[var(--catalog-text-muted,#7890a4)] sm:block">TECH / {String(totalProducts).padStart(2, "0")}</span></div>
-        <PublicProductToolbar searchQuery={searchQuery} sortOrder={sortOrder} totalProducts={totalProducts} onSearchChange={onSearchChange} onSortChange={onSortChange} />
+      <PublicCatalogLayout catalog={catalog} categories={<PublicCategoryFilter categories={categories} selectedId={selectedCategory} variant="tech" onSelect={onSelectCategory} publicId={catalog.publicId} cartCount={cartCount} cartTotal={cartTotal} />} heading={<div className="mb-5 flex items-end justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--catalog-primary,#56e0c0)]">Hardware seleccionado</p><h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--catalog-text,#ffffff)] sm:text-3xl">Explora el catálogo</h2></div><span className="hidden font-mono text-xs text-[var(--catalog-text-muted,#7890a4)] sm:block">TECH / {String(totalProducts).padStart(2, "0")}</span></div>} toolbar={<PublicProductToolbar searchQuery={searchQuery} sortOrder={sortOrder} totalProducts={totalProducts} onSearchChange={onSearchChange} onSortChange={onSortChange} />} pagination={<PublicProductPagination page={page} pageCount={pageCount} totalProducts={totalProducts} onPageChange={onPageChange} variant="tech" />}>
         {products.length === 0 ? <p className="border-b border-[var(--catalog-border-subtle,#26394a)] py-16 text-center text-sm text-[var(--catalog-text-muted,#a9bccd)]">{searchQuery ? `No encontramos productos para “${searchQuery}”. Prueba otra búsqueda.` : "Pronto habrá novedades en esta selección."}</p> : <div className="grid grid-cols-2 gap-3 pt-5 sm:gap-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">{products.map((product) => <PublicProductCard key={product.id} catalogPublicId={catalog.publicId} product={product} quantity={quantities[product.id] ?? 0} layout="tech" onAdd={onAdd} />)}</div>}
-        <PublicProductPagination page={page} pageCount={pageCount} totalProducts={totalProducts} onPageChange={onPageChange} variant="tech" />
-      </section>
+      </PublicCatalogLayout>
       <PublicCatalogContact catalog={catalog} />
     </div>
   );

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { themePresetSchema } from "./catalog-theme";
 
+const layoutPresetSchema = z.enum(["sidebar", "sidebar-compact"]).nullable().optional();
+
 const phoneSchema = z.string().trim().max(30).regex(/^\+?[0-9\s().-]+$/).refine(
   (value) => value.replace(/\D/g, "").length >= 7,
   "El teléfono debe incluir al menos 7 dígitos"
@@ -47,6 +49,7 @@ export const createCatalogSchema = z.object({
   mapUrl: httpUrlSchema.optional(),
   template: catalogTemplateSchema.optional(),
   themePreset: themePresetSchema,
+  layoutPreset: layoutPresetSchema,
 });
 
 export const updateCatalogSchema = z.object({
@@ -75,4 +78,5 @@ export const updateCatalogSchema = z.object({
   mapUrl: httpUrlSchema.nullable().optional(),
   template: catalogTemplateSchema.optional(),
   themePreset: themePresetSchema,
+  layoutPreset: layoutPresetSchema,
 });

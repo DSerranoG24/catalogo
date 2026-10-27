@@ -12,6 +12,9 @@ const require = createRequire(import.meta.url), root = process.cwd();
 const { WebSocket } = require('next/dist/compiled/ws');
 const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'catalog-highlights-browser-'));
 const baseline = process.argv.includes('--baseline');
+const layoutSettings = process.argv.includes('--layout-settings');
+const layoutSaves = [];
+
 const id = '11111111-1111-4111-8111-111111111111';
 const catalog = { id, publicId: id, name: 'Tienda local', slug: 'local', template: 'TECH', themePreset: null, active: true, archivedAt: null, logoUrl: null };
 const products = Array.from({length: 48}, (_, i) => ({id:`22222222-2222-4222-8222-${String(i).padStart(12,'0')}`,catalogId:id,name:`Producto ${String(i).padStart(2,'0')}`,slug:`producto-${i}`,price:1000,stock:1,active:true,featured:false,needsCompletion:false,categoryId:null,category:null,images:[],description:null,brand:null,model:null,sku:null,salePrice:null,saleStartsAt:null,saleEndsAt:null}));
@@ -56,6 +59,7 @@ try {
         if(data.featured&&!product.featured&&selected().length>=5)return reply({message:'Solo puedes seleccionar cinco productos destacados.'},409);
         product.featured=data.featured;if(loseFeaturedResponse){loseFeaturedResponse=false;req.socket.destroy();return;}return reply({success:true,result:{count:1}});
       }
+      if(layoutSettings&&url.pathname===`/api/catalogs/${id}`&&req.method==='PUT'){layoutSaves.push(data);Object.assign(catalog,data);return reply({success:true});}
       const bannerBase=`/api/catalogs/${id}/banners`;
       if(url.pathname===bannerBase+'/order'){if(data.ids.length!==banners.length)return reply({message:'Incluye todos los banners del catálogo una sola vez.'},400);banners.sort((a,b)=>data.ids.indexOf(a.id)-data.ids.indexOf(b.id));banners.forEach((b,i)=>b.position=i);return reply({success:true});}
       if(url.pathname.startsWith(bannerBase)){
@@ -78,7 +82,7 @@ try {
   const portFile=path.join(folder,'profile','DevToolsActivePort');await poll(()=>fs.existsSync(portFile));const port=Number(fs.readFileSync(portFile,'utf8').split(/\r?\n/)[0]);
   const target=(await(await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(p=>p.type==='page');assert.ok(target);
   socket=new WebSocket(target.webSocketDebuggerUrl);await once(socket,'open');
-  socket.addEventListener('message',event=>{const m=JSON.parse(event.data);if(m.id){const p=pending.get(m.id);pending.delete(m.id);if(m.error)p?.reject(Error('CDP_FAILED'));else p?.resolve(m.result);}else if(m.method==='Network.responseReceived'&&m.params.type==='Script'&&m.params.response.url.includes('/_next/'))scriptUrls.add(m.params.response.url);else if(m.method==='Runtime.exceptionThrown')errors.push(m.params.exceptionDetails.text);});
+  socket.addEventListener('message',event=>{const m=JSON.parse(event.data);if(m.id){const p=pending.get(m.id);pending.delete(m.id);if(m.error)p?.reject(Error('CDP_FAILED:'+m.error.message));else p?.resolve(m.result);}else if(m.method==='Network.responseReceived'&&m.params.type==='Script'&&m.params.response.url.includes('/_next/'))scriptUrls.add(m.params.response.url);else if(m.method==='Runtime.exceptionThrown')errors.push(m.params.exceptionDetails.text);});
   await command('Runtime.enable');await command('Page.enable');await command('Network.enable');
   await command('Network.setBlockedURLs',{urls:['*accounts.google.com/*','*fonts.googleapis.com/*','*fonts.gstatic.com/*']});
   await command('Network.setCookie',{name:'catalogo_session',value:'synthetic-local-session',url:'http://localhost:4338/',httpOnly:true,sameSite:'Lax'});
@@ -88,7 +92,31 @@ try {
   report.weights.initial=weight();
   stage='settings';assert.equal(await click('Tienda y diseño'),true);await poll(()=>evaluate(`Boolean([...document.querySelectorAll('h3')].find(e=>e.textContent==='Información del negocio'))`));await pause(300);
   report.weights.settings=weight();
-  if(!baseline){
+  if(layoutSettings){
+    await command('Accessibility.enable');
+    for(const width of [320,390,768,1024,1440]){
+      stage='layout-settings:'+width;await command('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width<500});
+      assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'));
+      await evaluate('window.__layoutForm=document.querySelector("form");true');
+      await setInput('form input[required][maxlength="100"]','Layout draft '+width);
+      for(const layout of ['sidebar','sidebar-compact',null]){
+        const selector='input[name="catalog-layout"][value="'+(layout??'')+'"]';
+        const count=layoutSaves.length;await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);assert.equal(layoutSaves.length,count);
+        assert.equal(await evaluate(`document.querySelector('form input[required][maxlength="100"]').value`),'Layout draft '+width);
+        await evaluate('document.querySelector("form button[type=submit]").click()');await poll(()=>layoutSaves.length===count+1);await poll(()=>evaluate('!document.querySelector("form button[type=submit]").disabled'));
+        assert.equal(layoutSaves.at(-1).layoutPreset,layout);assert.equal(layoutSaves.at(-1).name,'Layout draft '+width);assert.equal(layoutSaves.at(-1).themePreset,null);
+        assert.ok(await evaluate('window.__layoutForm===document.querySelector("form")'));
+      }
+      await evaluate(`document.querySelector('input[name="catalog-layout"][value=""]').focus()`);
+      await command('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});await command('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});
+      await poll(()=>evaluate(`document.querySelector('input[name="catalog-layout"][value="sidebar"]').checked`));
+      assert.ok(await evaluate('parseFloat(getComputedStyle(document.activeElement.closest("label")).outlineWidth)>=2'));
+      const {nodes}=await command('Accessibility.getFullAXTree');const radios=nodes.filter(n=>n.role?.value==='radio'&&/Cl|Lateral/.test(n.name?.value??''));assert.ok(radios.length>=3);
+    }
+    report.checks.push('layout selector: 15 saves, explicit null, draft-only selection, native arrows, visible focus, accessibility tree, preserved form/name/theme at five widths');
+    assert.deepEqual(errors,[]);
+  }
+  if(!baseline&&!layoutSettings){
     stage='featured-global-counter';assert.equal(await click('Productos'),true);await countIs(0);
     assert.ok(await evaluate(`document.querySelector('main').textContent.includes('al menos 3 productos activos')`));
     products[0].featured=true;await evaluate(`window.dispatchEvent(new Event('focus'))`);await countIs(1);

@@ -5,6 +5,8 @@ import { once } from "node:events";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
+const apiPort = Number(process.env.PUBLIC_SEO_API_PORT ?? 4317);
+assert.ok([4317, 4347].includes(apiPort), "Use an approved loopback fixture port");
 const counts = new Map();
 const catalog = {
   publicId: "demo", name: "Tienda de prueba SEO", slug: "demo", description: "Productos locales de prueba",
@@ -23,13 +25,13 @@ const api = http.createServer((req, res) => {
   if (id === "temporary") { res.writeHead(503); return res.end("{}"); }
   if (id === "slow") { return; }
   if (id === "invalid") return res.end(JSON.stringify({ catalog: { name: "invalid" } }));
-  res.end(JSON.stringify({ catalog: { ...catalog, publicId: id, logoUrl: id === "unsafe" ? "http://127.0.0.1:4317/private-image" : null } }));
+  res.end(JSON.stringify({ catalog: { ...catalog, publicId: id, logoUrl: id === "unsafe" ? `http://127.0.0.1:${apiPort}/private-image` : null } }));
 });
 let next;
 async function run() {
-  api.listen(4317, "127.0.0.1"); await once(api, "listening");
+  api.listen(apiPort, "127.0.0.1"); await once(api, "listening");
   next = spawn(process.execPath, [require.resolve("next/dist/bin/next"), "start", "--port", "4318", "--hostname", "127.0.0.1"], {
-    env: { ...process.env, NEXT_PUBLIC_CATALOG_API_URL: "http://127.0.0.1:4317/api" }, stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, NEXT_PUBLIC_CATALOG_API_URL: `http://127.0.0.1:${apiPort}/api` }, stdio: ["ignore", "pipe", "pipe"],
   });
   // Keep output drained; error cases deliberately exercise Next's production error boundary.
   next.stdout.resume(); next.stderr.resume();
