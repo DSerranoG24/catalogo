@@ -19,7 +19,7 @@ export default function PublicCatalogContact({ catalog }: { catalog: PublicCatal
   if (!contactLinks.length && !catalog.address && !catalog.businessHours) return null;
 
   return (
-    <section aria-label="Información del negocio" className="border-t border-current/15 px-5 py-7 sm:px-8 sm:py-9">
+    <section id="contacto" aria-label="Información del negocio" className="border-t border-current/15 px-5 py-7 sm:px-8 sm:py-9">
       <div className="mx-auto grid max-w-7xl gap-6 sm:grid-cols-2 lg:grid-cols-3">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wide opacity-[var(--catalog-muted-opacity,0.7)]">Contacto</p>

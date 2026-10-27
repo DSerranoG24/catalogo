@@ -20,6 +20,16 @@ Solo un 404 de la API o un producto ausente produce `notFound()`. Una respuesta 
 
 La metadata se resuelve antes del streaming (`htmlLimitedBots: /.*/`) para que las etiquetas y la decisión de ausencia están disponibles antes de la respuesta. Esto aumenta la espera inicial hasta resolver la API (máximo 8 segundos para la lectura). El layout de producto comprueba ausencia antes del loading del segmento: sin esa barrera el streaming podía devolver 200 para un producto inexistente.
 
+## Categorías y contenido destacado
+
+Los banners y destacados normalizados se renderizan en el HTML inicial del
+catálogo. Las categorías usan enlaces `?category=ID#productos`, validados y
+aplicados en servidor; no requieren JavaScript para mostrar la selección.
+Metadata y contenido siguen compartiendo una lectura de catálogo. Un filtro
+inválido vuelve a Todos y conserva el catálogo disponible. El canonical se
+mantiene por catálogo, sin ampliar sitemap ni prometer indexación separada de
+cada filtro. Véase [contenido público destacado](public-highlights.md).
+
 ## Imagen estable
 
 `/c/[publicId]/og` y `/c/[publicId]/og?product=[slug]` devuelven bytes, nunca una redirección. Cada petición consulta la API pública para comprobar publicación: inexistentes, inactivos, archivados y productos ausentes devuelven 404; fallo de API devuelve 503 y Retry-After 30.

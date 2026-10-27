@@ -1,3 +1,5 @@
+import PublicCatalogIdentity from "./PublicCatalogIdentity";
+import PublicCatalogHighlights from "./PublicCatalogHighlights";
 import PublicProductCard from "@/components/public/PublicProductCard";
 import PublicCategoryFilter from "@/components/public/PublicCategoryFilter";
 import PublicProductPagination from "@/components/public/PublicProductPagination";
@@ -10,7 +12,7 @@ export default function FashionTemplate({ catalog, products, totalProducts, sear
     <div className="min-h-screen bg-[var(--catalog-background,#f7f2ec)] text-[var(--catalog-text,#322c29)]">
       <header className="border-b border-[var(--catalog-border-subtle,#e5d9d0)] bg-[image:var(--catalog-hero-background,radial-gradient(ellipse_at_82%_15%,rgba(205,161,147,0.22),transparent_34%),#f7f2ec)]">
         <div className="mx-auto max-w-7xl px-5 pb-9 pt-5 sm:px-8 sm:pb-14 sm:pt-7">
-          <div className="flex items-center justify-between border-y border-[var(--catalog-border-subtle,#d8c9bf)] py-3 text-[10px] font-semibold uppercase tracking-[0.19em] text-[var(--catalog-text-muted,#766b64)]"><span className="flex items-center gap-2">{catalog.logoUrl && <img src={catalog.logoUrl} alt="" className="size-9 rounded-full bg-[var(--catalog-surface,#ffffff)] object-contain" />}<span>{catalog.name}</span></span><span className="hidden sm:block">Est. · Colección independiente</span></div>
+          <PublicCatalogIdentity catalog={catalog} />
           <div className="grid items-center gap-8 py-10 sm:py-14 lg:grid-cols-[1fr_0.78fr]">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--catalog-primary,#9a554b)]">Vestir también es expresarse</p>
@@ -28,6 +30,7 @@ export default function FashionTemplate({ catalog, products, totalProducts, sear
           <div className="flex items-center justify-between border-t border-[var(--catalog-border-subtle,#d8c9bf)] pt-4 text-[10px] font-semibold uppercase tracking-[0.17em] text-[var(--catalog-text-muted,#8b7b71)]"><span>Nueva temporada</span><span>{String(totalProducts).padStart(2, "0")} piezas</span></div>
         </div>
       </header>
+      <PublicCatalogHighlights catalog={catalog} quantities={quantities} onAdd={onAdd} onSelectCategory={onSelectCategory} />
       <PublicCategoryFilter categories={categories} selectedId={selectedCategory} variant="fashion" onSelect={onSelectCategory} publicId={catalog.publicId} cartCount={cartCount} cartTotal={cartTotal} />
       <section id="productos" className="mx-auto max-w-7xl scroll-mt-16 px-5 py-8 sm:px-8 sm:py-12">
         <div className="mb-5 flex items-end justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--catalog-primary,#9a554b)]">El guardarropa</p><h2 className="mt-2 font-serif text-3xl">La colección</h2></div><p className="hidden text-xs text-[var(--catalog-text-muted,#766b64)] sm:block">Hecho para acompañarte</p></div>

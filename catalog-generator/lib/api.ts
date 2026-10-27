@@ -112,6 +112,16 @@ export type PublicProduct = {
   images: ProductImage[];
 };
 
+export type PublicCatalogBanner = {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  imageUrl: string;
+  linkType: "PRODUCT" | "CATEGORY" | "EXTERNAL";
+  linkValue: string;
+  position: number;
+};
+
 export type PublicCatalog = Pick<
   Catalog,
   | "publicId"
@@ -134,6 +144,8 @@ export type PublicCatalog = Pick<
 > & {
   categories: Category[];
   products: PublicProduct[];
+  featuredProducts: PublicProduct[];
+  banners: PublicCatalogBanner[];
 };
 
 export function rememberPublicCatalogTemplate(publicId: string, template: Catalog["template"]) {

@@ -13,6 +13,7 @@ import { CatalogTemplateId, normalizeCatalogTemplate } from "@/lib/catalogTempla
 import { PublicCatalogTemplateProps } from "@/components/public/PublicCatalogTemplateProps";
 import type { CatalogThemeStyle } from "@/lib/catalog-theme";
 import themeStyles from "./catalog-theme.module.css";
+import { validPublicCategory } from "@/lib/public-category";
 
 const templateComponents: Record<CatalogTemplateId, ComponentType<PublicCatalogTemplateProps>> = {
   TECH: TechnologyTemplate,
@@ -21,15 +22,35 @@ const templateComponents: Record<CatalogTemplateId, ComponentType<PublicCatalogT
   GLAMOUR: GlamourTemplate,
 };
 
-export default function PublicCatalogPage({ publicId, initialCatalog: catalog, themeStyle }: { publicId: string; initialCatalog: PublicCatalog; themeStyle?: CatalogThemeStyle }) {
+export default function PublicCatalogPage({ publicId, initialCatalog: catalog, themeStyle, initialCategory = "" }: { publicId: string; initialCatalog: PublicCatalog; themeStyle?: CatalogThemeStyle; initialCategory?: string }) {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [cartReady, setCartReady] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState(() => validPublicCategory(catalog.categories, initialCategory));
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<ProductSortOrder>("store");
   const deferredSearchQuery = useDeferredValue(searchQuery.trim().toLocaleLowerCase("es"));
   const [page, setPage] = useState(1);
   const cartStorageKey = `catalogo-cart-${publicId}`;
+
+  useEffect(() => {
+    const restore = () => {
+      const values = new URLSearchParams(window.location.search).getAll("category");
+      setSelectedCategory(validPublicCategory(catalog.categories, values.length === 1 ? values[0] : null));
+      setPage(1);
+    };
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, [catalog.categories]);
+
+  function selectCategory(categoryId: string) {
+    const category = validPublicCategory(catalog.categories, categoryId);
+    setSelectedCategory(category); setPage(1);
+    const url = new URL(window.location.href);
+    if (category) url.searchParams.set("category", category); else url.searchParams.delete("category");
+    url.hash = "productos";
+    window.history.pushState(null, "", url);
+    document.getElementById("productos")?.scrollIntoView({ behavior: "auto" });
+  }
 
   useEffect(() => {
     if (!catalog) return;
@@ -124,10 +145,7 @@ export default function PublicCatalogPage({ publicId, initialCatalog: catalog, t
     quantities,
     categories: catalog.categories,
     selectedCategory,
-    onSelectCategory: (categoryId: string) => {
-      setSelectedCategory(categoryId);
-      setPage(1);
-    },
+    onSelectCategory: selectCategory,
     onAdd: (product: PublicProduct) => changeQuantity(product, 1),
     cartCount,
     cartTotal,

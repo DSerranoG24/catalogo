@@ -1,36 +1,12 @@
 import "server-only";
 import { cache } from "react";
 import { notFound } from "next/navigation";
-import type { PublicCatalog, PublicProduct, Category } from "./api";
+import type { PublicCatalog } from "./api";
+import { normalizePublicCatalog, publicRecord } from "./public-catalog-data";
 
 export class CatalogUnavailableError extends Error {
   constructor() { super("El catálogo no está disponible temporalmente. Intenta de nuevo."); }
 }
-const record = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
-const text = (v: unknown): v is string => typeof v === "string";
-const optionalText = (v: unknown) => v === null || text(v);
-const number = (v: unknown) => typeof v === "number" && Number.isFinite(v);
-function category(v: unknown): v is Category {
-  return record(v) && text(v.id) && text(v.name) && text(v.slug) && optionalText(v.imageUrl) && number(v.position);
-}
-function product(v: unknown): v is PublicProduct {
-  return record(v) && [v.id, v.name, v.slug].every(text)
-    && [v.description, v.brand, v.model, v.categoryId, v.saleEndsAt].every(optionalText)
-    && number(v.price) && (v.regularPrice === null || number(v.regularPrice))
-    && (v.discountPercent === null || number(v.discountPercent))
-    && (v.category === null || (record(v.category) && text(v.category.id) && text(v.category.name)))
-    && Array.isArray(v.images) && v.images.every(i => record(i) && text(i.id) && text(i.url) && optionalText(i.alt));
-}
-function catalog(v: unknown): v is PublicCatalog {
-  return record(v) && [v.publicId, v.name, v.slug].every(text)
-    && [v.description, v.logoUrl, v.whatsappPhone, v.whatsappMessage, v.phone, v.address,
-      v.businessHours, v.instagramUrl, v.facebookUrl, v.tiktokUrl, v.email, v.mapUrl].every(optionalText)
-    && ["TECH", "FASHION", "BEAUTY", "GLAMOUR", "EDITORIAL", "GRID", "BOUTIQUE"].includes(String(v.template))
-    && (v.themePreset === undefined || optionalText(v.themePreset))
-    && Array.isArray(v.categories) && v.categories.every(category)
-    && Array.isArray(v.products) && v.products.every(product);
-}
-
 // Request-scoped only: metadata and page share one read; archive/logo changes need no cache purge.
 export const readPublicCatalog = cache(async (publicId: string): Promise<PublicCatalog | null> => {
   if (!publicId || publicId.length > 200) return null;
@@ -44,8 +20,9 @@ export const readPublicCatalog = cache(async (publicId: string): Promise<PublicC
     if (response.status === 404) return null;
     if (!response.ok) throw new CatalogUnavailableError();
     const body: unknown = await response.json();
-    if (!record(body) || !catalog(body.catalog) || body.catalog.publicId !== publicId) throw new CatalogUnavailableError();
-    return body.catalog;
+    const catalog = publicRecord(body) ? normalizePublicCatalog(body.catalog) : null;
+    if (!catalog || catalog.publicId !== publicId) throw new CatalogUnavailableError();
+    return catalog;
   } catch { throw new CatalogUnavailableError(); }
   finally { clearTimeout(timer); }
 });

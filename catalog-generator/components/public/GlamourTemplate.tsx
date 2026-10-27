@@ -1,3 +1,5 @@
+import PublicCatalogIdentity from "./PublicCatalogIdentity";
+import PublicCatalogHighlights from "./PublicCatalogHighlights";
 ﻿import PublicProductCard from "@/components/public/PublicProductCard";
 import PublicCategoryFilter from "@/components/public/PublicCategoryFilter";
 import PublicProductPagination from "@/components/public/PublicProductPagination";
@@ -10,7 +12,7 @@ export default function GlamourTemplate({ catalog, products, totalProducts, sear
     <div className="min-h-screen bg-[var(--catalog-background,#fff4f7)] text-[var(--catalog-text,#45182f)]">
       <header className="overflow-hidden border-b border-[var(--catalog-border-subtle,#efd0dc)] bg-[image:var(--catalog-hero-background,radial-gradient(ellipse_at_12%_20%,rgba(244,192,204,0.45),transparent_34%),radial-gradient(ellipse_at_88%_70%,rgba(223,201,235,0.55),transparent_38%),#fff4f7)]">
         <div className="mx-auto max-w-7xl px-5 pb-9 pt-5 sm:px-8 sm:pb-14 sm:pt-7">
-          <div className="flex items-center justify-between border-y border-[var(--catalog-border-subtle,#e3b8c9)] py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--catalog-text-muted,#7f425b)]"><span className="flex items-center gap-2">{catalog.logoUrl && <img src={catalog.logoUrl} alt="" className="size-9 rounded-full bg-[var(--catalog-surface,#ffffff)] object-contain" />}<span>{catalog.name}</span></span><span className="hidden sm:block">Glamour · Color · Cuidado</span></div>
+          <PublicCatalogIdentity catalog={catalog} />
           <div className="grid items-center gap-8 py-10 sm:py-14 lg:grid-cols-[1fr_0.78fr]">
             <div>
               <span className="inline-flex rounded-full border border-[var(--catalog-border-subtle,#e6c4d0)] bg-[var(--catalog-surface-alpha-70,color-mix(in_oklab,var(--color-white)_70%,transparent))] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--catalog-primary,#8e174d)]">Tu momento de belleza</span>
@@ -29,6 +31,7 @@ export default function GlamourTemplate({ catalog, products, totalProducts, sear
           <div className="flex items-center justify-between border-t border-[var(--catalog-border-subtle,#e3b8c9)] pt-4 text-[10px] font-semibold uppercase tracking-[0.17em] text-[var(--catalog-text-muted,#9c6680)]"><span>Encuentra tus favoritos</span><span>{String(totalProducts).padStart(2, "0")} esenciales</span></div>
         </div>
       </header>
+      <PublicCatalogHighlights catalog={catalog} quantities={quantities} onAdd={onAdd} onSelectCategory={onSelectCategory} />
       <PublicCategoryFilter categories={categories} selectedId={selectedCategory} variant="beauty" onSelect={onSelectCategory} publicId={catalog.publicId} cartCount={cartCount} cartTotal={cartTotal} />
       <section id="productos" className="mx-auto max-w-7xl scroll-mt-16 px-5 py-8 sm:px-8 sm:py-12">
         <div className="mb-5 flex items-end justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--catalog-primary,#c12868)]">La colección</p><h2 className="mt-2 font-serif text-3xl">Favoritos para ti</h2></div><span className="hidden rounded-full bg-[var(--catalog-soft,#f7e8ed)] px-3 py-1.5 text-xs font-semibold text-[var(--catalog-primary,#9b5570)] sm:block">Un ritual para ti</span></div>

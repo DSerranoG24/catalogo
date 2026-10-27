@@ -11,12 +11,14 @@ export default function PublicProductCard({
   quantity,
   layout,
   onAdd,
+  imageSizes = "(max-width: 640px) 48vw, (max-width: 1280px) 30vw, 20vw",
 }: {
   catalogPublicId: string;
   product: PublicProduct;
   quantity: number;
   layout: "editorial" | "grid" | "boutique" | "tech" | "fashion" | "beauty";
   onAdd: (product: PublicProduct) => void;
+  imageSizes?: string;
 }) {
   const image = product.images[0];
   const detailHref = `/c/${encodeURIComponent(catalogPublicId)}/producto/${encodeURIComponent(product.slug)}`;
@@ -28,7 +30,7 @@ export default function PublicProductCard({
     <article data-product-card data-layout={layout} className={styles.card}>
       <Link href={detailHref} className={styles.detailLink} aria-label={`Ver detalles de ${product.name}`}>
         <div data-product-image className={styles.media}>
-          {image ? <Image src={image.url} alt={image.alt || product.name} fill unoptimized sizes="(max-width: 640px) 48vw, (max-width: 1280px) 30vw, 20vw" className={styles.image} /> :
+          {image ? <Image src={image.url} alt={image.alt || product.name} fill unoptimized sizes={imageSizes} className={styles.image} /> :
             <div className={styles.placeholder}><span>{product.name}</span><span>Fotografía por añadir</span></div>}
           {isOnSale && <span className={styles.promotion}>-{product.discountPercent}%</span>}
         </div>

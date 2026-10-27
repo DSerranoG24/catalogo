@@ -2,6 +2,7 @@ import { Category } from "@/lib/api";
 import Link from "next/link";
 import Image from "next/image";
 import { ShoppingCart } from "lucide-react";
+import { publicCategoryHref } from "@/lib/public-category";
 
 export default function PublicCategoryFilter({
   categories,
@@ -48,11 +49,13 @@ export default function PublicCategoryFilter({
       <div className="mx-auto flex max-w-7xl items-center gap-2 px-3 sm:gap-4 sm:px-8">
         <div className="flex min-w-0 flex-1 snap-x gap-1 overflow-x-auto px-2 sm:gap-2">
           {[{ id: "", name: "Todos", imageUrl: null }, ...categories].map((category) => (
-            <button
+            <a
               key={category.id || "all"}
-              type="button"
-              onClick={() => onSelect(category.id)}
-              aria-pressed={selectedId === category.id}
+              href={publicCategoryHref(publicId, category.id)}
+              onClick={event => {
+                if (!event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onSelect(category.id); }
+              }}
+              aria-current={selectedId === category.id ? "true" : undefined}
               className={`flex min-h-11 shrink-0 snap-start items-center gap-2 border px-3 text-xs font-semibold transition sm:px-4 ${selectedId === category.id ? selectedClass : idleClass}`}
             >
               {category.imageUrl && (
@@ -61,7 +64,7 @@ export default function PublicCategoryFilter({
                 </span>
               )}
               <span>{category.name}</span>
-            </button>
+            </a>
           ))}
         </div>
         <Link href={`/c/${encodeURIComponent(publicId)}/carrito`} aria-label={`Carrito de compras, ${cartCount} ${cartCount === 1 ? "producto" : "productos"}`} title="Abrir carrito" className={`flex min-h-10 shrink-0 items-center gap-2 border-l pl-3 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 sm:pl-5 ${variant === "tech" ? "border-[var(--catalog-border-subtle,#34495c)] text-[var(--catalog-text,#e5f2ff)] hover:text-[var(--catalog-primary,#56e0c0)] focus-visible:outline-[var(--catalog-focus,#56e0c0)]" : "border-[var(--catalog-border-subtle,#d8ded6)] text-[var(--catalog-text,#263b31)] hover:text-[var(--catalog-primary,#bd4d36)] focus-visible:outline-[var(--catalog-focus,#315c53)]"}`}>

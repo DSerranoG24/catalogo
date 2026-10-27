@@ -1,3 +1,5 @@
+import PublicCatalogIdentity from "./PublicCatalogIdentity";
+import PublicCatalogHighlights from "./PublicCatalogHighlights";
 import PublicProductCard from "@/components/public/PublicProductCard";
 import PublicCategoryFilter from "@/components/public/PublicCategoryFilter";
 import PublicProductPagination from "@/components/public/PublicProductPagination";
@@ -10,10 +12,7 @@ export default function TechnologyTemplate({ catalog, products, totalProducts, s
     <div className="min-h-screen bg-[var(--catalog-background,#081421)] text-[var(--catalog-text,#e5f2ff)]">
       <header className="relative overflow-hidden border-b border-[var(--catalog-border-subtle,#25384b)] bg-[image:var(--catalog-hero-background,radial-gradient(ellipse_at_78%_40%,rgba(43,180,164,0.19),transparent_38%),linear-gradient(135deg,#0c1d2d,#081421_65%))]">
         <div className="mx-auto max-w-7xl px-5 pb-10 pt-5 sm:px-8 sm:pb-16 sm:pt-7">
-          <div className="flex items-center justify-between border-y border-[var(--catalog-border-subtle-alpha-10,color-mix(in_oklab,var(--color-white)_10%,transparent))] py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--catalog-text-muted,#a9bccd)]">
-            <span className="flex items-center gap-2">{catalog.logoUrl && <img src={catalog.logoUrl} alt="" className="size-9 rounded-lg bg-[var(--catalog-surface,#ffffff)] object-contain" />}<span>{catalog.name}</span></span>
-            <span className="hidden sm:block">Technology · Audio · Gaming</span>
-          </div>
+          <PublicCatalogIdentity catalog={catalog} />
           <div className="grid items-center gap-10 py-10 sm:py-14 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="relative z-10">
               <span className="inline-flex items-center gap-2 rounded-full border border-[var(--catalog-border-subtle-alpha-30,color-mix(in_oklab,#56e0c0_30%,transparent))] bg-[var(--catalog-primary-alpha-10,color-mix(in_oklab,#56e0c0_10%,transparent))] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--catalog-primary,#79f0d0)]"><span className="size-1.5 rounded-full bg-[var(--catalog-primary,#56e0c0)]" /> Lo nuevo en tecnología</span>
@@ -32,6 +31,7 @@ export default function TechnologyTemplate({ catalog, products, totalProducts, s
           </div>
         </div>
       </header>
+      <PublicCatalogHighlights catalog={catalog} quantities={quantities} onAdd={onAdd} onSelectCategory={onSelectCategory} />
       <PublicCategoryFilter categories={categories} selectedId={selectedCategory} variant="tech" onSelect={onSelectCategory} publicId={catalog.publicId} cartCount={cartCount} cartTotal={cartTotal} />
       <section id="productos" className="mx-auto max-w-7xl scroll-mt-16 px-5 py-8 sm:px-8 sm:py-12">
         <div className="mb-5 flex items-end justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--catalog-primary,#56e0c0)]">Hardware seleccionado</p><h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--catalog-text,#ffffff)] sm:text-3xl">Explora el catálogo</h2></div><span className="hidden font-mono text-xs text-[var(--catalog-text-muted,#7890a4)] sm:block">TECH / {String(totalProducts).padStart(2, "0")}</span></div>
