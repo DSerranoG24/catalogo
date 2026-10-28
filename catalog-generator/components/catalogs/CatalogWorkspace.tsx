@@ -1,6 +1,8 @@
 "use client";
 
 import { Button } from "@/components/ui/Button";
+import ProductBulkActions from "@/components/products/ProductBulkActions";
+import { ProductBulkSelection } from "@/lib/product-bulk-selection";
 
 import Link from "next/link";
 import { DestructiveConfirm } from "@/components/ui/Dialog";
@@ -50,6 +52,9 @@ const emptyProduct: ProductFormState = {
 };
 
 export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
+  const selection = useMemo(() => new ProductBulkSelection(catalogId), [catalogId]);
+  const selected = useSyncExternalStore(selection.subscribe, selection.getSnapshot, selection.getSnapshot);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const router = useRouter();
   const [pendingDelete, setPendingDelete] = useState<Product | null>(null);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -79,7 +84,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
   const importFlow = useMemo(() => new ProductImportFlow(catalogId, { read: readProductImport, request: requestImportBatch, refresh: refreshAfterImport }), [catalogId, refreshAfterImport]);
   const importState = useSyncExternalStore(importFlow.subscribe, importFlow.getSnapshot, importFlow.getSnapshot);
   const importActive = importBusy(importState.phase);
-  const workActive = importActive || photoBusy;
+  const workActive = importActive || photoBusy || bulkBusy;
 
   useEffect(() => { importFlow.activate(); return () => importFlow.dispose(); }, [importFlow]);
   useEffect(() => {
@@ -321,6 +326,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
 
   return (
     <main className="mx-auto w-full max-w-7xl px-5 py-8 sm:px-8 sm:py-12">
+      <ProductBulkActions key={catalogId} catalogId={catalogId} categories={categories} items={selected} busy={bulkBusy || importActive || photoBusy || savingProduct} editorDirty={Boolean(editingProduct) || imageFile !== null || JSON.stringify(form) !== JSON.stringify(emptyProduct)} onBusy={setBulkBusy} onExit={() => selection.clear()} onExecuted={() => { selection.clear(); setReloadKey(key => key + 1); }} />
       <div className="mb-6 flex items-center gap-2 text-xs font-medium text-[#7b8780]"><Link href="/dashboard" aria-disabled={workActive} tabIndex={workActive ? -1 : undefined} onClick={event => { if (workActive) event.preventDefault(); }} className="transition hover:text-[#315e4f]">Catálogos</Link><span className="text-[#c2cbc3]">/</span><span className="max-w-48 truncate text-[#35473d]">{catalog.name}</span></div>
       <section className="relative overflow-hidden rounded-3xl border border-[#e2e8e0] bg-white p-6 shadow-[0_18px_54px_-44px_rgba(36,63,47,0.45)] sm:p-8">
         <div className="pointer-events-none absolute -right-16 -top-24 size-64 rounded-full border border-[#eaf0e8]" /><div className="pointer-events-none absolute -right-3 -top-12 size-40 rounded-full border border-[#eaf0e8]" />
@@ -380,6 +386,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
         </fieldset>
 
         <CatalogProductList result={productPage} loading={productsLoading} error={productsError} onRetry={() => setReloadKey(key => key + 1)} categories={categories} query={query} onQueryChange={updateQuery} onEdit={editProduct} onDelete={product => setPendingDelete(product)}
+          selected={selected} selectionBusy={workActive || savingProduct} onSelect={product => { try { selection.toggle(product); } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo seleccionar."); } }} onSelectPage={products => { try { selection.togglePage(products); } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo seleccionar la página."); } }}
           onPublish={publishProduct} photoOpen={photoOpen} photosDisabled={Boolean(catalog.archivedAt) || savingProduct || importState.open || workActive} photoButtonRef={photoButtonRef} onPhotos={() => { if (importState.open) return; setPhotoOpen(true); if (photoOpen) document.getElementById("photo-title")?.focus(); }}
           featured={featured} archived={Boolean(catalog.archivedAt)}
           importButtonRef={importButtonRef} importOpen={importState.open} importDisabled={Boolean(catalog.archivedAt) || savingProduct || importActive || photoOpen} mutationDisabled={workActive || photoOpen || savingProduct || featured.pendingId !== null}

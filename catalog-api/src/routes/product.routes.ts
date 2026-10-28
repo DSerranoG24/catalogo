@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { makeProductBulkRouter } from "./product-bulk.routes";
 import { authenticate } from "../middlewares/auth.middleware";
 import { makeProductListingRouter } from "./product-list.routes";
 import { makeProductListingService } from "../services/product-list.service";
@@ -17,6 +18,7 @@ import {
 
 const router = Router();
 
+router.use("/catalog/:catalogId/bulk", makeProductBulkRouter());
 router.use(authenticate);
 const photos = makePhotoService({ store: photoStore(), secret: getJwtSecret, upload: uploadProductImage, remove: deleteProductImageFile, sign: createProductImageSignedUrl,
   cleanupFailed: () => console.error(JSON.stringify({ event: "photo_cleanup_failed", reason: "STORAGE_REMOVE_FAILED" })) });

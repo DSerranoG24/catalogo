@@ -64,6 +64,7 @@ export type ProductImage = {
 };
 
 export type Product = {
+  updatedAt: string;
   featured: boolean;
   needsCompletion: boolean;
   id: string;

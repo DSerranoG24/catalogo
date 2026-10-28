@@ -12,6 +12,7 @@ import ProductListControls from "./ProductListControls";
 import ProductListPagination from "./ProductListPagination";
 import { getDiscountPercent, getSellerPromotionStatus } from "@/lib/product-pricing";
 import type { useCatalogFeatured } from "@/lib/use-catalog-featured";
+import type { SelectedProduct } from "@/lib/product-bulk-selection";
 
 export default function CatalogProductList({
   result,
@@ -30,6 +31,7 @@ export default function CatalogProductList({
   importButtonRef,
   onPhotos, photoOpen, photosDisabled, photoButtonRef, onPublish,
   featured, archived,
+  selected, selectionBusy, onSelect, onSelectPage,
 }: {
   result: ProductPage;
   categories: Category[];
@@ -52,6 +54,10 @@ export default function CatalogProductList({
   onPublish: (product: Product) => void;
   featured: ReturnType<typeof useCatalogFeatured>;
   archived: boolean;
+  selected: readonly SelectedProduct[];
+  selectionBusy: boolean;
+  onSelect: (product: Product) => void;
+  onSelectPage: (products: Product[]) => void;
 }) {
   const { products, totalProducts, totalFiltered } = result;
   const filtered = productFiltersActive(query);
@@ -67,6 +73,7 @@ export default function CatalogProductList({
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-3"><Button variant="outline" ref={photoButtonRef} type="button" onClick={onPhotos} disabled={photosDisabled} aria-expanded={photoOpen} aria-controls="product-photo-panel" >Cargar varias fotos</Button>{!loading && !error && Number.isSafeInteger(result.needsCompletionCount) && <span className="text-sm tabular-nums">{result.needsCompletionCount} sin completar (total)</span>}</div>
       <ProductListControls query={query} categories={categories} disabled={mutationDisabled} onChange={onQueryChange} />
+      <label className="mt-3 flex min-h-11 items-center gap-2 text-sm text-[#263b31]"><input type="checkbox" disabled={selectionBusy || loading || !!error || !products.length} checked={!!products.length && products.every(product => selected.some(item => item.id === product.id))} ref={element => { if (element) element.indeterminate = products.some(product => selected.some(item => item.id === product.id)) && !products.every(product => selected.some(item => item.id === product.id)); }} onChange={() => onSelectPage(products)} />Seleccionar página actual ({products.length})</label>
       <div className="mt-3 space-y-2 text-sm" aria-live="polite" aria-atomic="true">
         <p data-featured-count>{featured.status ? `${featured.status.selectedCount} de 5 destacados` : "Consultando destacados…"}</p>
         {featured.status && featured.status.validCount < 3 && <p>Los destacados no se mostrarán en el catálogo público hasta tener al menos 3 productos activos seleccionados.</p>}
@@ -88,6 +95,7 @@ export default function CatalogProductList({
                 {product.images[0] ? <Image src={product.images[0].url} alt={product.images[0].alt || product.name} fill unoptimized sizes="(max-width: 640px) 48vw, (max-width: 1280px) 30vw, 20vw" className="object-cover transition duration-300 group-hover:scale-[1.03]" /> : <span className="absolute inset-0 grid place-items-center text-[10px] font-medium text-[#87928b]">Sin imagen</span>}
               </div>
               <div className="flex min-w-0 flex-1 flex-col p-3">
+                <label className="mb-2 flex min-h-11 items-center gap-2 text-xs"><input data-product-selection={product.id} type="checkbox" disabled={selectionBusy || (selected.length === 96 && !selected.some(item => item.id === product.id))} checked={selected.some(item => item.id === product.id)} onChange={() => onSelect(product)} />Seleccionar {product.name}</label>
                 <p className="truncate text-sm font-semibold text-[#202b27]">{product.name}</p>
                 {product.needsCompletion ? <p className="mt-1 text-xs font-semibold text-[var(--brand-coral-text)]">Sin completar · Inactivo</p> : !product.active && <p className="mt-1 text-xs">Inactivo · Sin publicar</p>}
                 <p className="mt-1 truncate text-[10px] text-[#849087]">{product.category?.name || "Sin categoría"} · {product.stock} en stock</p>
