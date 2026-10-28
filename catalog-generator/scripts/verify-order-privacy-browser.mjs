@@ -74,7 +74,30 @@ try {
   await command('Runtime.enable'); await command('Page.enable'); await command('Network.enable');
   await command('Network.setBlockedURLs', { urls: ['*accounts.google.com/*', '*fonts.googleapis.com/*', '*fonts.gstatic.com/*'] });
   await command('Network.setCookie', { name: 'catalogo_session', value: 'synthetic-fixture', url: 'http://localhost:4338/', httpOnly: true, sameSite: 'Lax' });
-  const seed = await command('Page.addScriptToEvaluateOnNewDocument', { source: `if(location.hostname==='localhost')localStorage.setItem('catalogo-session',JSON.stringify({user:{id:'fixture',email:'fixture@example.invalid',name:null}}))` });
+  const seed = await command('Page.addScriptToEvaluateOnNewDocument', { source: `
+    if(location.hostname==='localhost')localStorage.setItem('catalogo-session',JSON.stringify({user:{id:'fixture',email:'fixture@example.invalid',name:null}}));
+    window.__firstAccountBackLink = null;
+    new MutationObserver(() => {
+      const link = document.querySelector('[data-account-back-link]');
+      if (link && !window.__firstAccountBackLink) window.__firstAccountBackLink = link;
+    }).observe(document, { childList: true, subtree: true });
+  ` });
+  stage = 'account-without-javascript';
+  await command('Emulation.setScriptExecutionDisabled', { value: true });
+  await navigate('/dashboard/cuenta');
+  await poll(() => evaluate(`document.readyState==='complete'&&document.querySelectorAll('[data-account-back-link]').length===1`));
+  assert.equal(await evaluate(`document.querySelector('[data-account-back-link]').getAttribute('href')`), '/dashboard');
+  assert.equal(await evaluate(`document.querySelector('[data-account-back-link]').textContent.replace('←','').trim()`), 'Volver a catálogos');
+  assert.equal(await evaluate(`document.querySelectorAll('form').length`), 0);
+  assert.equal(await evaluate(`document.body.textContent.includes('fixture@example.invalid')`), false);
+  await evaluate(`document.querySelector('[data-account-back-link]').focus()`);
+  await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r', unmodifiedText: '\r' });
+  await command('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+  await poll(() => evaluate(`location.pathname==='/dashboard'&&document.readyState==='complete'`));
+  assert.equal(await evaluate(`document.querySelectorAll('[data-account-back-link]').length`), 0);
+  assert.equal(writes.length, 0);
+  checks.push('Single static back link works by keyboard without JavaScript; no form, private identity or mutations before hydration');
+  await command('Emulation.setScriptExecutionDisabled', { value: false });
   stage = 'order-actions'; await navigate(`/dashboard/catalogos/${id}`);
   await poll(() => evaluate(`Boolean([...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Órdenes'))`));
   await click('Órdenes'); await poll(() => evaluate(`document.querySelectorAll('article').length===4`));
@@ -107,6 +130,9 @@ try {
   await click('Confirmar operación irreversible'); await poll(() => evaluate(`document.querySelectorAll('article').length===3`));
   checks.push('Deletion requires exact customer name and ELIMINAR; order removed after successful response');
   stage = 'account-form'; await navigate('/dashboard/cuenta'); await poll(() => evaluate(`Boolean(document.querySelector('input[type=password]'))`));
+  assert.equal(await evaluate(`document.querySelectorAll('[data-account-back-link]').length`), 1);
+  assert.ok(await evaluate(`window.__firstAccountBackLink===document.querySelector('[data-account-back-link]')&&window.__firstAccountBackLink.isConnected`));
+  checks.push('Option B keeps the form on /dashboard/cuenta; one back link survives hydration without remounting');
   for (const width of [320, 390, 1024, 1440]) {
     await command('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
     assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Account form overflow at ' + width);

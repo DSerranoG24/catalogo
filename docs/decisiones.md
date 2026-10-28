@@ -16,6 +16,8 @@ Decisiones vigentes al 25 de octubre de 2026. Cambiarlas requiere revisar sus co
 | Códigos y fechas Excel como texto | Excel puede perder ceros, precisión o significado. No se reconstruyen números ni fórmulas; se rechazan y se explica cómo corregir el archivo. | [Lector](../catalog-generator/docs/product-import-reader.md) |
 | Sin caché persistente pública | Prioriza publicación vigente y revocación por archivado. Cada petición comprueba la API; una caché futura necesitaría invalidación coordinada. | [SEO y caché](../catalog-generator/docs/public-seo.md#imagen-estable) |
 | Migraciones fuera del arranque | Evita competir por aplicar esquema al iniciar instancias. Un responsable autorizado migra antes del despliegue dependiente, con respaldo y verificación. | [Migraciones](migrations.md#orden-del-despliegue) |
+| Deuda local de SWC en Windows (28/10/2026) | Turbopack no compila en esta instalación por ausencia del binario nativo de SWC. Mientras persista, se verifica localmente con `next build --webpack`; esto no acredita el build con Turbopack. Vercel recompila independientemente con `npm run build` (Turbopack según la configuración prevista; no se ha inspeccionado la configuración remota). | [Despliegue](despliegue.md#vercel-y-variables) |
+| No publicar artefactos locales de prueba (28/10/2026) | El `.next` local puede incorporar `NEXT_PUBLIC_CATALOG_API_URL` apuntando a loopback. Nunca publicar artefactos precompilados de esta máquina ni usar `vercel deploy --prebuilt` con salidas derivadas de ese `.next`. Publicar desde Git para que Vercel reconstruya con sus propias variables. | [Variables de despliegue](despliegue.md#vercel-y-variables) |
 
 ## Ciclo de vida del catálogo
 
