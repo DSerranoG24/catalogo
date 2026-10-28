@@ -356,6 +356,7 @@ export default function CatalogWorkspace({ catalogId }: { catalogId: string }) {
             catalogId={catalogId}
             suggestionsDisabled={importActive}
             editing={Boolean(editingProduct)}
+            promotionDraftKey={editingProduct?.id ?? "new"}
             imageFile={imageFile}
             saving={savingProduct}
             onChange={(field, value) => setForm((current) => ({ ...current, [field]: value }))}

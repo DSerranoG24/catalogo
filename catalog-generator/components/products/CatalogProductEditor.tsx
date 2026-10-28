@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import uiStyles from "@/components/ui/ui.module.css";
+import ProductSalePriceInput from "./ProductSalePriceInput";
 
 import { FormEvent, useEffect, useState } from "react";
 import { apiRequest, Category, ProductSuggestion } from "@/lib/api";
@@ -28,6 +29,7 @@ export default function CatalogProductEditor({
   catalogId,
   suggestionsDisabled,
   editing,
+  promotionDraftKey,
   imageFile,
   saving,
   onChange,
@@ -40,6 +42,7 @@ export default function CatalogProductEditor({
   catalogId: string;
   suggestionsDisabled: boolean;
   editing: boolean;
+  promotionDraftKey: string;
   imageFile: File | null;
   saving: boolean;
   onChange: (field: keyof ProductFormState, value: string | boolean) => void;
@@ -160,11 +163,7 @@ export default function CatalogProductEditor({
           </label>
           {value.saleEnabled && (
             <div className="mt-4 space-y-4 border-t border-[#f0d9d4] pt-4">
-              <label className="block text-sm font-medium text-[#37443d]">
-                Precio de oferta
-                <Input required type="number" min="0" max={value.price || undefined} step="1" value={value.salePrice} onChange={(event) => onChange("salePrice", event.target.value)} placeholder="18000" className="mt-2 w-full" />
-                <span className="mt-1.5 block text-xs font-normal text-[#7d6a66]">Debe ser menor al precio normal de ${Number(value.price || 0).toLocaleString("es-CO")}.</span>
-              </label>
+              <ProductSalePriceInput key={promotionDraftKey} basePrice={value.price} salePrice={value.salePrice} saving={saving} onPriceChange={price => onChange("salePrice", price)} />
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm font-medium text-[#37443d]">
                   Válido desde
