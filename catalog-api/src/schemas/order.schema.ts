@@ -1,5 +1,6 @@
 import { OrderStatus } from "@prisma/client";
 import { z } from "zod";
+import { isAcceptedConsentVersion } from "../services/customer-consent";
 
 export const createPublicOrderSchema = z.object({
   idempotencyKey: z.string().min(1).max(100).regex(/^[A-Za-z0-9_-]+$/).optional(),
@@ -8,6 +9,7 @@ export const createPublicOrderSchema = z.object({
   customerEmail: z.string().trim().email().max(254).optional().or(z.literal("")),
   customerAddress: z.string().trim().min(5).max(300),
   consent: z.literal(true),
+  customerConsentVersion: z.string().max(80).refine(isAcceptedConsentVersion, "Versión de consentimiento no admitida").nullable().optional(),
   notes: z.string().trim().max(500).optional(),
   items: z.array(z.object({
     productId: z.string().uuid(),

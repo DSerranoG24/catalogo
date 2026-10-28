@@ -11,7 +11,7 @@ type State = {
   counter: number;
   seller: { name: string; nit: null; phone: null; whatsappPhone: null; address: null; businessHours: null;
     email: null; instagramUrl: null; facebookUrl: null; tiktokUrl: null; quotationTerms: string };
-  order: { id: string; catalogId: string; status: "PENDING" | "CANCELLED"; quotationNumber: number | null;
+  order: { id: string; catalogId: string; status: "PENDING" | "CANCELLED"; anonymizedAt?: Date | null; quotationNumber: number | null;
     quotationToken: string | null; quotationIssuedAt: Date | null; quotationSellerSnapshot: Prisma.JsonValue | null };
 };
 
@@ -150,4 +150,16 @@ test("cancelled orders and mismatched catalog/order pairs do not allocate a numb
   assert.equal(await issueQuotation("other-catalog", orderId, store.database), null);
   assert.equal(store.state.counter, 0);
   assert.equal(store.increments, 0);
+});
+
+test("anonymization prevents new issuance and recovery of an already issued quotation", async () => {
+  const fresh = transactionStore();
+  fresh.state.order.anonymizedAt = new Date();
+  assert.equal(await issueQuotation(publicId, orderId, fresh.database), null);
+  assert.equal(fresh.increments, 0);
+  const issued = transactionStore();
+  await issueQuotation(publicId, orderId, issued.database);
+  issued.state.order.anonymizedAt = new Date();
+  assert.equal(await issueQuotation(publicId, orderId, issued.database), null);
+  assert.equal(issued.increments, 1);
 });

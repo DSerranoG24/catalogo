@@ -1,0 +1,70 @@
+{
+  "date": "2026-10-27",
+  "scope": "local-only",
+  "gitOperations": false,
+  "migrationsApplied": false,
+  "productionAccess": false,
+  "dependenciesAdded": false,
+  "checks": {
+    "apiBuild": { "command": "cd catalog-api; npm.cmd run build", "exitCode": 0 },
+    "apiTests": { "command": "cd catalog-api; npm.cmd test", "passed": 181, "failed": 0, "previousTests": 163, "additionalTests": 18 },
+    "prismaSchema": { "command": "cd catalog-api; .\\node_modules\\.bin\\prisma.cmd validate", "exitCode": 0, "sqlMigrationExecution": false },
+    "frontendLint": { "command": "cd catalog-generator; npm.cmd run lint", "errors": 0, "existingImgWarnings": 4 },
+    "frontendBuild": { "command": "cd catalog-generator; npm.cmd run build", "exitCode": 0, "typescript": "passed", "fixturePublicApi": "http://127.0.0.1:4347/api", "rebuildForDeployment": true },
+    "frontendTests": { "command": "cd catalog-generator; npm.cmd test", "passed": 17, "failed": 0 },
+    "publicSeo": { "command": "cd catalog-generator; $env:PUBLIC_SEO_API_PORT = '4347'; node scripts/verify-public-seo.mjs", "exitCode": 0, "realDatabase": false, "fixture": "loopback", "legalPages": "metadata and four canonical sitemap URLs passed" },
+    "privacyBrowser": {
+      "command": "cd catalog-generator; node scripts/verify-order-privacy-browser.mjs",
+      "exitCode": 0,
+      "browser": "Chromium",
+      "api": "HTTPS loopback fixture",
+      "realDatabase": false,
+      "widths": [320, 390, 1024, 1440],
+      "checks": [
+        "Actions shown only for allowed order states",
+        "Older-order pagination",
+        "Review and typed confirmation before anonymization",
+        "Keyboard activation and refreshed anonymized state",
+        "Exact customer name and typed confirmation before deletion",
+        "Failed reauthentication leaves account form and clears password",
+        "Successful closure clears proxy HttpOnly cookie and local metadata",
+        "Pending-cleanup message without a complete-erasure promise",
+        "Dialog, account form and receipt have no document overflow at four widths, including an unbroken free-text fixture"
+      ],
+      "uncaughtBrowserErrors": 0,
+      "fixtureMutations": 4
+    }
+  },
+  "unitRegressionCoverage": [
+    "Customer fields removed with commercial data and consent evidence preserved",
+    "Terminal statuses only; owner scoping; idempotent first anonymization date",
+    "Explicit review and selective customer-bearing free-text redaction",
+    "Pending-only deletion and exact customer-name confirmation",
+    "Deletion marker rejects recreation with an old key",
+    "Displayed consent version, transition null and unknown-version rejection",
+    "Idempotency does not attribute a version to historical consent",
+    "Anonymization prevents new quotation issuance and capability recovery",
+    "Final PDF repository check observes anonymization during rendering",
+    "Local password reauthentication and Google identity/time rules",
+    "No transaction begins after failed reauthentication",
+    "Unresolved or unreviewed orders block closure",
+    "Repeated closure recovers the existing job",
+    "Persisted cleanup state restored into a fresh worker double",
+    "Failed removal retains paths; retry is idempotent",
+    "Other-prefix and traversal paths rejected",
+    "Completed cycles are reconciled for late upload objects",
+    "Bounded owner-scoped pagination rejects foreign cursors"
+  ],
+  "notVerified": [
+    "Applying or rolling back SQL migrations",
+    "PostgreSQL trigger execution and real concurrent row locks",
+    "Actual process restart backed by PostgreSQL",
+    "Actual Supabase listing, removal and remote-upload crash behavior",
+    "Google sign-in with a real account",
+    "Human screen-reader review",
+    "Safari, Firefox and physical devices",
+    "Legal review and production deployment"
+  ],
+  "scriptsNotAvailable": ["api lint", "api typecheck", "frontend typecheck"],
+  "typecheckNote": "Both builds include TypeScript checks. No tools were installed."
+}

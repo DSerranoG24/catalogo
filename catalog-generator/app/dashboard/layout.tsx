@@ -36,6 +36,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <BrandLogo variant="horizontal" theme="claro" iconSize={36} nameRatio={14 / 36} gapSize={12} />
           </Link>
           <div className="flex min-w-0 items-center gap-4">
+            <Link href="/dashboard/cuenta" className="inline-flex min-h-11 items-center text-sm text-[#263b31] underline">Cuenta</Link>
             <span className="hidden max-w-56 truncate text-sm text-[#68756e] sm:block">{session.user.name || session.user.email}</span>
             {!isCatalogList && <Button variant="secondary" type="button" onClick={signOut} >Cerrar sesión</Button>}
           </div>

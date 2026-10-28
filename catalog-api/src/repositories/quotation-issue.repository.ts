@@ -23,9 +23,9 @@ export async function issueQuotation(publicId: string, orderId: string, database
     const order = await transaction.order.findFirstOrThrow({
       where: { id: orderId, catalog: { publicId } },
       select: { id: true, catalogId: true, status: true, quotationNumber: true,
-        quotationToken: true, quotationIssuedAt: true, quotationSellerSnapshot: true },
+        quotationToken: true, quotationIssuedAt: true, quotationSellerSnapshot: true, anonymizedAt: true },
     });
-    if (order.status === "CANCELLED") return null;
+    if (order.status === "CANCELLED" || order.anonymizedAt) return null;
     if (order.quotationNumber !== null && order.quotationToken !== null && order.quotationIssuedAt !== null && order.quotationSellerSnapshot !== null) {
       quotationSellerSchema.parse(order.quotationSellerSnapshot);
       return { quotationNumber: order.quotationNumber, quotationToken: order.quotationToken, quotationIssuedAt: order.quotationIssuedAt };
@@ -43,7 +43,7 @@ export async function issueQuotation(publicId: string, orderId: string, database
     const quotationSellerSnapshot = quotationSellerSchema.parse(seller);
     const issued = { quotationNumber: seller.quotationCounter, quotationToken: randomBytes(32).toString("hex"), quotationIssuedAt: new Date() };
     const updated = await transaction.order.updateMany({
-      where: { id: order.id, catalogId: order.catalogId, status: { not: "CANCELLED" },
+      where: { id: order.id, catalogId: order.catalogId, anonymizedAt: null, status: { not: "CANCELLED" },
         quotationNumber: null, quotationToken: null, quotationIssuedAt: null },
       data: { ...issued, quotationSellerSnapshot },
     });

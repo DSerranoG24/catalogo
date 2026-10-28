@@ -57,6 +57,9 @@ export function makePublicOrderController(deps = {
     try {
       order = await deps.create(req.params.publicId as string, parsed.data);
     } catch (error) {
+        if (error instanceof Error && error.message === "ORDER_DELETED") {
+          return res.status(409).json({ success: false, message: "Este pedido fue eliminado. Inicia un pedido nuevo para continuar." });
+        }
       if (error instanceof Error && error.message === "CATALOG_NOT_FOUND") {
         return res.status(404).json({ success: false, message: "Catálogo no encontrado" });
       }

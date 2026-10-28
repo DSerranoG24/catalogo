@@ -3,7 +3,7 @@ import { OrderStatus } from "@prisma/client";
 
 function accessFilter(publicId: string, orderId: string, token: string) {
   // Historical quotations remain accessible after catalog archival; cancellation revokes access.
-  return { id: orderId, quotationToken: token, status: { not: OrderStatus.CANCELLED }, catalog: { publicId } };
+  return { id: orderId, quotationToken: token, anonymizedAt: null, status: { not: OrderStatus.CANCELLED }, catalog: { publicId } };
 }
 
 export async function findQuotation(publicId: string, orderId: string, token: string, database = prisma) {

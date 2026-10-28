@@ -2,11 +2,14 @@ import { Response } from "express";
 import { AuthenticatedRequest } from "../types/auth.types";
 import { updateOrderSchema } from "../schemas/order.schema";
 import { getOrdersForCatalog, updateOrderStatus } from "../services/order.service";
+import { z } from "zod";
 
 export async function getCatalogOrdersController(req: AuthenticatedRequest, res: Response) {
+  const cursor = z.string().uuid().optional().safeParse(req.query.cursor);
+  if (!cursor.success) return res.status(400).json({ success: false, message: "Página de pedidos inválida." });
   try {
-    const orders = await getOrdersForCatalog(req.params.catalogId as string, req.user!.id);
-    return res.json({ success: true, orders });
+    const orders = await getOrdersForCatalog(req.params.catalogId as string, req.user!.id, cursor.data);
+    return res.json({ success: true, orders, nextCursor: orders.length === 100 ? orders.at(-1)?.id : null });
   } catch {
     return res.status(500).json({ success: false, message: "No se pudieron obtener las órdenes" });
   }

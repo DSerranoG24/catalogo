@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 
 import { useEffect, useState } from "react";
 import { apiRequest, OrderStatus } from "@/lib/api";
+import OrderPrivacyActions from "./OrderPrivacyActions";
 
 type OrderItem = { productName: string; quantity: number; unitPrice: number; subtotal: number };
 type CustomerOrder = {
@@ -11,8 +12,11 @@ type CustomerOrder = {
   customerName: string;
   customerPhone: string;
   customerEmail: string | null;
-  customerAddress: string;
+  customerAddress: string | null;
   customerConsentAt: string | null;
+  customerConsentVersion: string | null;
+  anonymizedAt: string | null;
+  quotationSellerSnapshot: unknown;
   notes: string | null;
   status: OrderStatus;
   total: number;
@@ -34,12 +38,15 @@ export default function OrdersPanel({ catalogId }: { catalogId: string }) {
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [updatingId, setUpdatingId] = useState("");
+  const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const cursor = cursors.at(-1);
 
   useEffect(() => {
     let active = true;
-    apiRequest<{ orders: CustomerOrder[] }>(`/orders/catalog/${catalogId}`)
+    apiRequest<{ orders: CustomerOrder[]; nextCursor?: string | null }>(`/orders/catalog/${catalogId}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`)
       .then((result) => {
-        if (active) setOrders(result.orders);
+        if (active) { setOrders(result.orders); setNextCursor(result.nextCursor ?? null); }
       })
       .catch((requestError) => {
         if (active) setError(requestError instanceof Error ? requestError.message : "No se pudieron cargar las órdenes.");
@@ -50,7 +57,7 @@ export default function OrdersPanel({ catalogId }: { catalogId: string }) {
     return () => {
       active = false;
     };
-  }, [catalogId, reloadKey]);
+  }, [catalogId, cursor, reloadKey]);
 
   async function changeStatus(order: CustomerOrder, status: OrderStatus) {
     setUpdatingId(order.id);
@@ -97,7 +104,7 @@ export default function OrdersPanel({ catalogId }: { catalogId: string }) {
                   </div>
                   <p className="mt-1 text-xs text-[#68756e]">{new Date(order.createdAt).toLocaleString("es-CO")}</p>
                   <p className="mt-1 text-xs text-[#68756e]">{order.quotationNumber != null ? `COT-${String(order.quotationNumber).padStart(6, "0")}` : "Sin cotización"}</p>
-                  <a href={`tel:${order.customerPhone}`} className="mt-2 inline-block text-sm font-medium text-[var(--brand-emerald)]">{order.customerPhone}</a>
+                  {order.customerPhone && <a href={`tel:${order.customerPhone}`} className="mt-2 inline-block text-sm font-medium text-[var(--brand-emerald)]">{order.customerPhone}</a>}
                   {order.customerEmail && <p className="mt-1 text-xs text-[#68756e]">{order.customerEmail}</p>}
                 </div>
                 <p className="text-lg font-semibold tabular-nums text-[#202b27]">${order.total.toLocaleString("es-CO")}</p>
@@ -107,8 +114,9 @@ export default function OrdersPanel({ catalogId }: { catalogId: string }) {
                 {order.items.map((item, index) => <li key={`${order.id}-${index}`} className="flex justify-between gap-3 text-[#435047]"><span>{item.quantity} × {item.productName}</span><span className="shrink-0 tabular-nums">${item.subtotal.toLocaleString("es-CO")}</span></li>)}
               </ul>
               <p className="mt-3 text-sm leading-5 text-[#435047]">{order.customerAddress}</p>
-              {order.customerConsentAt && <p className="mt-1 text-[11px] text-[#849087]">Consentimiento registrado · {new Date(order.customerConsentAt).toLocaleString("es-CO")}</p>}
+              {order.customerConsentAt && <p className="mt-1 text-[11px] text-[#435047]">Consentimiento registrado · {new Date(order.customerConsentAt).toLocaleString("es-CO")} · {order.customerConsentVersion ?? "Versión no acreditada"}</p>}
               {order.notes && <p className="mt-2 text-xs leading-5 text-[#68756e]">Nota: {order.notes}</p>}
+              <OrderPrivacyActions order={order} onChanged={() => { setLoading(true); setReloadKey(key => key + 1); }} />
               {order.status !== "COMPLETED" && order.status !== "CANCELLED" && (
                 <div className="mt-4 flex flex-wrap gap-2">
                   {order.status === "PENDING" && <Button variant="primary" disabled={updatingId === order.id} onClick={() => void changeStatus(order, "CONFIRMED")} >Confirmar</Button>}
@@ -120,6 +128,11 @@ export default function OrdersPanel({ catalogId }: { catalogId: string }) {
           ))}
         </div>
       )}
+      {(cursors.length > 1 || nextCursor) && <nav aria-label="Páginas de pedidos" className="mt-5 flex flex-wrap items-center gap-3">
+        <Button variant="secondary" disabled={loading || cursors.length === 1} onClick={() => { setError(""); setLoading(true); setCursors(current => current.slice(0, -1)); }}>Más recientes</Button>
+        <span className="text-sm text-[#435047]">Página {cursors.length}</span>
+        <Button variant="secondary" disabled={loading || !nextCursor} onClick={() => { if (nextCursor) { setError(""); setLoading(true); setCursors(current => [...current, nextCursor]); } }}>Más antiguos</Button>
+      </nav>}
     </section>
   );
 }

@@ -2,6 +2,7 @@ import { OrderStatus, Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma";
 import { recoverIdempotentOrder } from "./order-idempotency";
 import { calculatePublicOrder } from "../services/order-calculation";
+import { deletedOrderKeyHash } from "./order-privacy.repository";
 const publicOrderReceipt = {
   id: true,
   status: true,
@@ -18,6 +19,7 @@ export async function createPublicOrder(
     customerEmail?: string;
     customerAddress: string;
     consent: true;
+    customerConsentVersion?: string | null;
     notes?: string;
     idempotencyKey?: string;
     items: { productId: string; quantity: number }[];
@@ -33,6 +35,12 @@ export async function createPublicOrder(
     if (!catalog) throw new Error("CATALOG_NOT_FOUND");
 
     if (idempotencyKey) {
+      // Serialize create/delete on the catalog, including absent order keys.
+      await transaction.$queryRaw`SELECT id FROM catalogs WHERE id = ${catalog.id} FOR UPDATE`;
+      const deleted = await transaction.orderDeletionMarker.findUnique({
+        where: { catalogId_keyHash: { catalogId: catalog.id, keyHash: deletedOrderKeyHash(idempotencyKey) } }, select: { keyHash: true },
+      });
+      if (deleted) throw new Error("ORDER_DELETED");
       const existing = await transaction.order.findUnique({
         where: { catalogId_idempotencyKey: { catalogId: catalog.id, idempotencyKey } },
         select: publicOrderReceipt,
@@ -60,6 +68,7 @@ export async function createPublicOrder(
         customerEmail: data.customerEmail || null,
         customerAddress: data.customerAddress,
         customerConsentAt: new Date(),
+        customerConsentVersion: data.customerConsentVersion ?? null,
         notes: data.notes,
         total,
         items: { create: items },
@@ -78,8 +87,9 @@ export async function createPublicOrder(
   });
 }
 
-export async function findOrdersByCatalog(catalogId: string, userId: string) {
-  return prisma.order.findMany({
+export async function findOrdersByCatalog(catalogId: string, userId: string, cursor?: string, database = prisma) {
+  if (cursor && !await database.order.findFirst({ where: { id: cursor, catalogId, catalog: { userId } }, select: { id: true } })) throw new Error("ORDER_CURSOR_NOT_FOUND");
+  return database.order.findMany({
     where: { catalogId, catalog: { userId } },
     select: {
       id: true,
@@ -88,14 +98,18 @@ export async function findOrdersByCatalog(catalogId: string, userId: string) {
       customerEmail: true,
       customerAddress: true,
       customerConsentAt: true,
+      customerConsentVersion: true,
+      anonymizedAt: true,
       notes: true,
       status: true,
       total: true,
       createdAt: true,
       quotationNumber: true,
+      quotationSellerSnapshot: true,
       items: { select: { productName: true, quantity: true, unitPrice: true, subtotal: true } },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     take: 100,
   });
 }

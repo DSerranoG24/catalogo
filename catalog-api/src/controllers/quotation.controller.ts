@@ -35,7 +35,7 @@ export function createQuotationController(deps = {
       const bytes = await deps.pdf({ number: order.quotationNumber, issuedAt: order.quotationIssuedAt,
         seller, customerName: order.customerName, customerPhone: order.customerPhone,
         customerAddress: order.customerAddress, total: order.total, items: order.items }, logo);
-      // Recheck after potentially slow branding/PDF work, so a concurrent cancellation is observed.
+      // Recheck after rendering: cancellation or anonymization revokes this download.
       if (!await deps.stillAccessible(publicId, orderId, token)) return res.status(404).json({ success: false, message: "Cotización no disponible" });
       return res.type("application/pdf").set("Content-Disposition", `inline; filename="${quotationLabel(order.quotationNumber)}.pdf"`).send(bytes);
     } catch {

@@ -113,7 +113,7 @@ async function proxyRequest(request: NextRequest, context: RouteContext) {
     headers: responseHeaders,
   });
 
-  if (upstream.status === 401) {
+  if (upstream.status === 401 || (method === "POST" && path.join("/") === "auth/close" && upstream.ok)) {
     response.cookies.set(SESSION_COOKIE, "", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

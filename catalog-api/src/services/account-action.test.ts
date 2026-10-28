@@ -10,7 +10,7 @@ import { invalidAction, makeAccountActionRouter, recoveryAccepted } from "../rou
 import type { AuthenticatedRequest } from "../types/auth.types";
 
 function fixture() {
-  const user: User = { id: "owner-a", email: "owner@example.invalid", name: null, passwordHash: "old-hash", googleId: null, emailVerifiedAt: null, sessionVersion: 0, role: "USER", createdAt: new Date(), updatedAt: new Date() };
+  const user: User = { id: "owner-a", email: "owner@example.invalid", name: null, passwordHash: "old-hash", googleId: null, emailVerifiedAt: null, sessionVersion: 0, closedAt: null, role: "USER", createdAt: new Date(), updatedAt: new Date() };
   const tokens: ActionRecord[] = [], sent: AccountMail[] = [], jobs: (() => Promise<void>)[] = [];
   let clock = new Date("2026-10-25T12:00:00Z");
   const store: AccountActionStore = {

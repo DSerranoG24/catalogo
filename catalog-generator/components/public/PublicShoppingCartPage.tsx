@@ -8,6 +8,7 @@ import FloatingWhatsAppButton from "@/components/public/FloatingWhatsAppButton";
 import PublicRouteLoading from "@/components/public/PublicRouteLoading";
 import type { CatalogThemeStyle } from "@/lib/catalog-theme";
 import themeStyles from "./catalog-theme.module.css";
+import { CUSTOMER_CONSENT } from "@/lib/customer-consent";
 
 type OrderReceipt = {
   id: string;
@@ -122,6 +123,7 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
         customerEmail: customerEmail.trim() || undefined,
         customerAddress: customerAddress.trim(),
         consent: true,
+        customerConsentVersion: CUSTOMER_CONSENT.version,
         notes: notes.trim() || undefined,
         items: cartItems.map((product) => ({ productId: product.id, quantity: quantities[product.id] })),
       };
@@ -258,7 +260,7 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
                     <label className="block text-sm font-medium">Correo <span className="font-normal text-[var(--cart-muted)]">(opcional)</span><input type="email" maxLength={254} autoComplete="email" value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} className={controlClass} /></label>
                     <label className="block text-sm font-medium">Dirección de entrega<textarea required minLength={5} maxLength={300} autoComplete="street-address" rows={3} value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} className={areaClass} /></label>
                     <label className="block text-sm font-medium">Nota <span className="font-normal text-[var(--cart-muted)]">(opcional)</span><textarea maxLength={500} rows={2} value={notes} onChange={(event) => setNotes(event.target.value)} className={areaClass} /></label>
-                    <label className="flex items-start gap-2.5 text-xs leading-5 text-[var(--cart-muted)]"><input required type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} className="mt-0.5 size-4 accent-[var(--cart-accent)]" /><span>Autorizo guardar estos datos para gestionar este pedido. Después podré abrir WhatsApp y enviar al vendedor la lista, mi teléfono y mi dirección. <a href="/privacidad" className="underline underline-offset-4">Consultar la política de privacidad</a>.</span></label>
+                    <label className="flex items-start gap-2.5 text-xs leading-5 text-[var(--cart-muted)]"><input required type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} className="mt-0.5 size-4 accent-[var(--cart-accent)]" /><span>{CUSTOMER_CONSENT.text} <a href="/privacidad" className="underline underline-offset-4">Consultar la política de privacidad</a>.</span></label>
                     {error && <p role="alert" className="bg-[var(--catalog-danger-surface,#fff1ec)] px-3 py-2 text-sm text-[var(--catalog-danger,#a5432a)]">{error}</p>}
                     <div className="border-t border-[var(--catalog-border-subtle,#e3e7e0)] pt-4">
                       <p className="flex justify-between text-sm text-[var(--cart-muted)]"><span>Subtotal</span><span className="tabular-nums">${cartTotal.toLocaleString("es-CO")}</span></p>

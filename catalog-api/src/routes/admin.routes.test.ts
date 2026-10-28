@@ -13,7 +13,7 @@ test("admin router checks database roles after JWT authentication; degradation, 
   const { makeRequireAdmin } = await import("../middlewares/admin.middleware.js");
   const { makeAdminRouter } = await import("./admin.routes.js");
   const { generateToken } = await import("../utils/jwt.js");
-  const user: User = { id: "owner-a", email: "owner@example.invalid", name: null, passwordHash: null, googleId: null, emailVerifiedAt: null, sessionVersion: 0, role: "USER", createdAt: new Date(), updatedAt: new Date() };
+  const user: User = { id: "owner-a", email: "owner@example.invalid", name: null, passwordHash: null, googleId: null, emailVerifiedAt: null, sessionVersion: 0, closedAt: null, role: "USER", createdAt: new Date(), updatedAt: new Date() };
   let roleReads = 0, broken = false;
   const auth = makeAuthenticate(async id => id === user.id ? { ...user } : null);
   const authorize = makeRequireAdmin(async id => {

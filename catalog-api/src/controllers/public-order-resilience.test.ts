@@ -25,6 +25,8 @@ function purchaseStore() {
   const database = new Proxy(prisma, {
     get(_target, key) {
       if (key === "$transaction") return async (fn: (tx: Prisma.TransactionClient) => Promise<unknown>) => fn(database);
+      if (key === "$queryRaw") return async () => [{ id: "catalog" }];
+      if (key === "orderDeletionMarker") return { findUnique: async () => null };
       if (key === "catalog") return { findFirst: async () => ({ id: "catalog" }) };
       if (key === "product") return { findMany: async () => [{ id: productId, name: "Producto", price: 1250, salePrice: null, saleStartsAt: null, saleEndsAt: null }] };
       if (key === "order") return {

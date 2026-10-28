@@ -1,4 +1,5 @@
 import { Router } from "express";
+import accountClosureRoutes from "./account-closure.routes";
 import { rateLimit } from "express-rate-limit";
 import { authenticate } from "../middlewares/auth.middleware";
 import { makeAccountActionRouter } from "./account-action.routes";
@@ -13,6 +14,7 @@ import {
 } from "../controllers/auth.controller";
 
 const router = Router();
+router.use(accountClosureRoutes);
 const createAuthLimiter = () => rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,

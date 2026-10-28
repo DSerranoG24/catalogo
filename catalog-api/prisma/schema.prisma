@@ -37,6 +37,7 @@ model User {
   googleId     String?  @unique
   emailVerifiedAt DateTime?
   sessionVersion Int @default(0)
+  closedAt DateTime?
   role UserRole @default(USER)
   name         String?
   createdAt    DateTime @default(now())
@@ -44,6 +45,7 @@ model User {
 
   catalogs Catalog[]
   accountActionTokens AccountActionToken[]
+  closureJob AccountClosureJob?
 
   @@index([createdAt])
 
@@ -108,6 +110,7 @@ model Catalog {
   products   Product[]
   orders     Order[]
     banners    CatalogBanner[]
+  deletionMarkers OrderDeletionMarker[]
 
   @@unique([userId, slug])
   @@index([userId])
@@ -231,6 +234,8 @@ model Order {
   customerAddress   String?
   notes             String?
   customerConsentAt DateTime?
+  customerConsentVersion String?
+  anonymizedAt      DateTime?
   status            OrderStatus @default(PENDING)
   firstConfirmedAt  DateTime?
   total             Int
@@ -263,4 +268,27 @@ model OrderItem {
   @@index([orderId])
   @@index([productId])
   @@map("order_items")
+}
+
+model OrderDeletionMarker {
+  catalogId String
+  keyHash String
+  catalog Catalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  @@id([catalogId, keyHash])
+  @@map("order_deletion_markers")
+}
+
+model AccountClosureJob {
+  id String @id @default(uuid())
+  userId String @unique
+  phase String @default("PENDING")
+  attempts Int @default(0)
+  catalogIds String[]
+  pendingPaths String[]
+  scanQueue String[]
+  scanOffset Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  @@map("account_closure_jobs")
 }

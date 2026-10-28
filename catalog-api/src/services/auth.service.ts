@@ -13,7 +13,8 @@ import { accountActionService } from "./account-action.service";
 
 const googleClient = new OAuth2Client();
 
-function createSession(user: { id: string; email: string; name: string | null; sessionVersion: number }) {
+function createSession(user: { id: string; email: string; name: string | null; sessionVersion: number; closedAt?: Date | null }) {
+  if (user.closedAt) throw new Error("INVALID_CREDENTIALS");
   const claims = { userId: user.id, email: user.email, sessionVersion: user.sessionVersion };
   return {
     user: { id: user.id, email: user.email, name: user.name },

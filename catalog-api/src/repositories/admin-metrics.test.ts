@@ -113,7 +113,7 @@ test("metrics HTTP requires an administrator, denies query selectors, returns on
   const { makeAuthenticate } = await import("../middlewares/auth.middleware.js");
   const { makeRequireAdmin } = await import("../middlewares/admin.middleware.js");
   const { generateToken } = await import("../utils/jwt.js");
-  const user = { id: "owner", email: "private@example.invalid", name: null, passwordHash: null, googleId: null, sessionVersion: 0, role: "USER" as "USER" | "ADMIN", emailVerifiedAt: null, createdAt: new Date(), updatedAt: new Date() };
+  const user = { id: "owner", email: "private@example.invalid", name: null, passwordHash: null, googleId: null, sessionVersion: 0, closedAt: null, role: "USER" as "USER" | "ADMIN", emailVerifiedAt: null, createdAt: new Date(), updatedAt: new Date() };
   let reads = 0, fail = false;
   const app = express(); app.use("/api/admin", makeAdminRouter(makeAuthenticate(async () => user), makeRequireAdmin(async () => ({ role: user.role })), async () => { reads++; if (fail) throw new Error("private-database-canary"); return presentMetrics(counts(), asOf); }));
   const server = app.listen(0, "127.0.0.1"); await once(server, "listening"); const address = server.address(); assert.ok(address && typeof address !== "string");

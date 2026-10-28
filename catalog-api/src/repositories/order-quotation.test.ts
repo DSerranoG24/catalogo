@@ -13,6 +13,8 @@ function databaseFixture(models: Record<string, Record<string, unknown>>) {
   const database = new Proxy(prisma, {
     get(_target, key) {
       if (key === "$transaction") return async (callback: (tx: Prisma.TransactionClient) => Promise<unknown>) => callback(database);
+      if (key === "$queryRaw") return async () => [{ id: "catalog" }];
+      if (key === "orderDeletionMarker") return { findUnique: async () => null };
       if (typeof key === "string" && key in models) return models[key];
       throw new Error("Unexpected database operation in test");
     },
@@ -60,7 +62,7 @@ test("idempotent retry returns the persisted order without allocating a quotatio
 
 test("quotation queries require matching catalog, order, token and non-cancelled status", async () => {
   const read = mock.fn(async (args: Prisma.OrderFindFirstArgs) => {
-    assert.deepEqual(args.where, { id: "order", quotationToken: "token", status: { not: "CANCELLED" }, catalog: { publicId: "catalog" } });
+    assert.deepEqual(args.where, { id: "order", quotationToken: "token", anonymizedAt: null, status: { not: "CANCELLED" }, catalog: { publicId: "catalog" } });
     return null;
   });
   const database = databaseFixture({ order: { findFirst: read } });

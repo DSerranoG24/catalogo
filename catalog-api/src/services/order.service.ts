@@ -8,8 +8,8 @@ import {
 
 export { createPublicOrder };
 
-export async function getOrdersForCatalog(catalogId: string, userId: string) {
-  return findOrdersByCatalog(catalogId, userId);
+export async function getOrdersForCatalog(catalogId: string, userId: string, cursor?: string) {
+  return findOrdersByCatalog(catalogId, userId, cursor);
 }
 
 const allowedTransitions: Record<OrderStatus, OrderStatus[]> = {

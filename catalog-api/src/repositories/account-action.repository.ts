@@ -10,7 +10,7 @@ return {
     await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(19387261)`;
     await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
     const user = await tx.user.findUnique({ where: { id: userId } });
-    if (!user) return null;
+    if (!user || user.closedAt) return null;
     const recent = await tx.accountActionToken.findMany({ where: { userId, purpose, createdAt: { gt: new Date(now.getTime() - 3_600_000) } } });
     const active = await tx.accountActionToken.count({ where: { userId, purpose, consumedAt: null, expiresAt: { gt: now } } });
     if (!canIssueAction(user, purpose, recent, active, now)) return null;
@@ -29,7 +29,7 @@ return {
     await tx.$queryRaw`SELECT id FROM users WHERE id = ${initial.userId} FOR UPDATE`;
     const token = await tx.accountActionToken.findUnique({ where: { tokenHash } });
     const user = await tx.user.findUnique({ where: { id: initial.userId } });
-    if (!token || !user || !actionTokenValid(token, user, purpose, now) || (purpose === "RESET_PASSWORD" && !passwordHash)) return false;
+    if (!token || !user || user.closedAt || !actionTokenValid(token, user, purpose, now) || (purpose === "RESET_PASSWORD" && !passwordHash)) return false;
     const claimed = await tx.accountActionToken.updateMany({ where: { id: token.id, consumedAt: null, expiresAt: { gt: now } }, data: { consumedAt: now } });
     if (claimed.count !== 1) return false;
     await tx.user.update({ where: { id: user.id }, data: purpose === "VERIFY_EMAIL" ? { emailVerifiedAt: user.emailVerifiedAt ?? now } : {

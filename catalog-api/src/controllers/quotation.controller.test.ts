@@ -4,6 +4,9 @@ import test from "node:test";
 import express from "express";
 import { createQuotationController } from "./quotation.controller";
 import { generateQuotationPdf } from "../services/quotation-pdf";
+import { findQuotation, quotationStillAccessible } from "../repositories/quotation.repository";
+import { prisma } from "../config/prisma";
+import { Prisma } from "@prisma/client";
 
 const publicId = "11111111-1111-4111-8111-111111111111";
 const orderId = "22222222-2222-4222-8222-222222222222";
@@ -57,4 +60,29 @@ test("PDF endpoint enforces capability, safe headers and cancellation recheck", 
     assert.equal((await fetch(`${url}?token=${token}`)).status, 404);
     assert.equal((await fetch(`${url}?token=${token}`)).status, 404);
   } finally { await new Promise<void>((resolve, reject) => server.close(e => e ? reject(e) : resolve())); }
+});
+
+test("anonymization during PDF rendering is rejected by the final repository access check", async () => {
+  let anonymized = false;
+  const database = new Proxy(prisma, { get(_target, key) {
+    if (key === "order") return { findFirst: async (args: Prisma.OrderFindFirstArgs) => {
+      assert.equal(args.where?.anonymizedAt, null);
+      return anonymized ? null : order;
+    } };
+    throw new Error("Unexpected persistence call");
+  } });
+  const app = express();
+  app.get("/:publicId/:orderId", createQuotationController({
+    find: (catalog, id, key) => findQuotation(catalog, id, key, database),
+    stillAccessible: (catalog, id, key) => quotationStillAccessible(catalog, id, key, database),
+    logo: async () => undefined,
+    pdf: async data => { const bytes = await generateQuotationPdf(data); anonymized = true; return bytes; },
+  }));
+  const server = app.listen(0, "127.0.0.1"); await once(server, "listening");
+  const address = server.address(); assert.ok(address && typeof address !== "string");
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/${publicId}/${orderId}?token=${token}`);
+    assert.equal(response.status, 404);
+    assert.ok(!(response.headers.get("content-type") ?? "").includes("application/pdf"));
+  } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 });

@@ -32,7 +32,7 @@ return async function authenticate(
 
     const user = await lookup(payload.userId);
 
-    if (!user || user.sessionVersion !== payload.sessionVersion) {
+    if (!user || user.closedAt || user.sessionVersion !== payload.sessionVersion) {
       return res.status(401).json({
         success: false,
         message: "Sesión no válida. Inicia sesión de nuevo.",
