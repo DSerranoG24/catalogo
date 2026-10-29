@@ -28,6 +28,7 @@ function fixture(count = 3) {
       assert.ok(locked); return rows.map(row => ({ id: row.id }));
     };
     if (key === "category") return { findFirst: async (args: Prisma.CategoryFindFirstArgs) => { assert.ok(active && locked); assert.equal(args.where?.catalogId, catalogId); return null; } };
+    if (key === "productImage") return { findMany: async () => { assert.ok(active && locked); return []; } };
     if (key === "product") return {
       findMany: async (args: Prisma.ProductFindManyArgs) => {
         assert.ok(active && locked, "Reading current prices/versions must occur inside the locked transaction");

@@ -15,6 +15,7 @@ function fixture() {
         assert.deepEqual(values, ["catalog", "owner"]);
         locked = true; return [{ id: "catalog", archivedAt: null }];
       };
+      if (key === "productImage") return { findMany: async () => { assert.ok(locked); return []; } };
       if (key === "product" || key === "category") return {
         findFirst: async (args: { where: { id: string; catalog: { userId: string } } }) => {
           assert.equal(args.where.catalog.userId, "owner"); return { catalogId: "catalog" };

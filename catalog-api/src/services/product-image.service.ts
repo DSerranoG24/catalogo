@@ -8,7 +8,6 @@ import {
 import {
   uploadProductImage,
   createProductImageSignedUrl,
-  deleteProductImageFile,
 } from "./storage.service";
 
 import { findProductById } from "../repositories/product.repository";
@@ -80,13 +79,5 @@ export async function deleteProductImageService(
   id: string,
   userId: string
 ) {
-  const image = await findProductImageById(id, userId);
-
-  if (!image) {
-    return { count: 0 };
-  }
-
-  await deleteProductImageFile(image.url);
-
   return deleteProductImage(id, userId);
 }

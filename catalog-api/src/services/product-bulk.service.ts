@@ -5,6 +5,7 @@ import { prisma } from "../config/prisma";
 import { lockCatalogWrites } from "../repositories/catalog-write-lock";
 import { bulkPreviewSchema, type BulkRequest } from "../schemas/product-bulk.schema";
 import { validateProductPromotion } from "./product-pricing";
+import { enqueueDeletedProductImages } from "../repositories/product-image-cleanup.repository";
 
 const planSchema = z.object({ purpose: z.literal("PRODUCT_BULK_V1"), catalogId: z.string().uuid(), userId: z.string().max(100), expires: z.number(), categoryVersion: z.string().nullable(), request: bulkPreviewSchema }).strict();
 type Plan = z.infer<typeof planSchema>;
@@ -93,6 +94,7 @@ export function makeProductBulkService(database = prisma) {
         await tx.$queryRaw(Prisma.sql`SELECT id FROM products WHERE "catalogId" = ${catalogId} AND id IN (${Prisma.join(plan.request.items.map(item => item.id))}) ORDER BY id FOR UPDATE`);
         const result = await inspect(tx, catalogId, userId, plan.request, plan.categoryVersion);
         if (result.issues.length) throw new BulkProductError(result.issues);
+        if (destructive) await enqueueDeletedProductImages(tx, catalogId, result.changes.filter(change => !change.skipped).map(change => change.id));
         let changed = 0;
         for (const change of result.changes) {
           if (change.skipped) continue;
@@ -105,7 +107,7 @@ export function makeProductBulkService(database = prisma) {
           changed++;
         }
         return { totalSelected: plan.request.items.length, changed, skipped: result.changes.length - changed,
-          storageWarning: destructive ? "Se eliminaron los registros. Esta operación no elimina archivos de imágenes de Storage; si existen, permanecen allí y su limpieza queda pendiente." : null };
+          storageWarning: destructive ? "Se eliminaron los registros y se encoló la limpieza de sus archivos. Si Storage falla, se reintentará automáticamente." : null };
       });
     },
   };

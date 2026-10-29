@@ -292,3 +292,18 @@ model AccountClosureJob {
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
   @@map("account_closure_jobs")
 }
+
+model ProductImageCleanupTask {
+  id String @id @default(uuid())
+  path String
+  bucket String @default("product-images")
+  catalogId String
+  state String @default("PENDING")
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([bucket, path])
+  @@index([state, nextAttemptAt])
+  @@map("product_image_cleanup_tasks")
+}

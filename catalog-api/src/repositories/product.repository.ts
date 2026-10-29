@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma";
 import { lockCatalogWrites, lockHighlightWrites } from "./catalog-write-lock";
+import { enqueueDeletedProductImages } from "./product-image-cleanup.repository";
 
 export async function createProduct(data: {
   catalogId: string;
@@ -117,6 +118,7 @@ export async function deleteProduct(
     const current = await tx.product.findFirst({ where: { id, catalog: { userId } }, select: { catalogId: true } });
     if (!current) return { count: 0 };
     await lockCatalogWrites(tx, current.catalogId, userId);
+    await enqueueDeletedProductImages(tx, current.catalogId, [id]);
     return tx.product.deleteMany({
       where: { id, catalog: { userId } },
     });

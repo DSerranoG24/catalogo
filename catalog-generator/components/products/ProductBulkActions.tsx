@@ -96,7 +96,7 @@ export default function ProductBulkActions({ catalogId, categories, items, busy,
           <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={removePromotion} onChange={e => { setRemovePromotion(e.target.checked); invalidate(); }} />Quitar la oferta y sus fechas de todos</label>
           {!removePromotion && <><label className="block">Precio de oferta para todos<Input type="number" min="0" step="1" value={salePrice} onChange={e => { setSalePrice(e.target.value); invalidate(); }} /></label><label className="block">Válido desde<Input type="datetime-local" value={start} onChange={e => { setStart(e.target.value); invalidate(); }} /></label><label className="block">Válido hasta<Input type="datetime-local" value={end} onChange={e => { setEnd(e.target.value); invalidate(); }} /></label></>}
         </>}
-        {destructive && <p>Irreversible: se eliminan productos, reseñas e imágenes registradas, pero sus archivos permanecen en Storage. Los pedidos conservan los nombres, cantidades y precios históricos. Descartar solo elimina provisionales inactivos.</p>}
+        {destructive && <p>Irreversible: se eliminan productos, reseñas e imágenes registradas y se encola la limpieza de sus archivos. Los pedidos conservan los nombres, cantidades y precios históricos. Descartar solo elimina provisionales inactivos.</p>}
         <Button type="button" disabled={editorDirty} onClick={() => void review()}>{action === "category" ? "Aplicar categoría a" : "Revisar"} {items.length} seleccionados</Button>
       </fieldset>
       {current && <div data-bulk-preview className="space-y-3">

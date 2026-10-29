@@ -1,4 +1,6 @@
 import { prisma } from "../config/prisma";
+import { lockCatalogWrites } from "./catalog-write-lock";
+import { enqueueProductImages } from "./product-image-cleanup.repository";
 
 export async function createProductImage(data: {
   productId: string;
@@ -40,16 +42,17 @@ export async function findProductImageById(
 
 export async function deleteProductImage(
   id: string,
-  userId: string
+  userId: string,
+  database = prisma
 ) {
-  return prisma.productImage.deleteMany({
-    where: {
-      id,
-      product: {
-        catalog: {
-          userId,
-        },
-      },
-    },
+  return database.$transaction(async tx => {
+    const image = await tx.productImage.findFirst({ where: { id, product: { catalog: { userId } } },
+      include: { product: { select: { catalogId: true } } } });
+    if (!image) return { count: 0 };
+    await lockCatalogWrites(tx, image.product.catalogId, userId);
+    const current = await tx.productImage.findFirst({ where: { id, product: { catalog: { userId } } } });
+    if (!current) return { count: 0 };
+    await enqueueProductImages(tx, image.product.catalogId, [current]);
+    return tx.productImage.deleteMany({ where: { id, product: { catalog: { userId } } } });
   });
 }
