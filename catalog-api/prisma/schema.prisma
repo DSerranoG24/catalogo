@@ -44,12 +44,47 @@ model User {
   updatedAt    DateTime @updatedAt
 
   catalogs Catalog[]
+  inventoryItems InventoryItem[]
   accountActionTokens AccountActionToken[]
   closureJob AccountClosureJob?
 
   @@index([createdAt])
 
   @@map("users")
+}
+
+model InventoryItem {
+  id String @id @default(uuid())
+  userId String
+  name String
+  sku String
+  stock Int @default(0)
+  minimumStock Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movements InventoryMovement[]
+
+  @@unique([userId, sku])
+  @@index([userId, createdAt])
+  @@map("inventory_items")
+}
+
+model InventoryMovement {
+  id String @id @default(uuid())
+  itemId String
+  key String
+  type String
+  quantity Int
+  previousStock Int
+  resultingStock Int
+  reason String
+  createdAt DateTime @default(now())
+  item InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, key])
+  @@index([itemId, createdAt])
+  @@map("inventory_movements")
 }
 
 model AccountActionToken {
