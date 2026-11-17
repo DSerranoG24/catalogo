@@ -30,11 +30,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen">
       {session && <header className="border-b border-[#dce4dc] bg-white/90">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-8">
           <Link href="/dashboard" className="inline-flex items-center gap-3">
             <BrandLogo variant="horizontal" theme="claro" iconSize={36} nameRatio={14 / 36} gapSize={12} />
           </Link>
-          <div className="flex min-w-0 items-center gap-4">
+          <div className="flex min-w-0 flex-wrap items-center gap-4">
+            <Link href="/dashboard/inventario" aria-current={pathname.startsWith("/dashboard/inventario") ? "page" : undefined} className="inline-flex min-h-11 items-center text-sm text-[#263b31] underline">Inventario</Link>
             <Link href={ACCOUNT_NAVIGATION.path} className="inline-flex min-h-11 items-center text-sm text-[#263b31] underline">Cuenta</Link>
             <span className="hidden max-w-56 truncate text-sm text-[#68756e] sm:block">{session.user.name || session.user.email}</span>
             {!isCatalogList && <Button variant="secondary" type="button" onClick={signOut} >Cerrar sesión</Button>}
