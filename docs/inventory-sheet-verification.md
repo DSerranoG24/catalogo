@@ -1,5 +1,7 @@
 # Inventario ampliado: implementación y verificación local
 
+**Actualización de alcance:** la nueva [hoja de cálculo libre con Univer](inventory-workbook.md) ocupa `/dashboard/inventario/hoja`. Este informe conserva la trazabilidad de la herramienta estructurada, trasladada a `/dashboard/inventario/lotes`. La última verificación general tiene 27 etapas E2E y 27 migraciones; sus detalles están en el informe de la hoja libre.
+
 Fecha de cierre: 18 de noviembre de 2026. Alcance: Inventario tradicional, ficha comercial, hoja editable y lotes XLSX/CSV. Ventas permanece sin implementar. Sin despliegues ni acceso a producción.
 
 ## Estado y trazabilidad
@@ -139,3 +141,24 @@ La verificación acredita este entorno local, no producción, Excel instalado en
 Pendientes de producto: retención/purga tras cierre y persistencia de reintentos del formulario manual. No afectan la idempotencia persistida de los lotes.
 
 Siguiente tarea tras revisar estos resultados: comenzar la fase de modelo/transacciones de Ventas según `sales-contract.md`, reutilizando `ItemCommercialTerms`, los bloqueos por artículo y el ledger. Ventas deberá añadir sus referencias/orígenes y movimientos compensatorios mediante una migración nueva, congelar snapshots al confirmar y aplicar recibos persistidos propios. No reutilizar un lote de importación como venta ni conectar automáticamente catálogo/WhatsApp.
+
+## Ajuste de experiencia: escribir primero y guardar bajo demanda
+
+El usuario señaló que la pantalla parecía una herramienta de importar/exportar, en vez de una hoja propia. La causa era la tabla inicialmente sin filas y la ubicación de las herramientas de archivo antes del editor.
+
+Se ajustó únicamente el frontend y su verificación:
+
+- Acceso destacado `Editar en hoja de cálculo` desde Inventario.
+- Cinco filas vacías editables desde que se abre, sin importar archivos ni pulsar antes Agregar fila. Las nuevas filas totalmente vacías se omiten al preparar el primer guardado; no se descartan filas parcialmente completas o ya persistidas.
+- Barra principal con `Agregar fila`, `Cargar productos existentes` y `Guardar cambios`. La hoja y sus columnas están antes de las herramientas opcionales de importación/recuperación.
+- Celdas editadas en memoria local; sin escrituras de inventario por pulsación ni consultas periódicas. Solo Guardar cambios envía el contenido para validación/preview; Confirmar guardado realiza la aplicación atómica ya aprobada. Se mantiene la confirmación explícita y el ledger.
+- Después de validar, el foco pasa a la revisión, con resumen de altas, modificaciones, ajustes y errores. Es posible añadir filas a un borrador editable y volver a validar antes de aplicar.
+- Cabeceras legibles, opciones de copia/configuración plegables e importación/exportación secundarias. En móvil se mantiene la edición ampliada por fila.
+
+Regresión E2E real: **23 etapas aprobadas** con las 26 migraciones, PostgreSQL, backend, frontend y autenticación reales. Se observan las solicitudes reales mediante CDP, sin sustituir fetch ni simular el API: escribir dos productos no envía ninguna mutación de inventario; Guardar cambios prepara exactamente esas dos filas, omitiendo tres vacías, y Confirmar guardado las crea. Un escenario nuevo carga productos existentes, modifica un nombre localmente y verifica que la base conserva el nombre anterior hasta confirmar. No se generan movimientos por editar solo el nombre.
+
+Evidencia de esta pasada: esquema `inventory_e2e_0b3e207787062ce5`; resumen `C:/Users/danie/AppData/Local/Temp/vitrinaya-inventory-e2e-denOpb/inventory-e2e-results.json`. Se generaron e inspeccionaron capturas iniciales `inventory-direct-empty-1280.png` e `inventory-direct-empty-320.png`, además de las capturas de la hoja con datos y la pantalla tradicional. El ensayo mantiene el rate limiting y separa las fases largas con reinicios locales del backend, preservando base y autenticación.
+
+Comprobaciones repetidas: `npm.cmd test` en ambos proyectos (218 pruebas de API y todos los grupos de frontend aprobados), `npm.cmd exec -- tsc --noEmit` en ambos, `npm.cmd run build` en ambos, `npm.cmd run lint` en frontend y `npm.cmd run test:inventory-e2e` con la URL local por stdin. Lint sin errores y los mismos cuatro avisos ajenos a Inventario. No se añadieron dependencias ni migraciones, no se cambió el backend ni la política de existencias, y PostgreSQL temporal se detuvo al finalizar conservando los datos sintéticos.
+
+Archivos de este ajuste: `catalog-generator/components/inventory/InventorySheet.tsx`, `catalog-generator/app/dashboard/inventario/page.tsx`, `catalog-generator/scripts/inventory-sheet-e2e.mjs`, `catalog-generator/scripts/verify-inventory-e2e.mjs`, `docs/inventory.md` y este informe. No se hicieron commit, push, despliegues ni cambios en producción.

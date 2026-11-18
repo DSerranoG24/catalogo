@@ -1,2 +1,2 @@
-import InventorySheet from "@/components/inventory/InventorySheet";
-export default function InventorySheetPage() { return <InventorySheet />; }
+import FreeWorkbookLoader from "@/components/inventory/FreeWorkbookLoader";
+export default function InventorySheetPage() { return <FreeWorkbookLoader />; }

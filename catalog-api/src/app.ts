@@ -7,6 +7,7 @@ import meRoutes from "./routes/me.routes";
 import adminRoutes from "./routes/admin.routes";
 import inventoryRoutes from "./routes/inventory.routes";
 import { makeInventoryBatchRouter } from "./routes/inventory-batch.routes";
+import { makeInventoryWorkbookRouter } from "./routes/inventory-workbook.routes";
 import catalogRoutes from "./routes/catalog.routes";
 import categoryRoutes from "./routes/category.routes";
 import productRoutes from "./routes/product.routes";
@@ -49,6 +50,7 @@ app.use(
 );
 
 app.use("/api", apiLimiter);
+app.use("/api/inventory", makeInventoryWorkbookRouter());
 app.use("/api/inventory", makeInventoryBatchRouter());
 app.use("/api/products/catalog/:catalogId/import", makeProductImportRouter());
 app.use(express.json({ limit: "32kb" }));

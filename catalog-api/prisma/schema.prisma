@@ -46,6 +46,7 @@ model User {
   catalogs Catalog[]
   inventoryItems InventoryItem[]
   inventoryBatches InventoryBatch[]
+  inventoryWorkbook InventoryWorkbook?
   inventoryActions InventoryMovement[] @relation("InventoryActor")
   accountActionTokens AccountActionToken[]
   closureJob AccountClosureJob?
@@ -53,6 +54,27 @@ model User {
   @@index([createdAt])
 
   @@map("users")
+}
+
+model InventoryWorkbook {
+  userId String @id
+  snapshot String @db.Text
+  version Int @default(1)
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  saves InventoryWorkbookSave[]
+  @@map("inventory_workbooks")
+}
+
+model InventoryWorkbookSave {
+  userId String
+  operationId String
+  hash String
+  version Int
+  createdAt DateTime @default(now())
+  workbook InventoryWorkbook @relation(fields: [userId], references: [userId], onDelete: Restrict)
+  @@id([userId, operationId])
+  @@map("inventory_workbook_saves")
 }
 
 model InventoryItem {

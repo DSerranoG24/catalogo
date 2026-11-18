@@ -1,10 +1,18 @@
 # Inventario independiente
 
+## Prioridad actual: hoja de cálculo libre
+
+`/dashboard/inventario/hoja` usa Univer: celdas, títulos y organización libres, fórmulas, formato, arrastre, pestañas, filtros, ordenación y búsqueda. `Guardar hoja` conserva el documento completo en la cuenta, sin guardado por cada tecla. Esta hoja todavía no interpreta columnas ni crea productos o movimientos. El reconocimiento de los datos del vendedor será una fase posterior. Ver [implementación y verificación de la hoja libre](inventory-workbook.md).
+
+La edición estructurada descrita abajo permanece en `/dashboard/inventario/lotes`. No confundir guardar un documento libre con aplicar sus datos al stock.
+
 ## Ampliación: modo tradicional y hoja de cálculo
 
-El [contrato de edición masiva, XLSX/CSV y planificación](inventory-sheet-contract.md) especifica la ampliación aprobada. Está implementada localmente en `/dashboard/inventario/hoja`, junto con edición tradicional de datos y ficha comercial. La [verificación específica](inventory-sheet-verification.md) documenta las pruebas nuevas; los E2E anteriores por sí solos no acreditaban esta ampliación. Ambas interfaces usan el mismo núcleo, ficha comercial compartida con futuras Ventas, clasificación por fila, preview persistida, confirmación explícita, lotes atómicos y recibos durables.
+El [contrato de edición masiva, XLSX/CSV y planificación](inventory-sheet-contract.md) especifica la ampliación estructurada aprobada. Está implementada localmente en `/dashboard/inventario/lotes`, junto con edición tradicional de datos y ficha comercial. La [verificación específica](inventory-sheet-verification.md) documenta las pruebas anteriores; los E2E iniciales por sí solos no acreditaban esa ampliación. Ambas interfaces estructuradas usan el mismo núcleo, ficha comercial compartida con futuras Ventas, clasificación por fila, preview persistida, confirmación explícita, lotes atómicos y recibos durables.
 
 Datos del producto y ficha comercial se editan separados de los conteos. Un cambio 8→12 registra un ajuste +4; 12→7, un ajuste -5, conservando el conteo final y los snapshots actuales del ledger. No se cambia el significado existente de `ADJUSTMENT.quantity`, que representa la existencia final contada.
+
+La herramienta estructurada anterior, ahora en `/dashboard/inventario/lotes`, abre con cinco filas vacías editables; `Agregar fila` amplía el espacio y `Cargar productos existentes` trae una página para editar. `Guardar cambios` envía las filas para validarlas y muestra la revisión; `Confirmar guardado` aplica todo junto. Las filas nuevas completamente vacías no se envían como productos. Este flujo mantiene columnas de negocio conocidas y es distinto del nuevo documento libre.
 
 La ampliación incluye modelo, migración nueva, operaciones de lote, ambos modos, archivos y pruebas con PostgreSQL y autenticación reales. No hay reemplazo completo del inventario, borrado por filas omitidas ni sincronización automática con Google Sheets. Cuotas, atomicidad, identificación y comportamiento ante filas inválidas quedan detallados en el contrato. Ventas continúa sin implementar hasta la revisión de estos resultados.
 

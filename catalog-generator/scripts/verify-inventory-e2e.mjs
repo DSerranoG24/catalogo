@@ -10,6 +10,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { randomBytes, randomUUID } from "node:crypto";
 import { verifyInventorySheet } from "./inventory-sheet-e2e.mjs";
+import { verifyFreeWorkbook } from "./free-workbook-e2e.mjs";
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -19,6 +20,7 @@ const uiPort = 4358, apiPort = 4359, base = `http://localhost:${uiPort}`;
 let stage = "TARGET_GUARD", folder, schema, db, backend, app, ui, chrome, socket;
 const passed = [], pending = new Map(); let serial = 0, dropResponse = false, droppedRequest;
 const browserErrors = [];
+const inventoryWrites = [];
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 function pass() { passed.push(stage); console.log(`PASS ${stage}`); }
 async function poll(work, timeout = 30000) {
@@ -135,6 +137,7 @@ try {
   socket = new WebSocket(tabs.find(tab => tab.type === "page").webSocketDebuggerUrl); await once(socket, "open");
   socket.addEventListener("message", event => {
     const value = JSON.parse(event.data);
+    if (value.method === "Network.requestWillBeSent" && ["POST", "PATCH", "PUT", "DELETE"].includes(value.params.request.method) && value.params.request.url.includes("/api/backend/inventory/")) inventoryWrites.push(value.params.request.method);
     if (value.id) { const entry = pending.get(value.id); pending.delete(value.id); if (!entry) return; if (value.error) entry.reject(new Error("CDP_COMMAND_FAILED")); else entry.resolve(value.result); }
     if (value.method === "Runtime.exceptionThrown") browserErrors.push("UNHANDLED_BROWSER_EXCEPTION");
     if (value.method === "Fetch.requestPaused") {
@@ -246,7 +249,12 @@ try {
   await click("Más movimientos"); await poll(async () => (await text()).includes("Entrada inicial E2E"));
   await click("Anteriores"); await poll(async () => (await text()).includes("Historial E2E")); pass();
 
-  const sheetBatch = await verifyInventorySheet({ command, evaluate, click, fillSelector, poll, request, text, db, folder, base, pass, setStage: (name, lose = false) => { stage = name; if (lose) { droppedRequest = undefined; dropResponse = true; } } });
+  // Give each real-browser phase its own normal request budget, keeping the
+  // real limiter enabled and database/authentication state across processes.
+  if (backend.exitCode === null) { backend.kill(); await once(backend, "exit"); }
+  await startBackend();
+  await verifyFreeWorkbook({ command, evaluate, click, fillSelector, poll, request, text, db, folder, base, inventoryWrites, ownerId: ownerA.id, pass, setStage: name => { stage = name; } });
+  const sheetBatch = await verifyInventorySheet({ command, evaluate, click, fillSelector, poll, request, text, db, folder, base, inventoryWrites, pass, setStage: (name, lose = false) => { stage = name; if (lose) { droppedRequest = undefined; dropResponse = true; } } });
   stage = "API_RESTART_PRESERVES_SESSION_AND_BATCH_RECEIPT";
   // Separate the long suite into request budgets without weakening the real limiter.
   // A fresh process must recover the same database receipt with the existing cookie.
@@ -258,6 +266,7 @@ try {
   await signOut(); await signIn(accountB, true);
   await poll(async () => (await text()).includes("No hay productos para esta búsqueda"));
   const ownerB = await db.user.findUniqueOrThrow({ where: { email: accountB.email } });
+  assert.equal((await request("/inventory/workbook")).body.result, null);
   assert.equal((await request(`/inventory/batches/${sheetBatch}`)).status, 404);
   assert.equal((await request(`/inventory/batches/${sheetBatch}/rows`)).status, 404);
   assert.equal((await request(`/inventory/items/${item.id}/movements`)).status, 404);
@@ -277,6 +286,7 @@ try {
   assert.equal((await request("/auth/close", "POST", { confirmation: "CERRAR CUENTA", password: accountB.password })).status, 202);
   assert.equal((await request("/inventory/items", "POST", { id: randomUUID(), name: "After closure", sku: "CLOSED", minimumStock: 0 })).status, 401);
   assert.equal((await request("/inventory/batches", "POST", { id: randomUUID(), source: "GRID", totalRows: 1 })).status, 401);
+  assert.equal((await request("/inventory/workbook", "PUT", {})).status, 401);
   assert.equal((await request(`/inventory/items/${bInput.id}/movements`, "POST", { key: randomUUID(), type: "IN", quantity: 1, reason: "After closure" })).status, 401);
   await fill("Nombre", "Tras cierre E2E"); await fill("SKU / código", "CLOSED-UI"); await click("Crear producto");
   await poll(async () => (await text()).includes("Tu sesión expiró. Inicia sesión para continuar."));
