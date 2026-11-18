@@ -20,6 +20,7 @@ test("inventory validates external quantities, identifiers and owner fields", ()
   assert.equal(inventoryMovementSchema.safeParse({ ...input, reason: " " }).success, false);
   assert.equal(inventoryMovementSchema.safeParse({ ...input, type: "ADJUSTMENT", quantity: 0 }).success, true);
   assert.equal(inventoryItemSchema.parse({ id: itemId, name: " Product ", sku: " abc ", minimumStock: 0 }).sku, "ABC");
+  assert.equal(inventoryItemSchema.safeParse({ id: itemId, name: "Product", sku: "ß".repeat(80), minimumStock: 0 }).success, false);
   assert.equal(inventoryPageSchema.safeParse({ page: -1 }).success, false);
   assert.equal(inventoryPageSchema.safeParse({ page: 1.5 }).success, false);
 });
@@ -35,13 +36,14 @@ test("entries, exits and counted adjustments preserve valid balances", () => {
 function fixture() {
   let stock = 5;
   let movements: { id: string; itemId: string; key: string; type: string; quantity: number; reason: string; previousStock: number; resultingStock: number }[] = [];
-  let allowed = true, failWrite = false, locked = false, active = false;
+  let allowed = true, failWrite = false, locked = false, active = false, closed = false;
   const database = new Proxy(prisma, { get(_target, key) {
     if (key === "$transaction") return async (work: (tx: Prisma.TransactionClient) => Promise<unknown>) => {
       const before = { stock, movements: structuredClone(movements) }; active = true; locked = false;
       try { return await work(database); } catch (error) { stock = before.stock; movements = before.movements; throw error; } finally { active = false; }
     };
     if (key === "$queryRaw") return async (_sql: TemplateStringsArray, ...values: unknown[]) => {
+      if (_sql.join("").includes("FROM users")) { assert.ok(active); assert.deepEqual(values, ["owner"]); return closed ? [] : [{ id: "owner" }]; }
       assert.ok(active); assert.deepEqual(values, [itemId, "owner"]); locked = true;
       return allowed ? [{ id: itemId }] : [];
     };
@@ -63,7 +65,7 @@ function fixture() {
     };
     return Reflect.get(_target, key);
   } });
-  return { database, get stock() { return stock; }, get movements() { return movements; }, deny: () => { allowed = false; }, fail: () => { failWrite = true; } };
+  return { database, get stock() { return stock; }, get movements() { return movements; }, deny: () => { allowed = false; }, fail: () => { failWrite = true; }, close: () => { closed = true; } };
 }
 
 test("owned movement locks row, updates balance and records once on identical retry", async () => {
@@ -95,6 +97,13 @@ test("listing is scoped to owner and paginated", async () => {
   assert.deepEqual(await listInventory("owner", 2, "abc", state.database), { items: [], total: 0, page: 2 });
 });
 
+test("requests authenticated before closure cannot write inventory after closure", async () => {
+  const state = fixture(); state.close();
+  await assert.rejects(moveInventory("owner", itemId, input, state.database), /ACCOUNT_CLOSED/);
+  await assert.rejects(repository.createInventory("owner", { id: itemId, name: "Product", sku: "ABC", minimumStock: 0 }, state.database), /ACCOUNT_CLOSED/);
+  assert.equal(state.stock, 5); assert.equal(state.movements.length, 0);
+});
+
 test("inventory HTTP routes require a session, validate bodies and scope writes", async () => {
   const state = fixture();
   const service: typeof repository = { ...repository,
@@ -121,5 +130,7 @@ test("inventory HTTP routes require a session, validate bodies and scope writes"
     assert.equal((await post(input)).status, 404);
     assert.equal((await fetch(`${base}/inventory/items/${itemId}/movements`)).status, 404);
     assert.equal((await fetch(`${base}/inventory/items/not-a-uuid/movements`)).status, 400);
+    state.close();
+    assert.equal((await post(input)).status, 401);
   } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 });

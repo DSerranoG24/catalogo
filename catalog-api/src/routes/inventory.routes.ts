@@ -31,6 +31,7 @@ for (const operation of ["list", "create", "history", "move"] as const) {
       return res.json({ success: true, result });
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ message: "Revisa los campos y las cantidades ingresadas." });
+      if (error instanceof Error && error.message === "ACCOUNT_CLOSED") return res.status(401).json({ message: "Tu sesión ya no está disponible. Inicia sesión para continuar." });
       if (error instanceof Error && error.message === "NOT_FOUND") return res.status(404).json({ message: "Producto no encontrado." });
       if (error instanceof Error && error.message === "INVALID_STOCK") return res.status(409).json({ message: "El movimiento excede las existencias o el límite permitido." });
       if ((error instanceof Error && error.message === "KEY_CONFLICT") || (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")) return res.status(409).json({ message: "El SKU o identificador ya está en uso. Revisa el inventario antes de reintentar." });

@@ -4,7 +4,7 @@ const quantity = z.number().int().min(0).max(2147483647);
 export const inventoryItemSchema = z.object({
   id: z.uuid(),
   name: z.string().trim().min(1).max(160),
-  sku: z.string().trim().min(1).max(80).transform(value => value.toUpperCase()),
+  sku: z.string().trim().min(1).max(80).transform(value => value.toUpperCase()).pipe(z.string().max(80)),
   minimumStock: quantity,
 }).strict();
 export const inventoryPageSchema = z.object({
