@@ -102,12 +102,16 @@ async function proxyRequest(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ message: "No se pudo conectar con el servicio" }, { status: 502 });
   }
 
-  const responseBody = await upstream.text();
+  const responseBody = await upstream.arrayBuffer();
   const responseHeaders = new Headers({
     "content-type": upstream.headers.get("content-type") ?? "application/json; charset=utf-8",
     "cache-control": "no-store",
     "x-content-type-options": "nosniff",
   });
+  for (const name of ["content-disposition", "x-inventory-next-cursor", "x-inventory-captured-at", "x-inventory-row-count"]) {
+    const value = upstream.headers.get(name);
+    if (value) responseHeaders.set(name, value);
+  }
   const response = new NextResponse(responseBody, {
     status: upstream.status,
     headers: responseHeaders,
@@ -126,7 +130,7 @@ async function proxyRequest(request: NextRequest, context: RouteContext) {
 
   if (path[0] === "auth" && ["login", "register", "google"].includes(path[1] ?? "") && upstream.ok) {
     try {
-      const payload = JSON.parse(responseBody) as {
+      const payload = JSON.parse(new TextDecoder().decode(responseBody)) as {
         token?: string;
         user?: { id: string; email: string; name: string | null };
         success?: boolean;

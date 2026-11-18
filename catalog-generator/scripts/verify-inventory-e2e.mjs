@@ -9,6 +9,7 @@ import { once } from "node:events";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { randomBytes, randomUUID } from "node:crypto";
+import { verifyInventorySheet } from "./inventory-sheet-e2e.mjs";
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -43,7 +44,7 @@ async function click(label, selector = "button") {
   assert.ok(await evaluate(`(()=>{const element=[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.textContent.trim()===${JSON.stringify(label)});if(!element||element.disabled)return false;element.click();return true})()`), "ENABLED_CONTROL_REQUIRED");
 }
 async function fillSelector(selector, value) {
-  assert.ok(await evaluate(`(()=>{const node=document.querySelector(${JSON.stringify(selector)});if(!node)return false;const prototype=node.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(prototype,'value').set.call(node,${JSON.stringify(value)});node.dispatchEvent(new Event(node.tagName==='SELECT'?'change':'input',{bubbles:true}));return true})()`));
+  assert.ok(await evaluate(`(()=>{const node=document.querySelector(${JSON.stringify(selector)});if(!node)return false;const prototype=node.tagName==='SELECT'?HTMLSelectElement.prototype:node.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(prototype,'value').set.call(node,${JSON.stringify(value)});node.dispatchEvent(new Event(node.tagName==='SELECT'?'change':'input',{bubbles:true}));return true})()`));
 }
 async function fill(label, value) {
   assert.ok(await evaluate(`(()=>{const node=[...document.querySelectorAll('label')].find(e=>e.firstChild?.textContent.trim()===${JSON.stringify(label)})?.querySelector('input,select');if(!node)return false;const prototype=node.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(prototype,'value').set.call(node,${JSON.stringify(value)});node.dispatchEvent(new Event(node.tagName==='SELECT'?'change':'input',{bubbles:true}));return true})()`));
@@ -241,10 +242,13 @@ try {
   await click("Más movimientos"); await poll(async () => (await text()).includes("Entrada inicial E2E"));
   await click("Anteriores"); await poll(async () => (await text()).includes("Historial E2E")); pass();
 
+  const sheetBatch = await verifyInventorySheet({ command, evaluate, click, fillSelector, poll, request, text, db, folder, base, pass, setStage: (name, lose = false) => { stage = name; if (lose) { droppedRequest = undefined; dropResponse = true; } } });
   stage = "LOGOUT_LOGIN_AND_SECOND_USER_ISOLATION";
   await signOut(); await signIn(accountB, true);
   await poll(async () => (await text()).includes("No hay productos para esta búsqueda"));
   const ownerB = await db.user.findUniqueOrThrow({ where: { email: accountB.email } });
+  assert.equal((await request(`/inventory/batches/${sheetBatch}`)).status, 404);
+  assert.equal((await request(`/inventory/batches/${sheetBatch}/rows`)).status, 404);
   assert.equal((await request(`/inventory/items/${item.id}/movements`)).status, 404);
   assert.equal((await request(`/inventory/items/${item.id}/movements`, "POST", { key: randomUUID(), type: "IN", quantity: 1, reason: "Other owner attempt" })).status, 404);
   const bInput = { id: randomUUID(), name: "Artículo B E2E", sku: item.sku, minimumStock: 1 };
@@ -261,6 +265,7 @@ try {
   const bBefore = await db.inventoryMovement.count({ where: { itemId: bInput.id } });
   assert.equal((await request("/auth/close", "POST", { confirmation: "CERRAR CUENTA", password: accountB.password })).status, 202);
   assert.equal((await request("/inventory/items", "POST", { id: randomUUID(), name: "After closure", sku: "CLOSED", minimumStock: 0 })).status, 401);
+  assert.equal((await request("/inventory/batches", "POST", { id: randomUUID(), source: "GRID", totalRows: 1 })).status, 401);
   assert.equal((await request(`/inventory/items/${bInput.id}/movements`, "POST", { key: randomUUID(), type: "IN", quantity: 1, reason: "After closure" })).status, 401);
   await fill("Nombre", "Tras cierre E2E"); await fill("SKU / código", "CLOSED-UI"); await click("Crear producto");
   await poll(async () => (await text()).includes("Tu sesión expiró. Inicia sesión para continuar."));

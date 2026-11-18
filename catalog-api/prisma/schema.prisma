@@ -45,6 +45,8 @@ model User {
 
   catalogs Catalog[]
   inventoryItems InventoryItem[]
+  inventoryBatches InventoryBatch[]
+  inventoryActions InventoryMovement[] @relation("InventoryActor")
   accountActionTokens AccountActionToken[]
   closureJob AccountClosureJob?
 
@@ -60,11 +62,15 @@ model InventoryItem {
   sku String
   stock Int @default(0)
   minimumStock Int @default(0)
+  dataVersion Int @default(1)
+  stockVersion Int @default(1)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   movements InventoryMovement[]
+  commercialTerms ItemCommercialTerms?
 
+  @@unique([id, userId])
   @@unique([userId, sku])
   @@index([userId, createdAt])
   @@map("inventory_items")
@@ -79,12 +85,88 @@ model InventoryMovement {
   previousStock Int
   resultingStock Int
   reason String
+  delta Int @default(0)
+  actorUserId String?
+  origin String @default("MANUAL")
+  batchId String?
+  batchRowId String?
+  batchOperationId String?
   createdAt DateTime @default(now())
   item InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  actor User? @relation("InventoryActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  batchRow InventoryBatchRow? @relation(fields: [batchId, batchRowId], references: [batchId, rowId], onDelete: Restrict)
 
+  @@unique([batchOperationId, itemId])
   @@unique([itemId, key])
   @@index([itemId, createdAt])
   @@map("inventory_movements")
+}
+
+model ItemCommercialTerms {
+  itemId String @id
+  userId String
+  currency String @default("COP")
+  unitSalePrice BigInt
+  referenceUnitCost BigInt?
+  version Int @default(1)
+  updatedAt DateTime @updatedAt
+  item InventoryItem @relation(fields: [itemId, userId], references: [id, userId], onDelete: Restrict)
+
+  @@unique([itemId, userId])
+  @@index([userId])
+  @@map("item_commercial_terms")
+}
+
+model InventoryBatch {
+  id String @id
+  userId String
+  source String
+  status String @default("DRAFT")
+  revision Int @default(1)
+  previewRevision Int @default(0)
+  totalRows Int
+  reason String?
+  inputHash String?
+  planHash String?
+  applyOperationId String? @unique
+  previewExpiresAt DateTime?
+  plan Json?
+  receipt Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  rows InventoryBatchRow[]
+  chunks InventoryBatchChunkReceipt[]
+
+  @@index([userId, createdAt, id])
+  @@map("inventory_batches")
+}
+
+model InventoryBatchRow {
+  batchId String
+  rowId String
+  rowNumber Int
+  revision Int @default(1)
+  reservedItemId String @default(uuid())
+  excluded Boolean @default(false)
+  values Json
+  batch InventoryBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  movements InventoryMovement[]
+
+  @@id([batchId, rowId])
+  @@unique([batchId, rowNumber])
+  @@map("inventory_batch_rows")
+}
+
+model InventoryBatchChunkReceipt {
+  batchId String
+  chunkId String
+  hash String
+  result Json
+  batch InventoryBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@id([batchId, chunkId])
+  @@map("inventory_batch_chunk_receipts")
 }
 
 model AccountActionToken {

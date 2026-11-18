@@ -6,6 +6,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { InventoryRetryKeys } from "@/lib/inventory-retry";
+import InventoryDetails from "@/components/inventory/InventoryDetails";
 
 type Item = { id: string; name: string; sku: string; stock: number; minimumStock: number };
 type Movement = { id: string; type: string; quantity: number; previousStock: number; resultingStock: number; reason: string; createdAt: string };
@@ -88,6 +89,7 @@ export default function InventoryPage() {
   const field = "grid gap-2 text-sm font-medium";
   return <main className="mx-auto max-w-6xl space-y-6 px-5 py-8 sm:px-8">
     <Link href="/dashboard" className="inline-flex min-h-11 items-center underline">← Catálogos</Link>
+    <Link href="/dashboard/inventario/hoja" className="ml-4 inline-flex min-h-11 items-center underline">Abrir hoja de inventario · importar / exportar</Link>
     <div><h1 className="text-3xl font-semibold">Inventario</h1><p className="mt-2 text-sm text-[#52675b]">Una bodega para tu cuenta. Administra productos y movimientos independientemente de tus catálogos.</p></div>
     {listError && <div role="alert" className="rounded-xl border border-red-300 p-4"><p>{listError}</p><Button variant="secondary" onClick={() => setRevision(value => value + 1)}>Recargar datos</Button><Link href="/login" className="ml-4 underline">Iniciar sesión</Link></div>}
     <p role="status">{message}</p>
@@ -120,6 +122,7 @@ export default function InventoryPage() {
       </>}
     </section>
     {selected && <section aria-labelledby="movements" className="space-y-4 rounded-2xl border border-[#dce4dc] bg-white p-5">
+      <InventoryDetails key={selected.id} id={selected.id} onSaved={() => setRevision(value => value + 1)} />
       <h2 id="movements" ref={movementHeading} tabIndex={-1} className="break-words text-xl font-semibold focus-visible:outline-2 focus-visible:outline-offset-4">Movimientos: {selected.name}</h2>
       <p>Existencias al consultar: {selected.stock}. El servidor valida el saldo actual al guardar.</p>
       {error && errorKind === "movement" && <p role="alert" className="text-red-800">{error}</p>}

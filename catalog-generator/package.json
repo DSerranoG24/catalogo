@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start --port 3002",
     "lint": "eslint",
-    "test": "node scripts/verify-product-import.mjs && node scripts/verify-inventory.mjs",
+    "test": "node scripts/verify-product-import.mjs && node scripts/verify-inventory.mjs && node scripts/verify-inventory-sheet.mjs",
     "test:inventory-browser": "node scripts/verify-inventory-browser.mjs",
     "test:inventory-e2e": "node scripts/verify-inventory-e2e.mjs",
     "test:import-flow": "node scripts/verify-product-import-flow.mjs",

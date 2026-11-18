@@ -6,6 +6,7 @@ import authRoutes from "./routes/auth.routes";
 import meRoutes from "./routes/me.routes";
 import adminRoutes from "./routes/admin.routes";
 import inventoryRoutes from "./routes/inventory.routes";
+import { makeInventoryBatchRouter } from "./routes/inventory-batch.routes";
 import catalogRoutes from "./routes/catalog.routes";
 import categoryRoutes from "./routes/category.routes";
 import productRoutes from "./routes/product.routes";
@@ -48,6 +49,7 @@ app.use(
 );
 
 app.use("/api", apiLimiter);
+app.use("/api/inventory", makeInventoryBatchRouter());
 app.use("/api/products/catalog/:catalogId/import", makeProductImportRouter());
 app.use(express.json({ limit: "32kb" }));
 app.use(express.urlencoded({ extended: true, limit: "32kb" }));

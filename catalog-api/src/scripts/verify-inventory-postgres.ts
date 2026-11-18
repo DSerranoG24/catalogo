@@ -50,11 +50,11 @@ async function main() {
   const folder = await mkdtemp(path.join(tmpdir(), "inventory-migrations-"));
   const migrationRoot = path.resolve("prisma/migrations");
   const names = (await readdir(migrationRoot, { withFileTypes: true })).filter(value => value.isDirectory()).map(value => value.name).sort();
-  assert.deepEqual(names.slice(-2), migrationNames);
+  assert.deepEqual(names.slice(-3, -1), migrationNames);
   await mkdir(path.join(folder, "migrations"));
   await cp("prisma/schema.prisma", path.join(folder, "schema.prisma"));
   await cp(path.join(migrationRoot, "migration_lock.toml"), path.join(folder, "migrations/migration_lock.toml"));
-  for (const name of names.slice(0, -2)) await cp(path.join(migrationRoot, name), path.join(folder, "migrations", name), { recursive: true });
+  for (const name of names.slice(0, -3)) await cp(path.join(migrationRoot, name), path.join(folder, "migrations", name), { recursive: true });
   function deploy() {
     const result = spawnSync(process.execPath, [requireModule.resolve("prisma/build/index.js"), "migrate", "deploy", "--schema", path.join(folder, "schema.prisma")], {
       cwd: folder, env: { ...process.env, DATABASE_URL: target.toString() }, encoding: "utf8", timeout: 60000, windowsHide: true,
@@ -71,6 +71,10 @@ async function main() {
   await cp(path.join(migrationRoot, migrationNames[0]), path.join(folder, "migrations", migrationNames[0]), { recursive: true });
   deploy();
   assert.equal((await database.product.findUniqueOrThrow({ where: { id: product.id } })).stock, 7); pass(stage);
+  // The repository now requires the batch audit/version columns. The separate batch
+  // rehearsal tests migration backfill over legacy inventory rows before loading it.
+  for (const name of names.slice(-2)) await cp(path.join(migrationRoot, name), path.join(folder, "migrations", name), { recursive: true });
+  deploy();
 
   stage = "CREATE_CONCURRENCY_AND_SKU_ISOLATION";
   const itemInput = { id: randomUUID(), name: "Inventory test item", sku: "VERIFY-SKU", minimumStock: 2 };

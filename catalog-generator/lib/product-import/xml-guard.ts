@@ -78,13 +78,13 @@ export function inspectXml(data: Uint8Array, visitor: Visitor = {}) {
   if (stack.length || roots !== 1) invalid();
 }
 
-function coordinate(value: string) {
-  const match = /^([A-L])([1-9][0-9]{0,2})$/.exec(value);
-  if (!match || Number(match[2]) > XLSX_LIMITS.rows + 1) throw new ImportReadError("SHEET_INVALID");
+function coordinate(value: string, columns: number, rows: number) {
+  const match = /^([A-Z])([1-9][0-9]{0,4})$/.exec(value);
+  if (!match || match[1].charCodeAt(0) - 65 >= columns || Number(match[2]) > rows + 1) throw new ImportReadError("SHEET_INVALID");
   return { column: match[1].charCodeAt(0) - 65, row: Number(match[2]) };
 }
 
-export function inspectWorkbook(files: Record<string, Uint8Array>) {
+export function inspectWorkbook(files: Record<string, Uint8Array>, profile = { sheet: "Productos", columns: 12, rows: XLSX_LIMITS.rows }) {
   if (!files["[Content_Types].xml"] || !files["xl/workbook.xml"] || !files["xl/_rels/workbook.xml.rels"]) throw new ImportReadError("SHEET_INVALID");
   // All XML is checked before read-excel-file sees even shared strings or styles.
   for (const [name, bytes] of Object.entries(files)) {
@@ -95,7 +95,7 @@ export function inspectWorkbook(files: Record<string, Uint8Array>) {
   }
   let relationId: string | undefined;
   inspectXml(files["xl/workbook.xml"], { open: (name, attributes) => {
-    if (name === "sheet" && attributes.name === "Productos") {
+    if (name === "sheet" && attributes.name === profile.sheet) {
       if (relationId) throw new ImportReadError("SHEET_INVALID");
       relationId = attributes["r:id"];
     }
@@ -116,24 +116,27 @@ export function inspectWorkbook(files: Record<string, Uint8Array>) {
   if (!relationId || !productPath || !files[productPath]) throw new ImportReadError("SHEET_INVALID");
   let row = 0, cell: { row: number; column: number } | undefined;
   const rows = new Set<number>(), cells = new Set<string>(), formulas = new Set<string>();
+  let hidden = false;
   inspectXml(files[productPath], { open: (name, attributes, parent) => {
     if (name === "dimension") {
       const refs = attributes.ref?.split(":");
       if (!refs || refs.length > 2) throw new ImportReadError("SHEET_INVALID");
-      refs.forEach(coordinate);
+      refs.forEach(ref => coordinate(ref, profile.columns, profile.rows));
     }
     if (name === "row") {
       row = Number(attributes.r);
-      if (parent !== "sheetData" || !Number.isInteger(row) || row < 1 || row > 501 || rows.has(row)) throw new ImportReadError("SHEET_INVALID");
+      if (parent !== "sheetData" || !Number.isInteger(row) || row < 1 || row > profile.rows + 1 || rows.has(row)) throw new ImportReadError("SHEET_INVALID");
+      if (attributes.hidden === "1" || attributes.hidden === "true") hidden = true;
       rows.add(row);
     }
     if (name === "c") {
       if (parent !== "row" || cell || !attributes.r) throw new ImportReadError("SHEET_INVALID");
-      cell = coordinate(attributes.r);
-      if (cell.row !== row || cells.has(attributes.r) || cells.size >= 501 * 12) throw new ImportReadError("SHEET_INVALID");
+      cell = coordinate(attributes.r, profile.columns, profile.rows);
+      if (cell.row !== row || cells.has(attributes.r) || cells.size >= (profile.rows + 1) * profile.columns) throw new ImportReadError("SHEET_INVALID");
       cells.add(attributes.r);
     }
     if (name === "f" && cell) formulas.add(`${cell.row}:${cell.column}`);
+    if (name === "autoFilter") hidden = true;
   }, close: name => { if (name === "c") cell = undefined; if (name === "row") row = 0; } });
-  return { formulas };
+  return { formulas, hidden };
 }

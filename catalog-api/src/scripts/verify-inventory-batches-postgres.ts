@@ -1,0 +1,100 @@
+import assert from "node:assert/strict";
+import { randomBytes, randomUUID } from "node:crypto";
+import { cp, mkdtemp, readdir, mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { createRequire } from "node:module";
+import { spawnSync } from "node:child_process";
+import { PrismaClient } from "@prisma/client";
+import { inventoryTestTarget } from "./verify-inventory-postgres";
+import { makeInventoryBatchService } from "../services/inventory-batch.service";
+import { moveInventory } from "../repositories/inventory.repository";
+const requireModule = createRequire(__filename);
+let database: PrismaClient | undefined, stage = "GUARD";
+const passed: string[] = [];
+function pass(name: string) { passed.push(name); console.log(`PASS ${name}`); }
+async function main() {
+  let input = ""; for await (const part of process.stdin) { input += String(part); assert.ok(input.length < 8192); }
+  const target = await inventoryTestTarget(input); input = "";
+  const schema = `inventory_batch_${randomBytes(8).toString("hex")}`;
+  target.search = ""; target.searchParams.set("schema", schema);
+  database = new PrismaClient({ datasources: { db: { url: target.toString() } }, log: [] }); const db = database;
+  const [identity] = await db.$queryRaw<{ database: string; address: string }[]>`SELECT current_database() AS database,host(inet_server_addr()) AS address`;
+  assert.equal(identity.database, "catalogo_test"); assert.ok(["127.0.0.1", "::1"].includes(identity.address));
+  await db.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`); await db.$disconnect();
+  const folder = await mkdtemp(path.join(tmpdir(), "inventory-batch-migrations-")), migrations = path.resolve("prisma/migrations");
+  await mkdir(path.join(folder, "migrations")); await cp("prisma/schema.prisma", path.join(folder, "schema.prisma")); await cp(path.join(migrations, "migration_lock.toml"), path.join(folder, "migrations/migration_lock.toml"));
+  const names = (await readdir(migrations, { withFileTypes: true })).filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
+  const deploy = () => {
+    const result = spawnSync(process.execPath, [requireModule.resolve("prisma/build/index.js"), "migrate", "deploy", "--schema", path.join(folder, "schema.prisma")], { cwd: folder, env: { ...process.env, DATABASE_URL: target.toString() }, encoding: "utf8", timeout: 60000, windowsHide: true });
+    assert.equal(result.status, 0, "MIGRATION_DEPLOY_FAILED");
+  };
+  stage = "LEGACY_MIGRATION_BACKFILL";
+  for (const name of names.slice(0, -1)) await cp(path.join(migrations, name), path.join(folder, "migrations", name), { recursive: true }); deploy();
+  const owner = await db.user.create({ data: { email: `batch_${randomUUID()}@example.invalid` } }), other = await db.user.create({ data: { email: `batch_${randomUUID()}@example.invalid` } });
+  const itemId = randomUUID();
+  await db.$executeRaw`INSERT INTO inventory_items(id,"userId",name,sku,stock,"minimumStock","updatedAt") VALUES(${itemId},${owner.id},'Legacy','LEGACY',8,0,CURRENT_TIMESTAMP)`;
+  await db.$executeRaw`INSERT INTO inventory_movements(id,"itemId",key,type,quantity,"previousStock","resultingStock",reason) VALUES(${randomUUID()},${itemId},${randomUUID()},'IN',8,0,8,'Legacy opening')`;
+  await cp(path.join(migrations, names.at(-1) ?? ""), path.join(folder, "migrations", names.at(-1) ?? ""), { recursive: true }); deploy(); deploy();
+  const legacy = await db.inventoryMovement.findFirstOrThrow({ where: { itemId } }); assert.equal(legacy.delta, 8); assert.equal(legacy.actorUserId, null); assert.equal((await db.inventoryItem.findUniqueOrThrow({ where: { id: itemId } })).stock, 8);
+  assert.equal((await db.$queryRaw<{ count: bigint }[]>`SELECT count(*) AS count FROM _prisma_migrations WHERE finished_at IS NOT NULL`)[0].count, BigInt(names.length)); pass(stage);
+  const service = makeInventoryBatchService(db);
+  async function draft(values: Record<string, string | number | boolean | null>[], user = owner.id) {
+    const id = randomUUID(), rows = values.map((value, index) => ({ rowId: randomUUID(), rowNumber: index + 2, excluded: false, values: value }));
+    let batch = await service.create(user, { id, source: "GRID", totalRows: rows.length, reason: "Conteo de ensayo" });
+    for (let offset = 0; offset < rows.length; offset += 50) {
+      const request = { chunkId: randomUUID(), expectedRevision: batch.revision, totalRows: rows.length, rows: rows.slice(offset, offset + 50) };
+      const result = await service.stage(user, id, request); assert.deepEqual(await service.stage(user, id, request), result);
+      batch = await service.get(user, id);
+    }
+    return service.preview(user, id, batch.revision);
+  }
+  const apply = (batch: Awaited<ReturnType<typeof draft>>, user = owner.id) => { assert.ok(batch.planHash && batch.applyOperationId); return service.apply(user, batch.id, { expectedRevision: batch.revision, previewRevision: batch.previewRevision, planHash: batch.planHash, operationId: batch.applyOperationId }); };
+  stage = "ATOMIC_TARGET_DELTAS_RECEIPTS_AND_RETRIES";
+  const opening = await draft([{ id: itemId, targetStock: 12, unitSalePrice: "9223372036854775807", referenceUnitCost: "3000" }, { sku: "NEW", name: "New item", targetStock: 3 }]);
+  assert.equal(opening.status, "READY"); const results = await Promise.all(Array.from({ length: 6 }, () => apply(opening))); assert.ok(results.every(result => result.status === "APPLIED"));
+  assert.equal(await db.inventoryMovement.count({ where: { batchId: opening.id } }), 2);
+  const movement = await db.inventoryMovement.findFirstOrThrow({ where: { batchId: opening.id, itemId } }); assert.equal(movement.delta, 4); assert.equal(movement.quantity, 12); assert.equal(movement.actorUserId, owner.id); assert.equal(movement.previousStock, 8); assert.equal(movement.resultingStock, 12);
+  assert.equal((await db.itemCommercialTerms.findUniqueOrThrow({ where: { itemId } })).unitSalePrice, 9223372036854775807n);
+  assert.equal((await service.get(owner.id, opening.id)).receipt?.movementCount, 2);
+  const decrease = await draft([{ id: itemId, targetStock: 7 }]); await apply(decrease); assert.equal((await db.inventoryMovement.findFirstOrThrow({ where: { batchId: decrease.id } })).delta, -5); pass(stage);
+  stage = "INVALID_ROWS_NEVER_APPLY_AND_EXPLICIT_EXCLUSIONS";
+  let invalid = await draft([{ id: itemId, targetStock: -1 }, { sku: "BLOCKED", name: "Blocked" }]); assert.equal(invalid.status, "INVALID");
+  await assert.rejects(service.apply(owner.id, invalid.id, { expectedRevision: invalid.revision, previewRevision: invalid.previewRevision, planHash: invalid.planHash ?? "", operationId: randomUUID() })); assert.equal(await db.inventoryItem.count({ where: { userId: owner.id, sku: "BLOCKED" } }), 0);
+  const loaded = await service.rows(owner.id, invalid.id, 1, "all"), first = loaded.rows[0];
+  const staged = await service.stage(owner.id, invalid.id, { chunkId: randomUUID(), expectedRevision: invalid.revision, totalRows: 2, rows: [{ rowId: first.rowId, rowNumber: first.rowNumber, revision: first.revision, excluded: true, values: { id: itemId, targetStock: -1 } }] });
+  invalid = await service.preview(owner.id, invalid.id, staged.revision); await apply(invalid); assert.equal(await db.inventoryItem.count({ where: { userId: owner.id, sku: "BLOCKED" } }), 1); pass(stage);
+  stage = "ROLLBACK_AFTER_LATER_ROW_FAILURE";
+  await db.$executeRawUnsafe(`CREATE FUNCTION batch_test_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.reason = 'FORCE_BATCH_FAILURE' THEN RAISE EXCEPTION 'SYNTHETIC_FAILURE'; END IF; RETURN NEW; END $$`);
+  await db.$executeRawUnsafe(`CREATE TRIGGER batch_test_failure BEFORE INSERT ON inventory_movements FOR EACH ROW EXECUTE FUNCTION batch_test_failure()`);
+  const rollback = await draft([{ sku: "ROLLBACK-FIRST", name: "First", targetStock: 1 }, { sku: "ROLLBACK-SECOND", name: "Second", targetStock: 1, reason: "FORCE_BATCH_FAILURE" }]);
+  await assert.rejects(apply(rollback)); assert.equal(await db.inventoryItem.count({ where: { userId: owner.id, sku: { in: ["ROLLBACK-FIRST", "ROLLBACK-SECOND"] } } }), 0); assert.equal(await db.inventoryMovement.count({ where: { batchId: rollback.id } }), 0); assert.equal((await service.get(owner.id, rollback.id)).receipt, null); await service.cancel(owner.id, rollback.id); pass(stage);
+  stage = "VERSION_CONFLICTS_MOVEMENT_AND_PRICE";
+  for (const kind of ["stock", "price", "metadata"]) {
+    const batch = await draft([{ id: itemId, targetStock: 12 }]);
+    if (kind === "stock") await moveInventory(owner.id, itemId, { key: randomUUID(), type: "IN", quantity: 1, reason: "Interleaved movement" }, db);
+    if (kind === "price") await db.itemCommercialTerms.update({ where: { itemId }, data: { unitSalePrice: 12000n } });
+    if (kind === "metadata") await db.inventoryItem.update({ where: { id: itemId }, data: { name: "Changed after preview" } });
+    await assert.rejects(apply(batch), /STALE_BATCH/); assert.equal(await db.inventoryMovement.count({ where: { batchId: batch.id } }), 0); assert.equal((await service.get(owner.id, batch.id)).status, "STALE");
+    await service.cancel(owner.id, batch.id);
+  } pass(stage);
+  stage = "CONCURRENT_BATCHES_AND_DUPLICATE_SKU";
+  const a = await draft([{ id: itemId, targetStock: 0 }]), b = await draft([{ id: itemId, targetStock: 1 }]);
+  const concurrent = await Promise.allSettled([apply(a), apply(b)]); assert.equal(concurrent.filter(result => result.status === "fulfilled").length, 1);
+  await service.cancel(owner.id, concurrent[0].status === "rejected" ? a.id : b.id);
+  const c = await draft([{ sku: "RACE", name: "Race" }]), d = await draft([{ sku: "RACE", name: "Race" }]);
+  const race = await Promise.allSettled([apply(c), apply(d)]); assert.equal(race.filter(result => result.status === "fulfilled").length, 1); assert.equal(await db.inventoryItem.count({ where: { userId: owner.id, sku: "RACE" } }), 1); await service.cancel(owner.id, race[0].status === "rejected" ? c.id : d.id);
+  const duplicate = await draft([{ sku: "DUP", name: "First" }, { sku: "dup", name: "Second" }]); assert.equal(duplicate.counts.errors, 2); await service.cancel(owner.id, duplicate.id); pass(stage);
+  stage = "OWNER_CLOSURE_CANCELLATION_AND_IMMUTABLE_LEDGER";
+  await assert.rejects(service.get(other.id, opening.id), /NOT_FOUND/); await assert.rejects(service.rows(other.id, opening.id, 1, "all"), /NOT_FOUND/); await assert.rejects(apply(opening, other.id), /NOT_FOUND/);
+  const cancelled = await draft([{ sku: "CANCEL", name: "Cancelled" }]); await service.cancel(owner.id, cancelled.id); await assert.rejects(apply(cancelled), /BATCH_TERMINAL/);
+  const closed = await draft([{ sku: "CLOSED", name: "Closed" }], other.id); await db.user.update({ where: { id: other.id }, data: { closedAt: new Date() } }); await assert.rejects(apply(closed, other.id), /ACCOUNT_CLOSED/);
+  await assert.rejects(db.inventoryMovement.update({ where: { id: legacy.id }, data: { reason: "Rewrite history" } })); pass(stage);
+  stage = "FIVE_HUNDRED_ROWS_ATOMIC_AND_LEDGER_RECONCILIATION";
+  const max = await draft(Array.from({ length: 500 }, (_, index) => ({ sku: `MAX-${index}`, name: `Maximum ${index}`, targetStock: 1, unitSalePrice: "1000" })));
+  const started = Date.now(); await apply(max); const applyMilliseconds = Date.now() - started;
+  assert.equal(await db.inventoryMovement.count({ where: { batchId: max.id } }), 500); assert.equal((await service.rows(owner.id, max.id, 10, "all")).rows.length, 50);
+  for (const item of await db.inventoryItem.findMany({ where: { userId: owner.id } })) { const moves = await db.inventoryMovement.findMany({ where: { itemId: item.id } }); assert.equal(moves.reduce((sum, entry) => sum + entry.delta, 0), item.stock); assert.ok(item.stock >= 0); }
+  pass(stage); console.log(JSON.stringify({ passed: passed.length, schema, migrations: names.length, applyMilliseconds, realPostgres: true, retainedSyntheticData: true, productionAccess: false }));
+}
+if (require.main === module) main().catch(error => { console.error(`FAIL ${stage}: ${error instanceof Error ? error.message.replace(/postgres(?:ql)?:\/\/\S+/g, "[redacted]").slice(0, 400) : "ERROR"}`); process.exitCode = 1; }).finally(async () => { await database?.$disconnect(); });
