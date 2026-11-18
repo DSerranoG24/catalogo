@@ -1,6 +1,10 @@
 # Verificación de Inventario — 17 de noviembre de 2026
 
-## E2E real completado
+## Ampliación de hoja de inventario
+
+La ampliación aprobada tiene su propio [informe de implementación y verificación](inventory-sheet-verification.md), con la migración 26, lotes atómicos, recibos persistidos, XLSX/CSV, hoja y ficha comercial. Los resultados de este documento se conservan como antecedente de la primera versión; no deben confundirse con la verificación nueva.
+
+## E2E real completado de la primera versión
 
 La verificación continúa en [Inventario: E2E local real](inventory-e2e.md): 14 etapas aprobadas con PostgreSQL 17.11, las 25 migraciones, backend y frontend reales, dos cuentas con autenticación real y navegador real, sin API simulada. Incluye pérdida de respuesta después del commit, recarga incierta sin reenvío automático, concurrencia HTTP, aislamiento entre propietarios, cierre de cuenta y conciliación saldo/ledger.
 

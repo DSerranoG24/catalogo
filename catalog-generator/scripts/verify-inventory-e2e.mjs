@@ -110,11 +110,15 @@ try {
   assert.equal(constraint.convalidated, true); pass();
 
   stage = "REAL_API_FRONTEND_AND_BROWSER";
-  backend = spawn(process.execPath, ["-e", `const app=require(${JSON.stringify(path.join(apiRoot, "dist/app.js"))}).default;app.listen(${apiPort},'127.0.0.1',()=>console.log('API_READY'));`], {
-    cwd: folder, env: { ...env, NODE_ENV: "development", JWT_SECRET: randomBytes(48).toString("hex"), MAIL_MODE: "log", APP_PUBLIC_URL: base, SUPABASE_URL: "http://127.0.0.1:9", SUPABASE_SECRET_KEY: "e2e-unused-placeholder", CORS_ORIGINS: base }, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
-  });
-  let ready = false; backend.stdout.on("data", chunk => { if (chunk.toString().includes("API_READY")) ready = true; }); backend.stderr.on("data", () => {});
-  await poll(() => { assert.equal(backend.exitCode, null, "BACKEND_START_FAILED"); return ready; });
+  const backendEnv = { ...env, NODE_ENV: "development", JWT_SECRET: randomBytes(48).toString("hex"), MAIL_MODE: "log", APP_PUBLIC_URL: base, SUPABASE_URL: "http://127.0.0.1:9", SUPABASE_SECRET_KEY: "e2e-unused-placeholder", CORS_ORIGINS: base };
+  async function startBackend() {
+    backend = spawn(process.execPath, ["-e", `const app=require(${JSON.stringify(path.join(apiRoot, "dist/app.js"))}).default;app.listen(${apiPort},'127.0.0.1',()=>console.log('API_READY'));`], {
+      cwd: folder, env: backendEnv, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
+    });
+    let ready = false; backend.stdout.on("data", chunk => { if (chunk.toString().includes("API_READY")) ready = true; }); backend.stderr.on("data", () => {});
+    await poll(() => { assert.equal(backend.exitCode, null, "BACKEND_START_FAILED"); return ready; });
+  }
+  await startBackend();
   const frontend = path.join(folder, "frontend"); await fs.mkdir(frontend);
   for (const name of ["app", "components", "lib", "public", "package.json", "package-lock.json", "tsconfig.json", "postcss.config.mjs", "next.config.ts"]) if (existsSync(path.join(root, name))) await fs.cp(path.join(root, name), path.join(frontend, name), { recursive: true });
   await fs.symlink(path.join(root, "node_modules"), path.join(frontend, "node_modules"), "junction");
@@ -243,6 +247,13 @@ try {
   await click("Anteriores"); await poll(async () => (await text()).includes("Historial E2E")); pass();
 
   const sheetBatch = await verifyInventorySheet({ command, evaluate, click, fillSelector, poll, request, text, db, folder, base, pass, setStage: (name, lose = false) => { stage = name; if (lose) { droppedRequest = undefined; dropResponse = true; } } });
+  stage = "API_RESTART_PRESERVES_SESSION_AND_BATCH_RECEIPT";
+  // Separate the long suite into request budgets without weakening the real limiter.
+  // A fresh process must recover the same database receipt with the existing cookie.
+  if (backend.exitCode === null) { backend.kill(); await once(backend, "exit"); }
+  await startBackend();
+  const afterRestart = await request(`/inventory/batches/${sheetBatch}`);
+  assert.equal(afterRestart.status, 200); assert.equal(afterRestart.body.result.status, "APPLIED"); assert.equal(afterRestart.body.result.receipt.movementCount, 1); pass();
   stage = "LOGOUT_LOGIN_AND_SECOND_USER_ISOLATION";
   await signOut(); await signIn(accountB, true);
   await poll(async () => (await text()).includes("No hay productos para esta búsqueda"));
@@ -283,7 +294,8 @@ try {
       assert.equal(movement.resultingStock, expected); assert.ok(movement.previousStock >= 0 && movement.resultingStock >= 0);
     }
   }
-  assert.equal((await request(`/inventory/items/${item.id}/movements`)).body.result.total, 31);
+  const reconciledHistory = await request(`/inventory/items/${item.id}/movements`);
+  assert.equal(reconciledHistory.status, 200); assert.equal(reconciledHistory.body.result.total, 31);
   assert.deepEqual(browserErrors, []); pass();
   const summary = { passed: passed.length, scenarios: passed, schema, migrationCount: names.length, realPostgres: true, realBackend: true, realFrontend: true, realAuthentication: true, realBrowser: true, simulatedApi: false, productionAccess: false, retainedSyntheticData: true, artifacts: folder };
   await fs.writeFile(path.join(folder, "inventory-e2e-results.json"), JSON.stringify(summary, null, 2)); console.log(JSON.stringify(summary));

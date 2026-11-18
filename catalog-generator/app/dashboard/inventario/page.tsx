@@ -122,7 +122,7 @@ export default function InventoryPage() {
       </>}
     </section>
     {selected && <section aria-labelledby="movements" className="space-y-4 rounded-2xl border border-[#dce4dc] bg-white p-5">
-      <InventoryDetails key={selected.id} id={selected.id} onSaved={() => setRevision(value => value + 1)} />
+      <InventoryDetails key={selected.id} id={selected.id} onSaved={item => { setSelected(item); setRevision(value => value + 1); }} />
       <h2 id="movements" ref={movementHeading} tabIndex={-1} className="break-words text-xl font-semibold focus-visible:outline-2 focus-visible:outline-offset-4">Movimientos: {selected.name}</h2>
       <p>Existencias al consultar: {selected.stock}. El servidor valida el saldo actual al guardar.</p>
       {error && errorKind === "movement" && <p role="alert" className="text-red-800">{error}</p>}

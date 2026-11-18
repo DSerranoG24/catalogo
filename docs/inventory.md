@@ -1,12 +1,12 @@
 # Inventario independiente
 
-## Ampliación en diseño: modo tradicional y hoja de cálculo
+## Ampliación: modo tradicional y hoja de cálculo
 
-El [contrato de edición masiva, XLSX/CSV y planificación](inventory-sheet-contract.md) especifica la ampliación solicitada. **Todavía no está implementada ni validada por los E2E anteriores.** Propone dos interfaces sobre el mismo núcleo, ficha comercial compartida con Ventas, filas nuevas/modificadas/sin cambios, preview y confirmación, lotes atómicos con recibos durables y ajustes con delta firmado sin modificar directamente el saldo.
+El [contrato de edición masiva, XLSX/CSV y planificación](inventory-sheet-contract.md) especifica la ampliación aprobada. Está implementada localmente en `/dashboard/inventario/hoja`, junto con edición tradicional de datos y ficha comercial. La [verificación específica](inventory-sheet-verification.md) documenta las pruebas nuevas; los E2E anteriores por sí solos no acreditaban esta ampliación. Ambas interfaces usan el mismo núcleo, ficha comercial compartida con futuras Ventas, clasificación por fila, preview persistida, confirmación explícita, lotes atómicos y recibos durables.
 
 Datos del producto y ficha comercial se editan separados de los conteos. Un cambio 8→12 registra un ajuste +4; 12→7, un ajuste -5, conservando el conteo final y los snapshots actuales del ledger. No se cambia el significado existente de `ADJUSTMENT.quantity`, que representa la existencia final contada.
 
-Orden de trabajo propuesto: revisar el diseño → ampliar integridad/versiones/ficha y operaciones de lote → incorporar ambos modos y archivos → pruebas y E2E real → continuar con Ventas. No hay reemplazo completo del inventario, borrado por filas omitidas ni sincronización automática con Google Sheets. Cuotas, atomicidad, identificación y comportamiento ante filas inválidas quedan detallados en el contrato para revisión antes del código.
+La ampliación incluye modelo, migración nueva, operaciones de lote, ambos modos, archivos y pruebas con PostgreSQL y autenticación reales. No hay reemplazo completo del inventario, borrado por filas omitidas ni sincronización automática con Google Sheets. Cuotas, atomicidad, identificación y comportamiento ante filas inválidas quedan detallados en el contrato. Ventas continúa sin implementar hasta la revisión de estos resultados.
 
 ## Implementación actual y verificación previa
 

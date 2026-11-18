@@ -41,11 +41,16 @@ export async function verifyInventorySheet({ command, evaluate, click, fillSelec
   await open();
   const source = "SKU\tNombre\tExistenciaObjetivo\tMotivoAjuste\n" + Array.from({ length: 52 }, (_, index) => `PASTE-${index}\tPegado ${index}\t1\tConteo pegado`).join("\n");
   await fillSelector("textarea", source); await click("Revisar columnas pegadas"); await click("Confirmar asignación y cargar filas"); await poll(() => evaluate("document.querySelectorAll('tbody tr').length===50"));
-  await evaluate(`(()=>{document.querySelector('[aria-label="SKU fila 2"]').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));document.querySelector('[aria-label="Nombre fila 3"]').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,shiftKey:true}));})()`);
+  setStage("SHEET_RECTANGULAR_COPY");
+  await evaluate(`document.querySelector('[aria-label="SKU fila 2"]').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}))`);
+  await poll(() => evaluate("![...document.querySelectorAll('button')].find(e=>e.textContent==='Copiar selección rectangular').disabled"));
+  await evaluate(`document.querySelector('[aria-label="Nombre fila 3"]').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,shiftKey:true}))`);
   await click("Copiar selección rectangular"); await poll(() => evaluate("document.querySelector('textarea[readonly]')?.value==='PASTE-0\\tPegado 0\\nPASTE-1\\tPegado 1'"));
+  setStage("SHEET_RECTANGULAR_PASTE");
   await evaluate(`(()=>{const data=new DataTransfer();data.setData('text/plain','1000\\t500\\n1100\\t600');document.querySelector('[aria-label="PrecioVentaCOP fila 2"]').dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:data}));})()`);
   await poll(() => evaluate("document.querySelector('[aria-label=\"CostoRefCOP fila 3\"]')?.value==='600'"));
   await click("Editar fila 2"); await poll(() => evaluate("Boolean(document.querySelector('[aria-label=\"Edición ampliada fila 2\"]'))")); await click("Cerrar edición ampliada");
+  setStage("SHEET_REAL_CSV_FILE_ROUND_TRIP_AND_MOBILE_PAGINATION");
   for (const width of [1280, 320, 390]) {
     await command("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 600 });
     await click("Siguiente"); await poll(() => evaluate("document.querySelectorAll('tbody tr').length===2")); await click("Anterior"); await poll(() => evaluate("document.querySelectorAll('tbody tr').length===50"));

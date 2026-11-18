@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
-type Item = { id: string; name: string; sku: string; minimumStock: number; dataVersion: number; commercialTerms: { unitSalePrice: string; referenceUnitCost: string | null; version: number } | null };
-export default function InventoryDetails({ id, onSaved }: { id: string; onSaved: () => void }) {
+type Item = { id: string; name: string; sku: string; stock: number; minimumStock: number; dataVersion: number; commercialTerms: { unitSalePrice: string; referenceUnitCost: string | null; version: number } | null };
+export default function InventoryDetails({ id, onSaved }: { id: string; onSaved: (item: Item) => void }) {
   const [item, setItem] = useState<Item | null>(null), [name, setName] = useState(""), [sku, setSku] = useState(""), [minimum, setMinimum] = useState("0");
   const [price, setPrice] = useState(""), [cost, setCost] = useState(""), [error, setError] = useState(""), [message, setMessage] = useState(""), [busy, setBusy] = useState(false), [reload, setReload] = useState(0);
   useEffect(() => { const controller = new AbortController(); apiRequest<{ result: Item }>(`/inventory/items/${id}/commercial-terms`, { signal: controller.signal }).then(({ result }) => {
@@ -13,7 +13,7 @@ export default function InventoryDetails({ id, onSaved }: { id: string; onSaved:
     try {
       const body = terms ? { expectedVersion: item.commercialTerms?.version ?? null, unitSalePrice: price, referenceUnitCost: cost === "" ? null : cost } : { expectedVersion: item.dataVersion, name, sku, minimumStock: Number(minimum) };
       const result = await apiRequest<{ result: Item }>(`/inventory/items/${id}${terms ? "/commercial-terms" : ""}`, { method: terms ? "PUT" : "PATCH", body: JSON.stringify(body) });
-      setItem(result.result); setMessage("Ficha actualizada."); onSaved();
+      setItem(result.result); setMessage("Ficha actualizada."); onSaved(result.result);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo guardar."); } finally { setBusy(false); }
   }
   return <section aria-label="Datos y ficha comercial" className="space-y-3 rounded border p-4"><h3 className="font-semibold">Datos y ficha comercial independiente del catálogo</h3>

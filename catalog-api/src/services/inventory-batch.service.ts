@@ -15,7 +15,7 @@ export function makeInventoryBatchService(database = prisma) {
     if (!result) throw new Error("NOT_FOUND"); return result;
   }
   async function batchLock(tx: Tx, userId: string, id: string) {
-    await tx.$executeRaw`SET LOCAL lock_timeout = '3s'`;
+    await tx.$executeRaw`SET LOCAL lock_timeout = '2s'`;
     await tx.$queryRaw`SELECT id FROM inventory_batches WHERE id=${id} AND "userId"=${userId} FOR UPDATE`;
     return owned(tx, userId, id);
   }

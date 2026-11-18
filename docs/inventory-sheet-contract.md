@@ -1,6 +1,6 @@
 # Inventario: contrato de edición masiva e intercambio de archivos
 
-Versión 1.0 para revisión — 17 de noviembre de 2026. **Diseño y planificación, sin implementación.** Amplía el [contrato de Inventario](inventory.md) y establece dependencias del [contrato de Ventas](sales-contract.md). No autoriza cambios de código, esquema, migraciones, dependencias ni producción.
+Versión 1.0 aprobada — 17 de noviembre de 2026. Amplía el [contrato de Inventario](inventory.md) y establece dependencias del [contrato de Ventas](sales-contract.md). La ampliación fue autorizada expresamente e implementada localmente; ver [implementación y verificación](inventory-sheet-verification.md). No autoriza producción, despliegues, commit ni push.
 
 ## 1. Alcance del MVP y compatibilidad
 
@@ -208,7 +208,7 @@ El navegador procesa archivos y envía filas normalizadas, no el archivo bruto. 
 
 Errores: `400` estructura/campos, `401` sesión/cuenta cerrada, `404` ausente o ajeno, `409` revisión/versión/identidad/cancelación incompatibles, `413` cuotas, `429` abuso y `503` fallo técnico reintentable con el mismo ID. Informe por fila y mensaje accesible; no silenciar fallos como cero productos o aplicación exitosa.
 
-## 12. Modelo y ampliaciones previstas — sin migraciones creadas
+## 12. Modelo y ampliaciones
 
 | Modelo/cambio | Contrato |
 | --- | --- |
