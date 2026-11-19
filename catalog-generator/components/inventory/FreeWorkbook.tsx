@@ -16,6 +16,7 @@ import "@univerjs/preset-sheets-filter/lib/index.css";
 import "@univerjs/preset-sheets-sort/lib/index.css";
 import "@univerjs/preset-sheets-find-replace/lib/index.css";
 import { apiRequest } from "@/lib/api";
+import WorkbookReading from "./WorkbookReading";
 
 type Document = { snapshot: string; version: number; updatedAt: string };
 type Save = { expectedVersion: number | null; operationId: string; snapshot: string };
@@ -33,7 +34,8 @@ export default function FreeWorkbook() {
     apiRequest<{ result: Document | null }>("/inventory/workbook", { signal: controller.signal }).then(async ({ result }) => {
       if (controller.signal.aborted || !host.current) return;
       host.current.append(container);
-      instance = createUniver({ locale: LocaleType.ES_ES, locales: { [LocaleType.ES_ES]: mergeLocales(Spanish, FilterSpanish, SortSpanish, FindSpanish) }, presets: [UniverSheetsCorePreset({ container, disableAutoFocus: true }), UniverSheetsFilterPreset(), UniverSheetsSortPreset(), UniverSheetsFindReplacePreset()] });
+      // Desktop cell editing needs the SDK's normal focus transfer when typing.
+      instance = createUniver({ locale: LocaleType.ES_ES, locales: { [LocaleType.ES_ES]: mergeLocales(Spanish, FilterSpanish, SortSpanish, FindSpanish) }, presets: [UniverSheetsCorePreset({ container }), UniverSheetsFilterPreset(), UniverSheetsSortPreset(), UniverSheetsFindReplacePreset()] });
       // Native SDK snapshot: our API bounds/validates its JSON envelope and dimensions.
       // Its version-specific cell/style metadata stays opaque; no inventory interpretation occurs here.
       const data = result ? JSON.parse(result.snapshot) as IWorkbookData : { id: "vitrinaya-workbook", name: "Mi inventario", sheetOrder: ["principal"], sheets: { principal: { id: "principal", name: "Hoja 1", rowCount: 500, columnCount: 26 } } };
@@ -99,6 +101,7 @@ export default function FreeWorkbook() {
     {error && <div role="alert" className="rounded border border-red-400 p-3 text-red-900"><p>{error}</p>{!ready && <button className="min-h-11 underline" onClick={() => setAttempt(value => value + 1)}>Reintentar carga</button>}</div>}
     {!ready && !error && <p role="status">Cargando hoja de cálculo…</p>}
     <div ref={host} aria-label="Editor de hoja de cálculo" aria-busy={!ready} className={`h-[78dvh] min-h-[500px] w-full overflow-hidden rounded border bg-white ${ready ? "" : "pointer-events-none"}`} />
+    <WorkbookReading getSnapshot={snapshot} getActiveSheetId={() => editor.current?.univerAPI.getActiveWorkbook()?.getActiveSheet().getSheetId() ?? null} ready={ready && !busy} />
     <details><summary className="min-h-11 cursor-pointer">Ayuda y herramientas anteriores</summary><p className="text-sm">Escribe títulos en la primera fila o donde prefieras. Usa la barra de fórmulas, menús y clic derecho para formato, combinar, insertar, eliminar, mover filas/columnas y organizar pestañas. Arrastra la selección o sus controles de relleno y cambia tamaños desde las cabeceras.</p><Link className="inline-flex min-h-11 items-center underline" href="/dashboard/inventario/lotes" onClick={event => { if (dirty) { event.preventDefault(); setError("Guarda o descarga una copia de tus cambios antes de salir."); } }}>Abrir herramientas de importación y ajustes estructurados</Link></details>
   </main>;
 }

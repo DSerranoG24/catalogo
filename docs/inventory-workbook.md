@@ -1,5 +1,7 @@
 # Hoja de cálculo libre — implementación y verificación
 
+**Actualización:** la corrección de escritura tras un clic y la primera vista de lectura/asignación se documentan en [Escritura y lectura de datos](workbook-reading.md). La aplicación al inventario continúa pendiente; la lectura actual es local y revisable.
+
 18 de noviembre de 2026. La petición actual sustituye la prioridad de una tabla con columnas de inventario por un editor de hoja de cálculo libre. Interpretar las columnas que escriba el vendedor queda para una fase posterior. No se ha implementado ese reconocimiento ni se han cambiado las reglas de stock.
 
 ## Experiencia y librería
