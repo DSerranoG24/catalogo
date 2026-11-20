@@ -101,7 +101,7 @@ export default function FreeWorkbook() {
     {error && <div role="alert" className="rounded border border-red-400 p-3 text-red-900"><p>{error}</p>{!ready && <button className="min-h-11 underline" onClick={() => setAttempt(value => value + 1)}>Reintentar carga</button>}</div>}
     {!ready && !error && <p role="status">Cargando hoja de cálculo…</p>}
     <div ref={host} aria-label="Editor de hoja de cálculo" aria-busy={!ready} className={`h-[78dvh] min-h-[500px] w-full overflow-hidden rounded border bg-white ${ready ? "" : "pointer-events-none"}`} />
-    <WorkbookReading getSnapshot={snapshot} getActiveSheetId={() => editor.current?.univerAPI.getActiveWorkbook()?.getActiveSheet().getSheetId() ?? null} ready={ready && !busy} />
+    <WorkbookReading getSnapshot={snapshot} getActiveSheetId={() => editor.current?.univerAPI.getActiveWorkbook()?.getActiveSheet().getSheetId() ?? null} getSavedReference={() => ({ workbookId: "vitrinaya-workbook", version: version.current, dirty })} ready={ready && !busy} />
     <details><summary className="min-h-11 cursor-pointer">Ayuda y herramientas anteriores</summary><p className="text-sm">Escribe títulos en la primera fila o donde prefieras. Usa la barra de fórmulas, menús y clic derecho para formato, combinar, insertar, eliminar, mover filas/columnas y organizar pestañas. Arrastra la selección o sus controles de relleno y cambia tamaños desde las cabeceras.</p><Link className="inline-flex min-h-11 items-center underline" href="/dashboard/inventario/lotes" onClick={event => { if (dirty) { event.preventDefault(); setError("Guarda o descarga una copia de tus cambios antes de salir."); } }}>Abrir herramientas de importación y ajustes estructurados</Link></details>
   </main>;
 }

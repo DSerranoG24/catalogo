@@ -17,6 +17,17 @@ test("batch separates metadata, prices and absolute targets; preserves blank sto
   for (const [targetStock, delta] of [[12, 4], [7, -1], [0, -8]]) { const plan = buildInventoryPlan([row({ id: item.id, targetStock, reason: "Conteo físico" })], [item], null)[0]; assert.equal(plan.delta, delta); assert.equal(plan.after?.stock, targetStock); assert.equal(plan.action, "MODIFIED"); }
   const price = buildInventoryPlan([row({ sku: item.sku, unitSalePrice: "15000", costAction: "BORRAR" })], [item], null)[0]; assert.equal(price.delta, 0); assert.equal(price.after?.commercialTerms?.referenceUnitCost, null);
 });
+test("counted stock zero and signed adjustments are represented in the plan", () => {
+  const zero = buildInventoryPlan([row({ id: item.id, targetStock: 0, reason: "Conteo físico" })], [item], null)[0];
+  assert.equal(zero.after?.stock, 0); assert.equal(zero.delta, -8); assert.equal(zero.action, "MODIFIED");
+  const up = buildInventoryPlan([row({ id: item.id, targetStock: 13, reason: "Conteo físico" })], [item], null)[0];
+  assert.equal(up.delta, 5); assert.equal(up.after?.stock, 13);
+});
+test("a changed target produces a different plan hash for stale apply detection", () => {
+  const first = buildInventoryPlan([row({ id: item.id, targetStock: 10, reason: "Conteo físico" })], [item], null);
+  const changed = buildInventoryPlan([row({ id: item.id, targetStock: 7, reason: "Conteo físico" })], [item], null);
+  assert.notEqual(inventoryHash(first), inventoryHash(changed));
+});
 test("batch identity never matches names and flags both duplicate occurrences", () => {
   assert.equal(buildInventoryPlan([row({ name: item.name })], [item], null)[0].action, "ERROR");
   assert.equal(buildInventoryPlan([row({ id: randomUUID(), sku: item.sku })], [item], null)[0].action, "ERROR");
