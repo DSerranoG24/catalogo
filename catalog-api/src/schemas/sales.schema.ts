@@ -3,6 +3,7 @@ const money = z.preprocess(v => typeof v === "number" && Number.isSafeInteger(v)
 const quantity = z.number().int().positive().max(2147483647);
 const uuid = z.uuid();
 export const saleOperationStatusSchema = z.enum(["PREPARED", "SUCCEEDED", "REJECTED", "ABANDONED"]);
+export const saleMovementRoleSchema = z.enum(["SALE_CONFIRMATION", "SALE_CANCELLATION", "SALE_RETURN_RESELLABLE", "SALE_RETURN_DAMAGED"]);
 export const saleOperationSchema = z.object({ operationId: uuid, requestId: uuid, expectedSaleVersion: z.number().int().positive().nullable(), status: saleOperationStatusSchema, requestHash: z.string().regex(/^[a-f0-9]{64}$/), responseSnapshot: z.unknown().nullable() }).strict();
 export const saleLineInputSchema = z.object({ inventoryItemId: uuid, quantity, unitDiscount: money }).strict();
 export const createSaleSchema = z.object({ operationId: uuid, requestId: uuid, customerName: z.string().trim().max(160).optional(), customerPhone: z.string().trim().max(40).optional() }).strict();

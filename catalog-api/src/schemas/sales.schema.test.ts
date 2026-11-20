@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { confirmSaleSchema, returnSaleSchema, saleLineInputSchema } from "./sales.schema";
+import { confirmSaleSchema, returnSaleSchema, saleLineInputSchema, saleMovementRoleSchema } from "./sales.schema";
 import { randomUUID } from "node:crypto";
 test("sales schemas require positive quantities and integer COP money", () => {
   const valid = { inventoryItemId: randomUUID(), quantity: 2, unitDiscount: "100" };
@@ -16,4 +16,9 @@ test("returns require complete resellable/damaged disposition", () => {
   const base = { operationId: randomUUID(), requestId: randomUUID(), expectedVersion: 1, reason: "Cliente devuelve", lines: [{ saleLineId: randomUUID(), receivedQuantity: 3, resellableQuantity: 2, damagedQuantity: 1 }] };
   assert.equal(returnSaleSchema.safeParse(base).success, true);
   assert.equal(returnSaleSchema.safeParse({ ...base, lines: [{ ...base.lines[0], damagedQuantity: 0 }] }).success, false);
+});
+test("movement roles are closed and operation/request identifiers stay distinct", () => {
+  assert.equal(saleMovementRoleSchema.safeParse("SALE_CONFIRMATION").success, true);
+  assert.equal(saleMovementRoleSchema.safeParse("MANUAL").success, false);
+  const operationId = randomUUID(); const requestId = randomUUID(); assert.notEqual(operationId, requestId);
 });

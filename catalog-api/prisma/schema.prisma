@@ -44,6 +44,12 @@ enum SaleOperationStatus {
   REJECTED
   ABANDONED
 }
+enum SaleMovementRole {
+  SALE_CONFIRMATION
+  SALE_CANCELLATION
+  SALE_RETURN_RESELLABLE
+  SALE_RETURN_DAMAGED
+}
 
 model User {
   id           String   @id @default(uuid())
@@ -134,7 +140,7 @@ model InventoryMovement {
   batchOperationId String?
   saleId String?
   saleLineId String?
-  saleMovementRole String?
+  saleMovementRole SaleMovementRole?
   createdAt DateTime @default(now())
   item InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
   actor User? @relation("InventoryActor", fields: [actorUserId], references: [id], onDelete: Restrict)
@@ -176,8 +182,9 @@ model Sale {
   @@index([userId, status, createdAt])
 }
 
-/// Migration SQL must add CHECK constraints: quantities > 0; COP totals >= 0;
-/// and subtotal - discountTotal = total with discountTotal <= subtotal.
+/// Migration SQL must add CHECK constraints: quantity > 0, unitPrice/unitCost/unitDiscount/lineTotal >= 0,
+/// unitDiscount <= unitPrice, subtotal/discountTotal/total >= 0, discountTotal <= subtotal,
+/// and subtotal - discountTotal = total.
 model SaleLine {
   id String @id @default(uuid())
   saleId String
