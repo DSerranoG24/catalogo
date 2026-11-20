@@ -5,6 +5,7 @@ const path = require("node:path");
 const testFiles = [
   "src/schemas/inventory-workbook.test.ts",
   "src/schemas/sales.schema.test.ts",
+  "src/schemas/inventory-publication.schema.test.ts",
   "src/schemas/inventory-workbook-preview.test.ts",
   "src/services/inventory-batch.test.ts",
   "src/scripts/verify-inventory-postgres.test.ts",

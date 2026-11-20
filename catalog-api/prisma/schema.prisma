@@ -50,6 +50,11 @@ enum SaleMovementRole {
   SALE_RETURN_RESELLABLE
   SALE_RETURN_DAMAGED
 }
+enum InventoryPublicationStatus {
+  DRAFT
+  PUBLISHED
+  UNPUBLISHED
+}
 
 model User {
   id           String   @id @default(uuid())
@@ -74,6 +79,7 @@ model User {
   sales Sale[]
   saleOperations SaleOperation[]
   saleReturns SaleReturn[]
+  inventoryPublications InventoryPublication[]
 
   @@index([createdAt])
 
@@ -116,11 +122,51 @@ model InventoryItem {
   movements InventoryMovement[]
   commercialTerms ItemCommercialTerms?
   saleLines SaleLine[]
+  images InventoryItemImage[]
+  publications InventoryPublication[]
+  catalogProducts Product[]
 
   @@unique([id, userId])
   @@unique([userId, sku])
   @@index([userId, createdAt])
   @@map("inventory_items")
+}
+
+model InventoryItemImage {
+  id String @id @default(uuid())
+  inventoryItemId String
+  storagePath String
+  alt String?
+  position Int @default(0)
+  isPrimary Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  item InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  @@unique([inventoryItemId, storagePath])
+  @@index([inventoryItemId, isPrimary, position])
+}
+
+model InventoryPublication {
+  id String @id @default(uuid())
+  userId String
+  inventoryItemId String
+  catalogId String
+  productId String
+  status InventoryPublicationStatus @default(DRAFT)
+  titleOverride String?
+  descriptionOverride String?
+  priceOverride Int?
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  item InventoryItem @relation(fields: [inventoryItemId, userId], references: [id, userId], onDelete: Restrict)
+  catalog Catalog @relation(fields: [catalogId, userId], references: [id, userId], onDelete: Restrict)
+  product Product @relation(fields: [productId, catalogId], references: [id, catalogId], onDelete: Restrict)
+  @@unique([catalogId, inventoryItemId])
+  @@unique([productId])
+  @@unique([productId, catalogId])
+  @@index([userId, status, updatedAt])
 }
 
 model InventoryMovement {
@@ -373,11 +419,13 @@ model Catalog {
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   categories Category[]
   products   Product[]
+  publications InventoryPublication[]
   orders     Order[]
     banners    CatalogBanner[]
   deletionMarkers OrderDeletionMarker[]
 
   @@unique([userId, slug])
+  @@unique([id, userId])
   @@index([userId])
   @@map("catalogs")
 }
@@ -428,9 +476,13 @@ model Product {
   images     ProductImage[]
   reviews    ProductReview[]
   orderItems OrderItem[]
+  inventoryItemId String?
+  inventoryItem InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  publication InventoryPublication?
 
   @@unique([catalogId, slug])
   @@unique([catalogId, sku])
+  @@unique([id, catalogId])
   @@index([catalogId])
   @@index([categoryId])
   @@map("products")
