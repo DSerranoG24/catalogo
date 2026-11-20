@@ -2,7 +2,13 @@ import { supabase } from "../config/supabase";
 import { prisma } from "../config/prisma";
 import type { ClosureStorage } from "./account-closure-worker";
 
-const BUCKET_NAME = "product-images";
+export const BUCKET_NAME = "product-images";
+
+export async function uploadInventoryImage(fileBuffer: Buffer, filePath: string, contentType: string) {
+  const { data, error } = await supabase.storage.from(BUCKET_NAME).upload(filePath, fileBuffer, { contentType, upsert: false });
+  if (error) throw error;
+  return data;
+}
 
 export async function uploadProductImage(
   fileBuffer: Buffer,

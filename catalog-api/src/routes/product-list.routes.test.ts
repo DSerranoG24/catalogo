@@ -16,7 +16,7 @@ function product(index: number): ListedProduct {
   return { id: String(index).padStart(4, "0"), catalogId, categoryId: null, name: `Producto ${index}`, slug: `producto-${index}`,
     description: null, brand: index === 26 ? "Acme" : null, model: null, sku: `SKU-${index}`, price: index, salePrice: null, inventoryItemId: null,
     saleStartsAt: null, saleEndsAt: null, stock: index % 2, active: index % 2 === 0, featured: false, needsCompletion: index < 4, specs: null,
-    createdAt: new Date(0), updatedAt: new Date(0), category: null, images: [{ id: `image-${index}`, productId: String(index), url: `private/${index}`, alt: null, position: 0, createdAt: new Date(0) }] };
+    createdAt: new Date(0), updatedAt: new Date(0), category: null, inventoryItem: null, images: [{ id: `image-${index}`, productId: String(index), url: `private/${index}`, alt: null, position: 0, createdAt: new Date(0) }] };
 }
 
 test("listing query rejects invalid values, repeated parameters, huge pages and unsupported sizes", () => {
@@ -27,9 +27,10 @@ test("listing query rejects invalid values, repeated parameters, huge pages and 
 
 test("all filter clauses retain catalog and owner; search is literal and case insensitive", () => {
   const where = productListWhere(catalogId, "owner-a", productListQuery.parse({ q: " ACME%_ ", category: "none", stock: "in", status: "inactive" }));
-  assert.deepEqual(where, { catalogId, catalog: { userId: "owner-a" }, categoryId: null, active: false, stock: { gt: 0 },
-    OR: ["name", "sku", "brand", "model"].map(field => ({ [field]: { contains: "ACME\\%\\_", mode: "insensitive" } })) });
-  assert.equal(productListWhere(catalogId, "owner-a", productListQuery.parse({ stock: "out", category: foreignId })).stock, 0);
+  assert.deepEqual(where, { AND: [{ catalogId, catalog: { userId: "owner-a" }, categoryId: null, active: false,
+    OR: ["name", "sku", "brand", "model"].map(field => ({ [field]: { contains: "ACME\\%\\_", mode: "insensitive" } })) },
+    { OR: [{ inventoryItem: { stock: { gt: 0 } } }, { inventoryItemId: null, stock: { gt: 0 } }] }] });
+  assert.deepEqual(productListWhere(catalogId, "owner-a", productListQuery.parse({ stock: "out", category: foreignId })), { AND: [{ catalogId, catalog: { userId: "owner-a" }, categoryId: foreignId }, { OR: [{ inventoryItem: { stock: 0 } }, { inventoryItemId: null, stock: 0 }] }] });
 });
 
 test("every order has an id tie-breaker and price uses the base field", () => {

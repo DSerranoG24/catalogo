@@ -45,11 +45,12 @@ export async function findProductsByCatalog(
           position: "asc",
         },
       },
+      inventoryItem: { include: { images: { where: { isPrimary: true }, take: 1, orderBy: [{ position: "asc" }, { id: "asc" }] } } },
     },
     orderBy: {
       createdAt: "desc",
     },
-  });
+  }).then(products => products.map(product => ({ ...product, stock: product.inventoryItem?.stock ?? product.stock })));
 }
 
 export async function findProductById(
@@ -70,8 +71,9 @@ export async function findProductById(
           position: "asc",
         },
       },
+      inventoryItem: { include: { images: { where: { isPrimary: true }, take: 1, orderBy: [{ position: "asc" }, { id: "asc" }] } } },
     },
-  });
+  }).then(product => product ? { ...product, stock: product.inventoryItem?.stock ?? product.stock } : null);
 }
 
 export async function updateProduct(

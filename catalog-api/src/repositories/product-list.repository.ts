@@ -2,19 +2,21 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma";
 import type { ProductListQuery } from "../schemas/product-list.schema";
 
-const pageInclude = { category: true, images: { take: 1, orderBy: [{ position: "asc" }, { id: "asc" }] } } satisfies Prisma.ProductInclude;
+const pageInclude = { category: true, images: { take: 1, orderBy: [{ position: "asc" }, { id: "asc" }] }, inventoryItem: { include: { images: { where: { isPrimary: true }, take: 1, orderBy: [{ position: "asc" }, { id: "asc" }] } } } } satisfies Prisma.ProductInclude;
 export type ListedProduct = Prisma.ProductGetPayload<{ include: typeof pageInclude }>;
 
 export function productListWhere(catalogId: string, userId: string, query: ProductListQuery): Prisma.ProductWhereInput {
   // Escape LIKE wildcards: a seller's percent/underscore are literal search text.
   const term = query.q.replace(/[\\%_]/g, "\\$&");
-  return {
+  const base: Prisma.ProductWhereInput = {
     catalogId, catalog: { userId },
     ...(query.category === "none" ? { categoryId: null } : query.category !== "all" ? { categoryId: query.category } : {}),
     ...(query.status !== "all" ? { active: query.status === "active" } : {}),
-    ...(query.stock === "in" ? { stock: { gt: 0 } } : query.stock === "out" ? { stock: 0 } : {}),
     ...(term ? { OR: ["name", "sku", "brand", "model"].map(field => ({ [field]: { contains: term, mode: "insensitive" } })) } : {}),
   };
+  if (query.stock === "all") return base;
+  const stock = query.stock === "in" ? { gt: 0 } : 0;
+  return { AND: [base, { OR: [{ inventoryItem: { stock } }, { inventoryItemId: null, stock }] }] };
 }
 
 export function productListOrder(query: ProductListQuery): Prisma.ProductOrderByWithRelationInput[] {
