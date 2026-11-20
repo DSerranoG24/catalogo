@@ -30,6 +30,21 @@ enum UserRole {
   ADMIN
 }
 
+enum SaleStatus {
+  DRAFT
+  CONFIRMED
+  DELIVERED
+  CANCELLED
+  RETURNED
+}
+
+enum SaleOperationStatus {
+  PREPARED
+  SUCCEEDED
+  REJECTED
+  ABANDONED
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -50,6 +65,9 @@ model User {
   inventoryActions InventoryMovement[] @relation("InventoryActor")
   accountActionTokens AccountActionToken[]
   closureJob AccountClosureJob?
+  sales Sale[]
+  saleOperations SaleOperation[]
+  saleReturns SaleReturn[]
 
   @@index([createdAt])
 
@@ -91,6 +109,7 @@ model InventoryItem {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   movements InventoryMovement[]
   commercialTerms ItemCommercialTerms?
+  saleLines SaleLine[]
 
   @@unique([id, userId])
   @@unique([userId, sku])
@@ -113,15 +132,115 @@ model InventoryMovement {
   batchId String?
   batchRowId String?
   batchOperationId String?
+  saleId String?
+  saleLineId String?
+  saleMovementRole String?
   createdAt DateTime @default(now())
   item InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
   actor User? @relation("InventoryActor", fields: [actorUserId], references: [id], onDelete: Restrict)
   batchRow InventoryBatchRow? @relation(fields: [batchId, batchRowId], references: [batchId, rowId], onDelete: Restrict)
+  sale Sale? @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  saleLine SaleLine? @relation(fields: [saleLineId], references: [id], onDelete: Restrict)
 
   @@unique([batchOperationId, itemId])
   @@unique([itemId, key])
   @@index([itemId, createdAt])
+  @@index([saleId, saleLineId])
+  @@index([saleId, saleMovementRole, createdAt])
   @@map("inventory_movements")
+}
+
+model Sale {
+  id String @id @default(uuid())
+  userId String
+  status SaleStatus @default(DRAFT)
+  version Int @default(1)
+  currency String @default("COP")
+  customerName String?
+  customerPhone String?
+  subtotal BigInt @default(0)
+  discountTotal BigInt @default(0)
+  total BigInt @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  confirmedAt DateTime?
+  deliveredAt DateTime?
+  cancelledAt DateTime?
+  returnedAt DateTime?
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  lines SaleLine[]
+  operations SaleOperation[]
+  returns SaleReturn[]
+  movements InventoryMovement[]
+  @@index([userId, createdAt, id])
+  @@index([userId, status, createdAt])
+}
+
+/// Migration SQL must add CHECK constraints: quantities > 0; COP totals >= 0;
+/// and subtotal - discountTotal = total with discountTotal <= subtotal.
+model SaleLine {
+  id String @id @default(uuid())
+  saleId String
+  inventoryItemId String
+  quantity Int
+  itemName String
+  sku String
+  unitPrice BigInt
+  unitCost BigInt?
+  unitDiscount BigInt @default(0)
+  lineTotal BigInt
+  commercialTermsVersion Int
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  movements InventoryMovement[]
+  returns SaleReturnLine[]
+  @@unique([saleId, inventoryItemId])
+  @@index([inventoryItemId])
+}
+
+model SaleOperation {
+  id String @id @default(uuid())
+  saleId String
+  userId String
+  type String
+  status SaleOperationStatus @default(PREPARED)
+  requestId String
+  expectedSaleVersion Int?
+  requestHash String
+  responseSnapshot Json?
+  createdAt DateTime @default(now())
+  completedAt DateTime?
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  @@unique([userId, requestId])
+  @@index([saleId, createdAt])
+}
+
+model SaleReturn {
+  id String @id @default(uuid())
+  saleId String
+  userId String
+  operationId String @unique
+  reason String
+  createdAt DateTime @default(now())
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  lines SaleReturnLine[]
+  @@index([userId, saleId])
+}
+
+model SaleReturnLine {
+  id String @id @default(uuid())
+  returnId String
+  saleLineId String
+  receivedQuantity Int
+  resellableQuantity Int
+  damagedQuantity Int
+  saleReturn SaleReturn @relation(fields: [returnId], references: [id], onDelete: Restrict)
+  saleLine SaleLine @relation(fields: [saleLineId], references: [id], onDelete: Restrict)
+  @@unique([returnId, saleLineId])
+  /// Migration SQL: CHECK (receivedQuantity > 0), CHECK (resellableQuantity >= 0),
+  /// CHECK (damagedQuantity >= 0), CHECK (resellableQuantity + damagedQuantity = receivedQuantity).
 }
 
 model ItemCommercialTerms {

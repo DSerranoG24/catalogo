@@ -17,6 +17,7 @@ import "@univerjs/preset-sheets-sort/lib/index.css";
 import "@univerjs/preset-sheets-find-replace/lib/index.css";
 import { apiRequest } from "@/lib/api";
 import WorkbookReading from "./WorkbookReading";
+import { validateNativeWorkbookCopy } from "@/lib/free-workbook-restore.mjs";
 
 type Document = { snapshot: string; version: number; updatedAt: string };
 type Save = { expectedVersion: number | null; operationId: string; snapshot: string };
@@ -25,6 +26,7 @@ type Editor = ReturnType<typeof createUniver>;
 export default function FreeWorkbook() {
   const host = useRef<HTMLDivElement>(null), editor = useRef<Editor | null>(null);
   const version = useRef<number | null>(null), pending = useRef<{ input: Save; revision: number } | null>(null), changes = useRef(0), saving = useRef(false);
+  const restoredSnapshot = useRef<string | null>(null), restoredPending = useRef(false);
   const [ready, setReady] = useState(false), [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false);
   const [error, setError] = useState(""), [message, setMessage] = useState(""), [attempt, setAttempt] = useState(0);
   const [name, setName] = useState("Mi inventario");
@@ -38,7 +40,7 @@ export default function FreeWorkbook() {
       instance = createUniver({ locale: LocaleType.ES_ES, locales: { [LocaleType.ES_ES]: mergeLocales(Spanish, FilterSpanish, SortSpanish, FindSpanish) }, presets: [UniverSheetsCorePreset({ container }), UniverSheetsFilterPreset(), UniverSheetsSortPreset(), UniverSheetsFindReplacePreset()] });
       // Native SDK snapshot: our API bounds/validates its JSON envelope and dimensions.
       // Its version-specific cell/style metadata stays opaque; no inventory interpretation occurs here.
-      const data = result ? JSON.parse(result.snapshot) as IWorkbookData : { id: "vitrinaya-workbook", name: "Mi inventario", sheetOrder: ["principal"], sheets: { principal: { id: "principal", name: "Hoja 1", rowCount: 500, columnCount: 26 } } };
+      const data = restoredSnapshot.current ? JSON.parse(restoredSnapshot.current) as IWorkbookData : result ? JSON.parse(result.snapshot) as IWorkbookData : { id: "vitrinaya-workbook", name: "Mi inventario", sheetOrder: ["principal"], sheets: { principal: { id: "principal", name: "Hoja 1", rowCount: 500, columnCount: 26 } } };
       const workbook = instance.univerAPI.createWorkbook(data);
       const initialized = instance;
       await new Promise<void>(resolve => {
@@ -47,12 +49,12 @@ export default function FreeWorkbook() {
         controller.signal.addEventListener("abort", () => { listener.dispose(); resolve(); }, { once: true });
       });
       if (controller.signal.aborted) return;
-      version.current = result?.version ?? null; editor.current = instance; setName(workbook.getName());
+      const restored = restoredPending.current; restoredSnapshot.current = null; editor.current = instance; setName(workbook.getName());
       workbook.onCommandExecuted(command => {
         // Formula-engine bookkeeping is derived data, not a later user edit.
         if (command.type === CommandType.MUTATION && !command.id.startsWith("formula.mutation.")) { changes.current++; setDirty(true); }
       });
-      setReady(true); setError(""); setMessage(result ? `Hoja recuperada · versión ${result.version}.` : "Hoja nueva. Escribe tus títulos y datos en cualquier celda.");
+      setReady(true); setDirty(restored); restoredPending.current = false; setError(""); setMessage(restored ? "Copia restaurada como borrador. Pulsa Guardar hoja para persistirla." : result ? `Hoja recuperada · versión ${result.version}.` : "Hoja nueva. Escribe tus títulos y datos en cualquier celda.");
     }).catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "No se pudo cargar la hoja."); });
     return () => { controller.abort(); editor.current = null; queueMicrotask(() => { instance?.univer.dispose(); container.remove(); }); };
   }, [attempt]);
@@ -89,12 +91,20 @@ export default function FreeWorkbook() {
       setMessage("Copia del documento descargada en formato Vitrinaya JSON.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo descargar."); }
   }
+  async function restore(file: File) {
+    try {
+      const text = validateNativeWorkbookCopy(await file.text());
+      if (dirty && !window.confirm("La hoja tiene cambios sin guardar. ¿Reemplazarla con esta copia?")) return;
+      restoredSnapshot.current = text; restoredPending.current = true; setReady(false); setDirty(true); setMessage("Copia válida. Cargando borrador restaurado; pulsa Guardar hoja para persistirlo."); setAttempt(value => value + 1);
+    } catch { setError("La copia no es un JSON de hoja válido o está dañada. No se modificó la hoja actual."); }
+  }
   return <main className="mx-auto max-w-[1800px] space-y-3 px-3 py-5 sm:px-6">
     <Link className="inline-flex min-h-11 items-center underline" href="/dashboard/inventario" onClick={event => { if (dirty) { event.preventDefault(); setError("Guarda o descarga una copia de tus cambios antes de salir."); } }}>← Inventario</Link>
     <div className="flex flex-wrap items-end gap-3"><div className="flex-1"><h1 className="text-2xl font-semibold">Hoja de cálculo</h1><p className="mt-1 text-sm">Tus títulos, tus columnas y tu organización. Edita y arrastra dentro de la hoja; guarda cuando termines.</p></div>
       <label className="text-sm">Nombre del documento<input className="block min-h-11 rounded border bg-white px-3" maxLength={160} value={name} disabled={!ready || busy} onChange={event => { setName(event.target.value); changes.current++; setDirty(true); }} /></label>
       <button className="min-h-11 rounded bg-[#173d2a] px-4 font-semibold text-white disabled:opacity-50" disabled={!ready || busy} onClick={() => void save()}>{busy ? "Guardando…" : "Guardar hoja"}</button>
       <button className="min-h-11 rounded border px-4 disabled:opacity-50" disabled={!ready || busy} onClick={() => void backup()}>Descargar copia</button>
+      <label className="min-h-11 cursor-pointer rounded border px-4 py-2">Restaurar copia JSON<input className="sr-only" type="file" accept="application/json,.json" disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (file) void restore(file); event.currentTarget.value = ""; }} /></label>
     </div>
     <p className="text-sm">{dirty ? "Cambios sin guardar." : "Sin guardado automático."} Esta hoja todavía no crea productos ni modifica las existencias registradas.</p>
     <p role="status" aria-live="polite">{message}</p>

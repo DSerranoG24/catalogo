@@ -13,6 +13,7 @@
     "test": "node scripts/test.cjs",
     "test:inventory-postgres": "node dist/scripts/verify-inventory-postgres.js",
     "test:inventory-batches-postgres": "node dist/scripts/verify-inventory-batches-postgres.js",
+    "test:inventory-workbook-http-postgres": "node dist/scripts/verify-inventory-workbook-http-postgres.js",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
