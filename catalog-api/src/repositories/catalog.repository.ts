@@ -203,6 +203,7 @@ export async function findPublicCatalog(publicId: string, database = prisma) {
             select: {
               userId: true,
               stock: true,
+              commercialTerms: { select: { userId: true, unitSalePrice: true } },
               images: {
                 where: { isPrimary: true },
                 select: { id: true, storagePath: true, alt: true, position: true },
@@ -211,6 +212,7 @@ export async function findPublicCatalog(publicId: string, database = prisma) {
               },
             },
           },
+          publication: { select: { userId: true, priceOverride: true } },
           images: {
             select: { id: true, url: true, alt: true, position: true },
             orderBy: { position: "asc" },
@@ -221,16 +223,25 @@ export async function findPublicCatalog(publicId: string, database = prisma) {
     },
   });
   if (!catalog) return null;
-  const products = catalog.products.map(({ inventoryItem, ...product }) => {
+  const products = catalog.products.flatMap(({ inventoryItem, publication, ...product }) => {
     const ownedInventory = inventoryItem?.userId === catalog.userId ? inventoryItem : null;
+    if (inventoryItem && !ownedInventory) return [];
+    const ownedTerms = ownedInventory?.commercialTerms?.userId === catalog.userId ? ownedInventory.commercialTerms : null;
+    const ownedOverride = publication?.userId === catalog.userId ? publication.priceOverride : null;
+    const inventoryPrice = ownedTerms && ownedTerms.unitSalePrice >= 0n && ownedTerms.unitSalePrice <= 2_147_483_647n
+      ? Number(ownedTerms.unitSalePrice)
+      : null;
+    const price = ownedInventory ? ownedOverride ?? inventoryPrice : product.price;
+    if (price === null) return [];
     const inheritedImage = ownedInventory?.images[0];
-    return {
+    return [{
       ...product,
+      price,
       stock: ownedInventory?.stock ?? product.stock,
       images: inheritedImage
         ? [{ id: inheritedImage.id, url: inheritedImage.storagePath, alt: inheritedImage.alt, position: inheritedImage.position }]
         : product.images,
-    };
+    }];
   });
   const { userId: _userId, ...publicCatalog } = catalog;
   return { ...publicCatalog, products, ...resolvePublicHighlights(products, catalog.categories, catalog.banners) };

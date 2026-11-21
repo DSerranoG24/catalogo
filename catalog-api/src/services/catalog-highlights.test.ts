@@ -199,10 +199,11 @@ test("public repository scopes publication and active relations; HTTP signs bann
       assert.ok(p && typeof p === "object"); assert.deepEqual(p.where, { active: true });
       assert.ok(p.select && typeof p.select === "object");
       assert.equal(p.select.stock, true);
-      assert.deepEqual(p.select.inventoryItem, { select: { userId: true, stock: true, images: {
+      assert.deepEqual(p.select.inventoryItem, { select: { userId: true, stock: true, commercialTerms: { select: { userId: true, unitSalePrice: true } }, images: {
         where: { isPrimary: true }, select: { id: true, storagePath: true, alt: true, position: true },
         orderBy: [{ position: "asc" }, { id: "asc" }], take: 1,
       } } });
+      assert.deepEqual(p.select.publication, { select: { userId: true, priceOverride: true } });
       assert.ok(c && typeof c === "object"); assert.deepEqual(c.where, { active: true });
       assert.ok(b && typeof b === "object"); assert.deepEqual(b.where, { active: true });
       assert.equal(p.skip, undefined); assert.equal(p.take, undefined);
@@ -244,8 +245,8 @@ test("public stock uses current inventory for linked products and legacy stock o
         userId: "owner-a",
         publicId: "owner-a-public",
         products: [
-          { id: "legacy", featured: false, stock: 3, inventoryItem: null },
-          { id: "linked", featured: false, stock: 99, inventoryItem: { userId: "owner-a", stock: inventoryStock, images: [] } },
+          { id: "legacy", featured: false, stock: 3, inventoryItem: null, publication: null },
+          { id: "linked", featured: false, stock: 99, inventoryItem: { userId: "owner-a", stock: inventoryStock, commercialTerms: { userId: "owner-a", unitSalePrice: 1000n }, images: [] }, publication: { userId: "owner-a", priceOverride: null } },
         ],
         categories: [],
         banners: [],
@@ -278,11 +279,11 @@ test("public images inherit the owned inventory primary and preserve catalog fal
         publicId: "owner-a-public",
         logoUrl: null,
         products: [
-          { id: "legacy", featured: false, stock: 1, inventoryItem: null, images: [catalogImage], price: 1, salePrice: null, saleStartsAt: null, saleEndsAt: null },
-          { id: "inherited", featured: false, stock: 1, inventoryItem: { userId: "owner-a", stock: 1, images: [{ id: "inventory-primary", storagePath: primaryPath, alt: "Inventario", position: 2 }] }, images: [catalogImage], price: 1, salePrice: null, saleStartsAt: null, saleEndsAt: null },
-          { id: "linked-fallback", featured: false, stock: 1, inventoryItem: { userId: "owner-a", stock: 1, images: [] }, images: [catalogImage], price: 1, salePrice: null, saleStartsAt: null, saleEndsAt: null },
-          { id: "without-image", featured: false, stock: 1, inventoryItem: { userId: "owner-a", stock: 1, images: [] }, images: [], price: 1, salePrice: null, saleStartsAt: null, saleEndsAt: null },
-          { id: "foreign-link", featured: false, stock: 1, inventoryItem: { userId: "owner-b", stock: 9, images: [{ id: "foreign", storagePath: "owner-b/inventory/item/private.webp", alt: null, position: 0 }] }, images: [catalogImage], price: 1, salePrice: null, saleStartsAt: null, saleEndsAt: null },
+          { id: "legacy", featured: false, stock: 1, inventoryItem: null, publication: null, images: [catalogImage], price: 1, salePrice: null, saleStartsAt: null, saleEndsAt: null },
+          { id: "inherited", featured: false, stock: 1, inventoryItem: { userId: "owner-a", stock: 1, commercialTerms: { userId: "owner-a", unitSalePrice: 1n }, images: [{ id: "inventory-primary", storagePath: primaryPath, alt: "Inventario", position: 2 }] }, publication: { userId: "owner-a", priceOverride: null }, images: [catalogImage], price: 1, salePrice: null, saleStartsAt: null, saleEndsAt: null },
+          { id: "linked-fallback", featured: false, stock: 1, inventoryItem: { userId: "owner-a", stock: 1, commercialTerms: { userId: "owner-a", unitSalePrice: 1n }, images: [] }, publication: { userId: "owner-a", priceOverride: null }, images: [catalogImage], price: 1, salePrice: null, saleStartsAt: null, saleEndsAt: null },
+          { id: "without-image", featured: false, stock: 1, inventoryItem: { userId: "owner-a", stock: 1, commercialTerms: { userId: "owner-a", unitSalePrice: 1n }, images: [] }, publication: { userId: "owner-a", priceOverride: null }, images: [], price: 1, salePrice: null, saleStartsAt: null, saleEndsAt: null },
+          { id: "foreign-link", featured: false, stock: 1, inventoryItem: { userId: "owner-b", stock: 9, commercialTerms: { userId: "owner-b", unitSalePrice: 1n }, images: [{ id: "foreign", storagePath: "owner-b/inventory/item/private.webp", alt: null, position: 0 }] }, publication: { userId: "owner-b", priceOverride: 1 }, images: [catalogImage], price: 1, salePrice: null, saleStartsAt: null, saleEndsAt: null },
         ],
         categories: [],
         banners: [],
@@ -306,13 +307,72 @@ test("public images inherit the owned inventory primary and preserve catalog fal
     assert.equal(first.find(product => product.id === "inherited")?.images[0]?.url, `https://images.example.invalid/${primaryPath}`);
     assert.equal(first.find(product => product.id === "linked-fallback")?.images[0]?.url, "https://images.example.invalid/catalog/product.webp");
     assert.deepEqual(first.find(product => product.id === "without-image")?.images, []);
-    assert.equal(first.find(product => product.id === "foreign-link")?.images[0]?.url, "https://images.example.invalid/catalog/product.webp");
+    assert.equal(first.some(product => product.id === "foreign-link"), false);
     assert.equal(first.some(product => "inventoryItem" in product), false);
 
     primaryPath = "owner-a/inventory/item/primary-b.webp";
     const second = await read();
     assert.equal(second.find(product => product.id === "inherited")?.images[0]?.url, `https://images.example.invalid/${primaryPath}`);
     assert.equal((await fetch(base + "owner-b-public")).status, 404);
+  } finally { server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+});
+
+test("public prices resolve from owned publication and inventory terms without mutating materialized prices", async () => {
+  let inventoryBasePrice = 1200n;
+  const activeFrom = new Date("2000-01-01T00:00:00.000Z");
+  const activeUntil = new Date("2099-01-01T00:00:00.000Z");
+  const expiredUntil = new Date("2001-01-01T00:00:00.000Z");
+  const linkedBase = {
+    id: "linked-base", featured: false, stock: 1, price: 100, salePrice: null, saleStartsAt: null, saleEndsAt: null, images: [],
+  };
+  const products = () => [
+    { id: "legacy", featured: false, stock: 1, price: 900, salePrice: null, saleStartsAt: null, saleEndsAt: null, images: [], inventoryItem: null, publication: null },
+    { id: "linked-override", featured: false, stock: 1, price: 100, salePrice: null, saleStartsAt: null, saleEndsAt: null, images: [], inventoryItem: { userId: "owner-a", stock: 1, commercialTerms: { userId: "owner-a", unitSalePrice: inventoryBasePrice }, images: [] }, publication: { userId: "owner-a", priceOverride: 1500 } },
+    { ...linkedBase, inventoryItem: { userId: "owner-a", stock: 1, commercialTerms: { userId: "owner-a", unitSalePrice: inventoryBasePrice }, images: [] }, publication: { userId: "owner-a", priceOverride: null } },
+    { id: "linked-missing-price", featured: false, stock: 1, price: 777, salePrice: null, saleStartsAt: null, saleEndsAt: null, images: [], inventoryItem: { userId: "owner-a", stock: 1, commercialTerms: null, images: [] }, publication: { userId: "owner-a", priceOverride: null } },
+    { id: "foreign-override", featured: false, stock: 1, price: 100, salePrice: null, saleStartsAt: null, saleEndsAt: null, images: [], inventoryItem: { userId: "owner-a", stock: 1, commercialTerms: { userId: "owner-a", unitSalePrice: inventoryBasePrice }, images: [] }, publication: { userId: "owner-b", priceOverride: 1 } },
+    { id: "foreign-inventory", featured: false, stock: 1, price: 600, salePrice: null, saleStartsAt: null, saleEndsAt: null, images: [], inventoryItem: { userId: "owner-b", stock: 1, commercialTerms: { userId: "owner-b", unitSalePrice: 1n }, images: [] }, publication: { userId: "owner-b", priceOverride: 1 } },
+    { id: "linked-active-sale", featured: false, stock: 1, price: 1500, salePrice: 1000, saleStartsAt: activeFrom, saleEndsAt: activeUntil, images: [], inventoryItem: { userId: "owner-a", stock: 1, commercialTerms: { userId: "owner-a", unitSalePrice: inventoryBasePrice }, images: [] }, publication: { userId: "owner-a", priceOverride: 1500 } },
+    { id: "linked-expired-sale", featured: false, stock: 1, price: 1200, salePrice: 500, saleStartsAt: activeFrom, saleEndsAt: expiredUntil, images: [], inventoryItem: { userId: "owner-a", stock: 1, commercialTerms: { userId: "owner-a", unitSalePrice: inventoryBasePrice }, images: [] }, publication: { userId: "owner-a", priceOverride: null } },
+    { id: "legacy-active-sale", featured: false, stock: 1, price: 900, salePrice: 600, saleStartsAt: activeFrom, saleEndsAt: activeUntil, images: [], inventoryItem: null, publication: null },
+  ];
+  const database = new Proxy(prisma, { get(_target, key) {
+    if (key === "catalog") return { findFirst: async (args: Prisma.CatalogFindFirstArgs) => args.where?.publicId === "owner-a-public" ? {
+      userId: "owner-a", publicId: "owner-a-public", logoUrl: null, products: products(), categories: [], banners: [],
+    } : null };
+    throw new Error("Unexpected database call");
+  } });
+  const app = express();
+  app.get("/c/:publicId", makePublicCatalogController({ find: id => findPublicCatalog(id, database), signCategory: async category => category, sign: async path => path }));
+  const server = app.listen(0, "127.0.0.1"); await once(server, "listening");
+  const address = server.address(); assert.ok(address && typeof address !== "string");
+  try {
+    const read = async () => {
+      const response = await fetch(`http://127.0.0.1:${address.port}/c/owner-a-public`);
+      assert.equal(response.status, 200);
+      return (await response.json()).catalog.products as { id: string; price: number; regularPrice: number | null; discountPercent: number | null; saleEndsAt: string | null; publication?: unknown; inventoryItem?: unknown }[];
+    };
+    const first = await read();
+    assert.equal(first.find(product => product.id === "legacy")?.price, 900);
+    assert.equal(first.find(product => product.id === "linked-override")?.price, 1500);
+    assert.equal(first.find(product => product.id === "linked-base")?.price, 1200);
+    assert.equal(first.find(product => product.id === "foreign-override")?.price, 1200);
+    assert.equal(first.some(product => product.id === "linked-missing-price"), false);
+    assert.equal(first.some(product => product.id === "foreign-inventory"), false);
+    assert.deepEqual(first.find(product => product.id === "linked-active-sale"), {
+      id: "linked-active-sale", featured: false, stock: 1, price: 1000, images: [], regularPrice: 1500, discountPercent: 33, saleEndsAt: activeUntil.toISOString(),
+    });
+    assert.equal(first.find(product => product.id === "linked-expired-sale")?.price, 1200);
+    assert.equal(first.find(product => product.id === "linked-expired-sale")?.regularPrice, null);
+    assert.equal(first.find(product => product.id === "legacy-active-sale")?.price, 600);
+    assert.equal(first.find(product => product.id === "legacy-active-sale")?.regularPrice, 900);
+    assert.equal(first.every(product => !("inventoryItem" in product) && !("publication" in product)), true);
+    assert.equal(linkedBase.price, 100);
+
+    inventoryBasePrice = 1300n;
+    const second = await read();
+    assert.equal(second.find(product => product.id === "linked-base")?.price, 1300);
+    assert.equal(linkedBase.price, 100);
   } finally { server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 });
 
