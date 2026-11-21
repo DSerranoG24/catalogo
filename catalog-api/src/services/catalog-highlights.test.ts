@@ -187,7 +187,7 @@ test("public highlights resolve from the full active collection, gate at three, 
 test("public repository scopes publication and active relations; HTTP signs banners individually and reuses signed featured prices", async () => {
   const products = Array.from({ length: 25 }, (_, index) => ({
     id: String(index), featured: index >= 22, name: `Producto ${index}`, slug: `p-${index}`, price: 1000,
-    salePrice: null, saleStartsAt: null, saleEndsAt: null, images: [],
+    stock: 4, inventoryItem: null, salePrice: null, saleStartsAt: null, saleEndsAt: null, images: [],
   }));
   const banners = ["broken-sign", "good", "foreign"].map((imagePath, position) => ({ id: imagePath, imagePath, title: imagePath, subtitle: null,
     linkType: "PRODUCT", linkValue: imagePath === "foreign" ? "not-in-this-catalog" : "22", position }));
@@ -196,6 +196,9 @@ test("public repository scopes publication and active relations; HTTP signs bann
       assert.equal(args.where?.active, true); assert.equal(args.where?.archivedAt, null);
       const p = args.select?.products, c = args.select?.categories, b = args.select?.banners;
       assert.ok(p && typeof p === "object"); assert.deepEqual(p.where, { active: true });
+      assert.ok(p.select && typeof p.select === "object");
+      assert.equal(p.select.stock, true);
+      assert.deepEqual(p.select.inventoryItem, { select: { stock: true } });
       assert.ok(c && typeof c === "object"); assert.deepEqual(c.where, { active: true });
       assert.ok(b && typeof b === "object"); assert.deepEqual(b.where, { active: true });
       assert.equal(p.skip, undefined); assert.equal(p.take, undefined);
@@ -214,12 +217,48 @@ test("public repository scopes publication and active relations; HTTP signs bann
     const response = await fetch(base + "published?page=2"); assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.catalog.products.length, 25);
+    assert.equal(body.catalog.products[0].stock, 4);
+    assert.equal("inventoryItem" in body.catalog.products[0], false);
     assert.equal(body.catalog.featuredProducts.length, 3);
     assert.equal(body.catalog.featuredProducts[0].price, 1000);
     assert.equal("salePrice" in body.catalog.featuredProducts[0], false);
     assert.deepEqual(body.catalog.banners.map((banner: { id: string }) => banner.id), ["good"]);
     assert.equal(body.catalog.banners[0].imageUrl, "https://example.invalid/good");
   } finally { server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+});
+
+test("public stock uses current inventory for linked products and legacy stock otherwise", async () => {
+  let inventoryStock = 7;
+  const database = new Proxy(prisma, { get(_target, key) {
+    if (key === "catalog") return { findFirst: async (args: Prisma.CatalogFindFirstArgs) => {
+      assert.equal(args.where?.active, true);
+      assert.equal(args.where?.archivedAt, null);
+      assert.deepEqual(args.select?.products && typeof args.select.products === "object" ? args.select.products.where : null, { active: true });
+      if (args.where?.publicId !== "owner-a-public") return null;
+      return {
+        publicId: "owner-a-public",
+        products: [
+          { id: "legacy", featured: false, stock: 3, inventoryItem: null },
+          { id: "linked", featured: false, stock: 99, inventoryItem: { stock: inventoryStock } },
+        ],
+        categories: [],
+        banners: [],
+      };
+    } };
+    throw new Error("Unexpected database call");
+  } });
+
+  const first = await findPublicCatalog("owner-a-public", database);
+  assert.deepEqual(first?.products.map(product => ({ id: product.id, stock: product.stock })), [
+    { id: "legacy", stock: 3 },
+    { id: "linked", stock: 7 },
+  ]);
+  assert.equal(first?.products.some(product => "inventoryItem" in product), false);
+
+  inventoryStock = 1;
+  const second = await findPublicCatalog("owner-a-public", database);
+  assert.equal(second?.products.find(product => product.id === "linked")?.stock, 1);
+  assert.equal(await findPublicCatalog("owner-b-public", database), null);
 });
 
 function png(width: number, height: number) {

@@ -192,11 +192,13 @@ export async function findPublicCatalog(publicId: string, database = prisma) {
           description: true,
           brand: true,
           model: true,
+          stock: true,
           price: true,
           salePrice: true,
           saleStartsAt: true,
           saleEndsAt: true,
           category: { select: { id: true, name: true } },
+          inventoryItem: { select: { stock: true } },
           images: {
             select: { id: true, url: true, alt: true, position: true },
             orderBy: { position: "asc" },
@@ -207,5 +209,9 @@ export async function findPublicCatalog(publicId: string, database = prisma) {
     },
   });
   if (!catalog) return null;
-  return { ...catalog, ...resolvePublicHighlights(catalog.products, catalog.categories, catalog.banners) };
+  const products = catalog.products.map(({ inventoryItem, ...product }) => ({
+    ...product,
+    stock: inventoryItem?.stock ?? product.stock,
+  }));
+  return { ...catalog, products, ...resolvePublicHighlights(products, catalog.categories, catalog.banners) };
 }
