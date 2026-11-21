@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "../config/prisma";
 import { lockInventoryOwner } from "../repositories/inventory.repository";
 import { z } from "zod";
-import { createSaleSchema, updateDraftSaleSchema, confirmSaleSchema, transitionSaleSchema, cancelSaleSchema, returnSaleSchema } from "../schemas/sales.schema";
+import { createSaleSchema, updateDraftSaleSchema, confirmSaleSchema, transitionSaleSchema, cancelSaleSchema, returnSaleSchema, convertOrderToSaleSchema } from "../schemas/sales.schema";
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const jsonSafe = (value: unknown) => JSON.parse(JSON.stringify(value, (_, v) => typeof v === "bigint" ? v.toString() : v));
@@ -15,6 +15,25 @@ export function makeSaleService(database = prisma) {
     return tx.saleOperation.create({ data: { id: input.operationId, saleId, userId, type, requestId: input.requestId ?? input.operationId, expectedSaleVersion: input.expectedVersion ?? null, requestHash, status: "PREPARED" } });
   }
   return {
+    async convertOrderToSale(userId: string, orderId: string, input: z.infer<typeof convertOrderToSaleSchema>) { return database.$transaction(async tx => {
+      await lockInventoryOwner(tx, userId);
+      await tx.$queryRaw`SELECT o.id FROM orders o JOIN catalogs c ON c.id=o."catalogId" WHERE o.id=${orderId} AND c."userId"=${userId} FOR UPDATE`;
+      const existingOperation = await tx.saleOperation.findFirst({ where: { userId, OR: [{ id: input.operationId }, { requestId: input.requestId }] }, include: { sale: { include: { lines: true } } } });
+      if (existingOperation) { if (existingOperation.requestHash !== hash(input)) throw new Error("IDEMPOTENCY_CONFLICT"); return { sale: existingOperation.sale, idempotent: true }; }
+      const order = await tx.order.findFirst({ where: { id: orderId, catalog: { userId } }, include: { items: { include: { product: { include: { inventoryItem: { include: { commercialTerms: true } } } } } }, catalog: true } });
+      if (!order) throw new Error("ORDER_NOT_FOUND");
+      if (!["PENDING", "CONFIRMED"].includes(order.status)) throw new Error("ORDER_STATUS_NOT_CONVERTIBLE");
+      const lines = order.items.map((line: any) => { const item = line.product?.inventoryItem; if (!line.productId || !item) throw new Error("ORDER_ITEM_NOT_INVENTORY"); if (!item.commercialTerms) throw new Error("PRICE_REQUIRED"); const currentPrice = Number(item.commercialTerms.unitSalePrice); if (currentPrice !== line.unitPrice && !input.acceptPriceDifference) throw new Error("PRICE_DIFFERENCE_REQUIRES_CONFIRMATION"); const discount = 0n; return { line, item, currentPrice, discount, total: BigInt(currentPrice) * BigInt(line.quantity) }; });
+      const subtotal = lines.reduce((sum: bigint, row: any) => sum + BigInt(row.currentPrice) * BigInt(row.line.quantity), 0n);
+      const sale = await tx.sale.create({ data: { userId, sourceOrderId: order.id, customerName: order.customerName, customerPhone: order.customerPhone, subtotal, discountTotal: 0n, total: subtotal, status: "DRAFT" } });
+      for (const row of lines) await tx.saleLine.create({ data: { saleId: sale.id, inventoryItemId: row.item.id, quantity: row.line.quantity, itemName: row.item.name, sku: row.item.sku, unitPrice: BigInt(row.currentPrice), unitCost: row.item.commercialTerms.referenceUnitCost, unitDiscount: row.discount, lineTotal: row.total, commercialTermsVersion: row.item.commercialTerms.version } });
+      const op = await tx.saleOperation.create({ data: { id: input.operationId, saleId: sale.id, userId, type: "ORDER_CONVERSION", requestId: input.requestId, expectedSaleVersion: 1, requestHash: hash(input), status: "PREPARED" } });
+      if (input.mode !== "DRAFT") {
+        for (const row of lines) { if (row.item.stock < row.line.quantity) throw new Error("STOCK_INSUFFICIENT"); await tx.inventoryItem.update({ where: { id: row.item.id }, data: { stock: { decrement: row.line.quantity }, stockVersion: { increment: 1 } } }); await tx.inventoryMovement.create({ data: { itemId: row.item.id, saleId: sale.id, saleLineId: (await tx.saleLine.findUniqueOrThrow({ where: { saleId_inventoryItemId: { saleId: sale.id, inventoryItemId: row.item.id } } })).id, saleMovementRole: "SALE_CONFIRMATION", key: input.operationId, type: "OUT", quantity: row.line.quantity, previousStock: row.item.stock, resultingStock: row.item.stock - row.line.quantity, delta: -row.line.quantity, reason: "Conversión de pedido", actorUserId: userId, origin: "SALE" } }); }
+        const updated = await tx.sale.update({ where: { id: sale.id }, data: { status: input.mode, confirmedAt: new Date(), deliveredAt: input.mode === "DELIVERED" ? new Date() : null, version: { increment: 1 } } }); await tx.saleOperation.update({ where: { id: op.id }, data: { status: "SUCCEEDED", completedAt: new Date(), responseSnapshot: jsonSafe(updated) } }); return { sale: updated, idempotent: false };
+      }
+      await tx.saleOperation.update({ where: { id: op.id }, data: { status: "SUCCEEDED", completedAt: new Date(), responseSnapshot: jsonSafe(sale) } }); return { sale, idempotent: false };
+    }); },
     async list(userId: string) { return database.$transaction(async tx => { await lockInventoryOwner(tx, userId); return tx.sale.findMany({ where: { userId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 50, include: { lines: true } }); }); },
     async get(userId: string, saleId: string) { return database.$transaction(async tx => { await lockInventoryOwner(tx, userId); return own(tx, userId, saleId); }); },
     async create(userId: string, input: z.infer<typeof createSaleSchema>) { return database.$transaction(async tx => { await lockInventoryOwner(tx, userId); const sale = await tx.sale.create({ data: { userId, customerName: input.customerName, customerPhone: input.customerPhone } }); await operation(tx, userId, sale.id, input, "CREATE", input); return sale; }); },

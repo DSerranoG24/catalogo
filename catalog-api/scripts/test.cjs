@@ -14,6 +14,7 @@ const testFiles = [
   "src/services/product-image-cleanup.test.ts",
   "src/services/inventory-publication-image.test.ts",
   "src/services/inventory-publication.test.ts",
+  "src/services/sale-conversion.test.ts",
   "src/services/product-bulk.test.ts",
   "src/repositories/order-privacy.test.ts",
   "src/services/account-closure.test.ts",

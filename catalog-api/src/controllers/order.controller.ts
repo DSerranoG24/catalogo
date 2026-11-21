@@ -3,6 +3,16 @@ import { AuthenticatedRequest } from "../types/auth.types";
 import { updateOrderSchema } from "../schemas/order.schema";
 import { getOrdersForCatalog, updateOrderStatus } from "../services/order.service";
 import { z } from "zod";
+import { convertOrderToSaleSchema } from "../schemas/sales.schema";
+import { makeSaleService } from "../services/sale.service";
+const saleService = makeSaleService();
+
+export async function convertOrderToSaleController(req: AuthenticatedRequest, res: Response) {
+  const parsed = convertOrderToSaleSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, message: "Datos de conversión inválidos" });
+  try { const result = await saleService.convertOrderToSale(req.user!.id, req.params.orderId as string, parsed.data); return res.json({ success: true, sale: result.sale, idempotent: result.idempotent }); }
+  catch (error) { const code = error instanceof Error ? error.message : "CONVERSION_FAILED"; const status = ["ORDER_NOT_FOUND"].includes(code) ? 404 : ["IDEMPOTENCY_CONFLICT", "STOCK_INSUFFICIENT", "PRICE_DIFFERENCE_REQUIRES_CONFIRMATION", "ORDER_STATUS_NOT_CONVERTIBLE"].includes(code) ? 409 : 400; return res.status(status).json({ success: false, message: code }); }
+}
 
 export async function getCatalogOrdersController(req: AuthenticatedRequest, res: Response) {
   const cursor = z.string().uuid().optional().safeParse(req.query.cursor);

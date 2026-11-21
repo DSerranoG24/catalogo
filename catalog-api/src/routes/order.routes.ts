@@ -4,12 +4,14 @@ import { orderPrivacyController } from "../controllers/order-privacy.controller"
 import {
   getCatalogOrdersController,
   updateOrderController,
+  convertOrderToSaleController,
 } from "../controllers/order.controller";
 
 const router = Router();
 router.use(authenticate);
 router.get("/catalog/:catalogId", getCatalogOrdersController);
 router.patch("/:orderId", updateOrderController);
+router.post("/:orderId/convert-to-sale", convertOrderToSaleController);
 router.post("/:orderId/anonymize", orderPrivacyController);
 router.delete("/:orderId", orderPrivacyController);
 
