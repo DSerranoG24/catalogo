@@ -6,6 +6,7 @@ import { uploadInventoryImage, deleteProductImageFile } from "./storage.service"
 type ImageFile = { buffer: Buffer; mimetype: string };
 type ImageDeps = { upload: typeof uploadInventoryImage; remove: typeof deleteProductImageFile; uuid: () => string };
 const defaultImageDeps: ImageDeps = { upload: uploadInventoryImage, remove: deleteProductImageFile, uuid: () => crypto.randomUUID() };
+const hasPriceOverride = (input: z.infer<typeof updateInventoryPublicationSchema>) => Object.prototype.hasOwnProperty.call(input, "priceOverride");
 export function makeInventoryPublicationService(database = prisma, imageDeps: ImageDeps = defaultImageDeps) { return {
   async publications(userId: string, filters: { inventoryItemId?: string; catalogId?: string } = {}) { return database.inventoryPublication.findMany({ where: { userId, ...(filters.inventoryItemId ? { inventoryItemId: filters.inventoryItemId } : {}), ...(filters.catalogId ? { catalogId: filters.catalogId } : {}) }, include: { catalog: { select: { id: true, name: true } }, product: { select: { id: true, slug: true, name: true } } }, orderBy: [{ updatedAt: "desc" }, { id: "desc" }] }); },
   async images(userId: string, itemId: string) { return database.$transaction(async tx => { await lockInventoryOwner(tx, userId); return tx.inventoryItemImage.findMany({ where: { inventoryItemId: itemId, item: { userId } }, orderBy: [{ isPrimary: "desc" }, { position: "asc" }] }); }); },
@@ -23,5 +24,28 @@ export function makeInventoryPublicationService(database = prisma, imageDeps: Im
   async deleteImage(userId: string, imageId: string) { return database.$transaction(async tx => { await lockInventoryOwner(tx, userId); const image = await tx.inventoryItemImage.findFirst({ where: { id: imageId, item: { userId } } }); if (!image) throw new Error("NOT_FOUND"); const used = await tx.inventoryPublication.count({ where: { inventoryItemId: image.inventoryItemId, status: "PUBLISHED" } }); if (used) throw new Error("IMAGE_IN_USE"); return tx.inventoryItemImage.delete({ where: { id: imageId } }); }); },
   async setPrimaryImage(userId: string, imageId: string) { return database.$transaction(async tx => { await lockInventoryOwner(tx, userId); const image = await tx.inventoryItemImage.findFirst({ where: { id: imageId, item: { userId } }, select: { inventoryItemId: true } }); if (!image) throw new Error("NOT_FOUND"); await tx.inventoryItemImage.updateMany({ where: { inventoryItemId: image.inventoryItemId }, data: { isPrimary: false } }); return tx.inventoryItemImage.update({ where: { id: imageId }, data: { isPrimary: true } }); }); },
   async publish(userId: string, input: z.infer<typeof createInventoryPublicationSchema>) { return database.$transaction(async tx => { await lockInventoryOwner(tx, userId); const item = await tx.inventoryItem.findFirst({ where: { id: input.inventoryItemId, userId }, include: { commercialTerms: true, images: { where: { isPrimary: true }, take: 1 } } }); const catalog = await tx.catalog.findFirst({ where: { id: input.catalogId, userId } }); if (!item || !catalog) throw new Error("NOT_FOUND"); if (!item.commercialTerms && input.priceOverride == null) throw new Error("PRICE_REQUIRED"); const baseSlug = `${item.sku.toLowerCase()}-${item.id.slice(0, 8)}`; let slug = baseSlug; for (let suffix = 2; await tx.product.findFirst({ where: { catalogId: catalog.id, slug }, select: { id: true } }); suffix++) slug = `${baseSlug}-${suffix}`; const product = await tx.product.create({ data: { catalogId: catalog.id, inventoryItemId: item.id, name: input.titleOverride ?? item.name, slug, description: input.descriptionOverride, price: input.priceOverride ?? Number(item.commercialTerms?.unitSalePrice ?? 0), stock: item.stock, active: false } }); return tx.inventoryPublication.create({ data: { ...input, userId, productId: product.id, status: "DRAFT" } }); }); },
-  async update(userId: string, id: string, input: z.infer<typeof updateInventoryPublicationSchema>) { return database.$transaction(async tx => { await lockInventoryOwner(tx, userId); const current = await tx.inventoryPublication.findFirst({ where: { id, userId }, include: { item: { include: { commercialTerms: true } }, product: true } }); if (!current) throw new Error("NOT_FOUND"); if (current.version !== input.expectedVersion) throw new Error("VERSION_CONFLICT"); const publication = await tx.inventoryPublication.update({ where: { id }, data: { status: input.status, titleOverride: input.titleOverride, descriptionOverride: input.descriptionOverride, priceOverride: input.priceOverride, version: { increment: 1 } } }); await tx.product.update({ where: { id: current.productId }, data: { name: input.titleOverride ?? current.item.name, description: input.descriptionOverride, price: input.priceOverride ?? Number(current.item.commercialTerms?.unitSalePrice ?? 0), stock: current.item.stock, active: input.status === "PUBLISHED" } }); return publication; }); },
+  async update(userId: string, id: string, input: z.infer<typeof updateInventoryPublicationSchema>) { return database.$transaction(async tx => {
+    await lockInventoryOwner(tx, userId);
+    const current = await tx.inventoryPublication.findFirst({ where: { id, userId }, include: { item: { include: { commercialTerms: true } }, product: true } });
+    if (!current) throw new Error("NOT_FOUND");
+    if (current.version !== input.expectedVersion) throw new Error("VERSION_CONFLICT");
+    const changesPrice = hasPriceOverride(input);
+    const nextOverride = changesPrice ? input.priceOverride ?? null : current.priceOverride;
+    if (changesPrice && nextOverride === null && !current.item.commercialTerms) throw new Error("PRICE_REQUIRED");
+    const publication = await tx.inventoryPublication.update({ where: { id }, data: {
+      status: input.status,
+      titleOverride: input.titleOverride,
+      descriptionOverride: input.descriptionOverride,
+      ...(changesPrice ? { priceOverride: nextOverride } : {}),
+      version: { increment: 1 },
+    } });
+    await tx.product.update({ where: { id: current.productId }, data: {
+      name: input.titleOverride ?? current.item.name,
+      description: input.descriptionOverride,
+      ...(changesPrice ? { price: nextOverride ?? Number(current.item.commercialTerms!.unitSalePrice) } : {}),
+      stock: current.item.stock,
+      active: input.status === "PUBLISHED",
+    } });
+    return publication;
+  }); },
 }; }
