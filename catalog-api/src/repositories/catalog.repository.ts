@@ -152,6 +152,7 @@ export async function findPublicCatalog(publicId: string, database = prisma) {
   const catalog = await database.catalog.findFirst({
     where: { publicId, active: true, archivedAt: null },
     select: {
+      userId: true,
       publicId: true,
       name: true,
       slug: true,
@@ -198,7 +199,18 @@ export async function findPublicCatalog(publicId: string, database = prisma) {
           saleStartsAt: true,
           saleEndsAt: true,
           category: { select: { id: true, name: true } },
-          inventoryItem: { select: { stock: true } },
+          inventoryItem: {
+            select: {
+              userId: true,
+              stock: true,
+              images: {
+                where: { isPrimary: true },
+                select: { id: true, storagePath: true, alt: true, position: true },
+                orderBy: [{ position: "asc" }, { id: "asc" }],
+                take: 1,
+              },
+            },
+          },
           images: {
             select: { id: true, url: true, alt: true, position: true },
             orderBy: { position: "asc" },
@@ -209,9 +221,17 @@ export async function findPublicCatalog(publicId: string, database = prisma) {
     },
   });
   if (!catalog) return null;
-  const products = catalog.products.map(({ inventoryItem, ...product }) => ({
-    ...product,
-    stock: inventoryItem?.stock ?? product.stock,
-  }));
-  return { ...catalog, products, ...resolvePublicHighlights(products, catalog.categories, catalog.banners) };
+  const products = catalog.products.map(({ inventoryItem, ...product }) => {
+    const ownedInventory = inventoryItem?.userId === catalog.userId ? inventoryItem : null;
+    const inheritedImage = ownedInventory?.images[0];
+    return {
+      ...product,
+      stock: ownedInventory?.stock ?? product.stock,
+      images: inheritedImage
+        ? [{ id: inheritedImage.id, url: inheritedImage.storagePath, alt: inheritedImage.alt, position: inheritedImage.position }]
+        : product.images,
+    };
+  });
+  const { userId: _userId, ...publicCatalog } = catalog;
+  return { ...publicCatalog, products, ...resolvePublicHighlights(products, catalog.categories, catalog.banners) };
 }

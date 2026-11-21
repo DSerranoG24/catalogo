@@ -194,15 +194,19 @@ test("public repository scopes publication and active relations; HTTP signs bann
   const database = new Proxy(prisma, { get(_target, key) {
     if (key === "catalog") return { findFirst: async (args: Prisma.CatalogFindFirstArgs) => {
       assert.equal(args.where?.active, true); assert.equal(args.where?.archivedAt, null);
+      assert.equal(args.select?.userId, true);
       const p = args.select?.products, c = args.select?.categories, b = args.select?.banners;
       assert.ok(p && typeof p === "object"); assert.deepEqual(p.where, { active: true });
       assert.ok(p.select && typeof p.select === "object");
       assert.equal(p.select.stock, true);
-      assert.deepEqual(p.select.inventoryItem, { select: { stock: true } });
+      assert.deepEqual(p.select.inventoryItem, { select: { userId: true, stock: true, images: {
+        where: { isPrimary: true }, select: { id: true, storagePath: true, alt: true, position: true },
+        orderBy: [{ position: "asc" }, { id: "asc" }], take: 1,
+      } } });
       assert.ok(c && typeof c === "object"); assert.deepEqual(c.where, { active: true });
       assert.ok(b && typeof b === "object"); assert.deepEqual(b.where, { active: true });
       assert.equal(p.skip, undefined); assert.equal(p.take, undefined);
-      return args.where?.publicId === "published" ? { publicId: "published", logoUrl: null, products, categories: [], banners } : null;
+      return args.where?.publicId === "published" ? { userId: "owner", publicId: "published", logoUrl: null, products, categories: [], banners } : null;
     } };
     throw new Error("Unexpected database call");
   } });
@@ -219,6 +223,7 @@ test("public repository scopes publication and active relations; HTTP signs bann
     assert.equal(body.catalog.products.length, 25);
     assert.equal(body.catalog.products[0].stock, 4);
     assert.equal("inventoryItem" in body.catalog.products[0], false);
+    assert.equal("userId" in body.catalog, false);
     assert.equal(body.catalog.featuredProducts.length, 3);
     assert.equal(body.catalog.featuredProducts[0].price, 1000);
     assert.equal("salePrice" in body.catalog.featuredProducts[0], false);
@@ -236,10 +241,11 @@ test("public stock uses current inventory for linked products and legacy stock o
       assert.deepEqual(args.select?.products && typeof args.select.products === "object" ? args.select.products.where : null, { active: true });
       if (args.where?.publicId !== "owner-a-public") return null;
       return {
+        userId: "owner-a",
         publicId: "owner-a-public",
         products: [
           { id: "legacy", featured: false, stock: 3, inventoryItem: null },
-          { id: "linked", featured: false, stock: 99, inventoryItem: { stock: inventoryStock } },
+          { id: "linked", featured: false, stock: 99, inventoryItem: { userId: "owner-a", stock: inventoryStock, images: [] } },
         ],
         categories: [],
         banners: [],
@@ -259,6 +265,55 @@ test("public stock uses current inventory for linked products and legacy stock o
   const second = await findPublicCatalog("owner-a-public", database);
   assert.equal(second?.products.find(product => product.id === "linked")?.stock, 1);
   assert.equal(await findPublicCatalog("owner-b-public", database), null);
+});
+
+test("public images inherit the owned inventory primary and preserve catalog fallbacks", async () => {
+  let primaryPath = "owner-a/inventory/item/primary-a.webp";
+  const catalogImage = { id: "catalog-image", url: "catalog/product.webp", alt: "Catálogo", position: 0 };
+  const database = new Proxy(prisma, { get(_target, key) {
+    if (key === "catalog") return { findFirst: async (args: Prisma.CatalogFindFirstArgs) => {
+      if (args.where?.publicId !== "owner-a-public") return null;
+      return {
+        userId: "owner-a",
+        publicId: "owner-a-public",
+        logoUrl: null,
+        products: [
+          { id: "legacy", featured: false, stock: 1, inventoryItem: null, images: [catalogImage], price: 1, salePrice: null, saleStartsAt: null, saleEndsAt: null },
+          { id: "inherited", featured: false, stock: 1, inventoryItem: { userId: "owner-a", stock: 1, images: [{ id: "inventory-primary", storagePath: primaryPath, alt: "Inventario", position: 2 }] }, images: [catalogImage], price: 1, salePrice: null, saleStartsAt: null, saleEndsAt: null },
+          { id: "linked-fallback", featured: false, stock: 1, inventoryItem: { userId: "owner-a", stock: 1, images: [] }, images: [catalogImage], price: 1, salePrice: null, saleStartsAt: null, saleEndsAt: null },
+          { id: "without-image", featured: false, stock: 1, inventoryItem: { userId: "owner-a", stock: 1, images: [] }, images: [], price: 1, salePrice: null, saleStartsAt: null, saleEndsAt: null },
+          { id: "foreign-link", featured: false, stock: 1, inventoryItem: { userId: "owner-b", stock: 9, images: [{ id: "foreign", storagePath: "owner-b/inventory/item/private.webp", alt: null, position: 0 }] }, images: [catalogImage], price: 1, salePrice: null, saleStartsAt: null, saleEndsAt: null },
+        ],
+        categories: [],
+        banners: [],
+      };
+    } };
+    throw new Error("Unexpected database call");
+  } });
+  const app = express();
+  app.get("/c/:publicId", makePublicCatalogController({
+    find: id => findPublicCatalog(id, database),
+    signCategory: async category => category,
+    sign: async path => `https://images.example.invalid/${path}`,
+  }));
+  const server = app.listen(0, "127.0.0.1"); await once(server, "listening");
+  const address = server.address(); assert.ok(address && typeof address !== "string");
+  try {
+    const base = `http://127.0.0.1:${address.port}/c/`;
+    const read = async () => (await (await fetch(base + "owner-a-public")).json()).catalog.products as { id: string; images: { id: string; url: string }[]; inventoryItem?: unknown }[];
+    const first = await read();
+    assert.equal(first.find(product => product.id === "legacy")?.images[0]?.url, "https://images.example.invalid/catalog/product.webp");
+    assert.equal(first.find(product => product.id === "inherited")?.images[0]?.url, `https://images.example.invalid/${primaryPath}`);
+    assert.equal(first.find(product => product.id === "linked-fallback")?.images[0]?.url, "https://images.example.invalid/catalog/product.webp");
+    assert.deepEqual(first.find(product => product.id === "without-image")?.images, []);
+    assert.equal(first.find(product => product.id === "foreign-link")?.images[0]?.url, "https://images.example.invalid/catalog/product.webp");
+    assert.equal(first.some(product => "inventoryItem" in product), false);
+
+    primaryPath = "owner-a/inventory/item/primary-b.webp";
+    const second = await read();
+    assert.equal(second.find(product => product.id === "inherited")?.images[0]?.url, `https://images.example.invalid/${primaryPath}`);
+    assert.equal((await fetch(base + "owner-b-public")).status, 404);
+  } finally { server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 });
 
 function png(width: number, height: number) {
