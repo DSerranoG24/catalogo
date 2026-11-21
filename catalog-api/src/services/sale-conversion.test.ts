@@ -20,6 +20,7 @@ function setup(options: Setup = {}) {
     sale: {
       create: async ({ data }: any) => { const sale = { id: ids.sale, version: 1, lines: [], ...data }; state.sales.push(sale); return sale; },
       update: async ({ where, data }: any) => { const sale = state.sales.find((x: any) => x.id === where.id); Object.assign(sale, data, { version: (sale.version ?? 1) + (data.version?.increment ?? 0) }); return sale; },
+      findUniqueOrThrow: async ({ where }: any) => ({ ...state.sales.find((sale: any) => sale.id === where.id), lines: state.lines.filter((line: any) => line.saleId === where.id) }),
     },
     saleLine: {
       create: async ({ data }: any) => { const line = { id: ids.line, ...data }; state.lines.push(line); return line; },

@@ -1,12 +1,15 @@
 "use client";
 
 import { Button } from "@/components/ui/Button";
+import Link from "next/link";
 
 import { useEffect, useState } from "react";
 import { apiRequest, OrderStatus } from "@/lib/api";
 import OrderPrivacyActions from "./OrderPrivacyActions";
 
 type OrderItem = { productName: string; quantity: number; unitPrice: number; subtotal: number };
+type ConversionMode = "DRAFT" | "CONFIRMED" | "DELIVERED";
+type ConvertedSale = { id: string; status: string; version: number; total: string | number; lines: { itemName: string; quantity: number; unitPrice: string | number; unitDiscount: string | number; lineTotal: string | number }[] };
 type CustomerOrder = {
   id: string;
   customerName: string;
@@ -23,6 +26,7 @@ type CustomerOrder = {
   createdAt: string;
   quotationNumber: number | null;
   items: OrderItem[];
+  convertedSale: ConvertedSale | null;
 };
 
 const labels: Record<OrderStatus, string> = {
@@ -38,6 +42,10 @@ export default function OrdersPanel({ catalogId }: { catalogId: string }) {
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [updatingId, setUpdatingId] = useState("");
+  const [convertingId, setConvertingId] = useState("");
+  const [conversionOrderId, setConversionOrderId] = useState("");
+  const [conversionMode, setConversionMode] = useState<ConversionMode>("DRAFT");
+  const [priceConfirmationId, setPriceConfirmationId] = useState("");
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const cursor = cursors.at(-1);
@@ -73,6 +81,33 @@ export default function OrdersPanel({ catalogId }: { catalogId: string }) {
     } finally {
       setUpdatingId("");
     }
+  }
+
+  function conversionErrorMessage(code: string) {
+    if (code.includes("STOCK_INSUFFICIENT")) return "No hay existencias suficientes para confirmar esta venta. Puedes convertirla como borrador o corregir el inventario.";
+    if (code.includes("ORDER_ITEM_NOT_INVENTORY")) return "Uno o más productos del pedido no están vinculados al inventario.";
+    if (code.includes("ORDER_STATUS_NOT_CONVERTIBLE")) return "Este pedido ya no se puede convertir por su estado actual.";
+    if (code.includes("IDEMPOTENCY_CONFLICT")) return "La solicitud ya fue procesada con datos diferentes. Actualiza los pedidos antes de reintentar.";
+    return code || "No se pudo convertir el pedido.";
+  }
+
+  async function convert(order: CustomerOrder, acceptPriceDifference = false) {
+    setConvertingId(order.id); setError("");
+    try {
+      const response = await apiRequest<{ sale: ConvertedSale; idempotent: boolean }>(`/orders/${order.id}/convert-to-sale`, { method: "POST", body: JSON.stringify({ operationId: crypto.randomUUID(), requestId: crypto.randomUUID(), mode: conversionMode, acceptPriceDifference }) });
+      setOrders(current => current.map(value => value.id === order.id ? { ...value, convertedSale: response.sale } : value));
+      setConversionOrderId(""); setPriceConfirmationId("");
+    } catch (requestError) {
+      const message = requestError instanceof Error ? requestError.message : "No se pudo convertir el pedido.";
+      if (message.includes("PRICE_DIFFERENCE_REQUIRES_CONFIRMATION")) setPriceConfirmationId(order.id);
+      else setError(conversionErrorMessage(message));
+    } finally { setConvertingId(""); }
+  }
+
+  function whatsappReceipt(order: CustomerOrder) {
+    if (!order.convertedSale) return "";
+    const lines = order.convertedSale.lines.map(item => `${item.quantity} × ${item.itemName}: $${Number(item.lineTotal).toLocaleString("es-CO")}`).join("\n");
+    return `Comprobante de venta\nCliente: ${order.customerName}\n${lines}\nTotal: $${Number(order.convertedSale.total).toLocaleString("es-CO")} COP\nEstado: ${order.convertedSale.status}\nVenta: ${order.convertedSale.id}`;
   }
 
   if (loading) return <div aria-label="Cargando órdenes" className="mt-5 grid gap-3 animate-pulse">{[0, 1].map((item) => <div key={item} className="rounded-2xl border border-[#e2e8e0] bg-white p-5"><div className="h-4 w-40 rounded-full bg-[#e8eee5]" /><div className="mt-3 h-3 w-28 rounded-full bg-[#edf1ec]" /><div className="mt-6 h-16 rounded-xl bg-[#f2f5f0]" /></div>)}</div>;
@@ -117,6 +152,7 @@ export default function OrdersPanel({ catalogId }: { catalogId: string }) {
               {order.customerConsentAt && <p className="mt-1 text-[11px] text-[#435047]">Consentimiento registrado · {new Date(order.customerConsentAt).toLocaleString("es-CO")} · {order.customerConsentVersion ?? "Versión no acreditada"}</p>}
               {order.notes && <p className="mt-2 text-xs leading-5 text-[#68756e]">Nota: {order.notes}</p>}
               <OrderPrivacyActions order={order} onChanged={() => { setLoading(true); setReloadKey(key => key + 1); }} />
+              {order.convertedSale ? <div className="mt-4 rounded-xl border border-[#c9e0d1] bg-[#f2faf4] p-4"><p className="font-semibold text-[#276749]">Venta creada · {order.convertedSale.status}</p><p className="mt-1 text-sm">Total actual: ${Number(order.convertedSale.total).toLocaleString("es-CO")} COP</p><div className="mt-3 flex flex-wrap gap-3"><Link className="inline-flex min-h-11 items-center rounded-lg border px-3 font-semibold" href="/dashboard/ventas">Abrir Ventas</Link><a className="inline-flex min-h-11 items-center rounded-lg border px-3 font-semibold" href={`https://wa.me/?text=${encodeURIComponent(whatsappReceipt(order))}`} target="_blank" rel="noreferrer">Enviar comprobante por WhatsApp</a></div><p className="mt-2 text-xs">Abrir WhatsApp no cambia el estado del pedido ni de la venta.</p></div> : order.status === "CANCELLED" || order.status === "COMPLETED" ? <p className="mt-4 text-sm text-[#68756e]">Este pedido no está disponible para conversión.</p> : <div className="mt-4"><Button variant="secondary" disabled={convertingId === order.id} onClick={() => { setConversionOrderId(current => current === order.id ? "" : order.id); setPriceConfirmationId(""); }}>Convertir a venta</Button>{conversionOrderId === order.id && <div className="mt-3 space-y-3 rounded-xl border border-[#e2e8e0] bg-[#fafcf9] p-4"><p className="text-sm">Se creará una venta vinculada. El borrador no descuenta stock; confirmar o entregar sí lo descuenta. Los precios actuales pueden ser diferentes a los del pedido.</p><label className="block text-sm font-medium">Modo<select className="mt-1 min-h-11 w-full rounded border p-2 sm:w-auto" value={conversionMode} onChange={event => { setConversionMode(event.target.value as ConversionMode); setPriceConfirmationId(""); }}><option value="DRAFT">Crear borrador</option><option value="CONFIRMED">Crear y confirmar</option><option value="DELIVERED">Confirmar y entregar</option></select></label>{priceConfirmationId === order.id ? <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3"><p>Los precios actuales son diferentes a los del pedido. La venta usará la ficha comercial vigente.</p><Button className="mt-2" disabled={convertingId === order.id} onClick={() => void convert(order, true)}>Aceptar precios actuales y convertir</Button></div> : <Button disabled={convertingId === order.id} loading={convertingId === order.id} onClick={() => void convert(order)}>Confirmar conversión</Button>}</div>}</div>}
               {order.status !== "COMPLETED" && order.status !== "CANCELLED" && (
                 <div className="mt-4 flex flex-wrap gap-2">
                   {order.status === "PENDING" && <Button variant="primary" disabled={updatingId === order.id} onClick={() => void changeStatus(order, "CONFIRMED")} >Confirmar</Button>}

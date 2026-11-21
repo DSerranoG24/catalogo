@@ -106,6 +106,7 @@ export async function findOrdersByCatalog(catalogId: string, userId: string, cur
       createdAt: true,
       quotationNumber: true,
       quotationSellerSnapshot: true,
+      convertedSale: { select: { id: true, status: true, version: true, total: true, lines: { select: { itemName: true, quantity: true, unitPrice: true, unitDiscount: true, lineTotal: true } } } },
       items: { select: { productName: true, quantity: true, unitPrice: true, subtotal: true } },
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
