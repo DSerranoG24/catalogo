@@ -205,6 +205,8 @@ model InventoryMovement {
 model Sale {
   id String @id @default(uuid())
   userId String
+  /// Unique source order; migration must enforce at most one Sale per Order.
+  sourceOrderId String? @unique
   status SaleStatus @default(DRAFT)
   version Int @default(1)
   currency String @default("COP")
@@ -220,6 +222,7 @@ model Sale {
   cancelledAt DateTime?
   returnedAt DateTime?
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  sourceOrder Order? @relation("OrderToSale", fields: [sourceOrderId], references: [id], onDelete: Restrict)
   lines SaleLine[]
   operations SaleOperation[]
   returns SaleReturn[]
@@ -561,6 +564,7 @@ model Order {
 
   catalog Catalog @relation(fields: [catalogId], references: [id], onDelete: Restrict)
   items   OrderItem[]
+  convertedSale Sale? @relation("OrderToSale")
 
   @@index([catalogId])
   @@unique([catalogId, idempotencyKey])

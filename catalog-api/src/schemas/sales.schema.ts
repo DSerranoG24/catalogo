@@ -13,3 +13,9 @@ export const transitionSaleSchema = z.object({ operationId: uuid, requestId: uui
 export const cancelSaleSchema = transitionSaleSchema.extend({ reason: z.string().trim().min(3).max(300) }).strict();
 export const returnLineSchema = z.object({ saleLineId: uuid, receivedQuantity: quantity, resellableQuantity: z.number().int().min(0), damagedQuantity: z.number().int().min(0) }).strict().superRefine((v, ctx) => { if (v.resellableQuantity + v.damagedQuantity !== v.receivedQuantity) ctx.addIssue({ code: "custom", message: "La disposición debe coincidir con la cantidad recibida.", path: ["resellableQuantity"] }); });
 export const returnSaleSchema = transitionSaleSchema.extend({ reason: z.string().trim().min(3).max(300), lines: z.array(returnLineSchema).min(1).max(100) }).strict();
+export const convertOrderToSaleSchema = z.object({
+  operationId: uuid,
+  requestId: uuid,
+  mode: z.enum(["DRAFT", "CONFIRMED", "DELIVERED"]).default("DRAFT"),
+  acceptPriceDifference: z.boolean().default(false),
+}).strict().superRefine((value, ctx) => { if (value.operationId === value.requestId) ctx.addIssue({ code: "custom", path: ["requestId"], message: "operationId y requestId deben ser distintos." }); });
