@@ -36,6 +36,7 @@ const testFiles = [
   "src/repositories/order-idempotency.test.ts",
   "src/services/order-calculation.test.ts",
   "src/services/product-pricing.test.ts",
+  "src/services/public-product-price.test.ts",
   "src/schemas/product-review.test.ts",
   "src/schemas/product-review.schema.test.ts",
   "src/utils/image-validation.test.ts",

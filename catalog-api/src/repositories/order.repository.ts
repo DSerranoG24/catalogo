@@ -3,6 +3,7 @@ import { prisma } from "../config/prisma";
 import { recoverIdempotentOrder } from "./order-idempotency";
 import { calculatePublicOrder } from "../services/order-calculation";
 import { deletedOrderKeyHash } from "./order-privacy.repository";
+import { resolvePublicProductPrice } from "../services/public-product-price";
 const publicOrderReceipt = {
   id: true,
   status: true,
@@ -30,7 +31,7 @@ export async function createPublicOrder(
   return recoverIdempotentOrder(idempotencyKey, () => database.$transaction(async (transaction) => {
     const catalog = await transaction.catalog.findFirst({
       where: { publicId, active: true, archivedAt: null },
-      select: { id: true },
+      select: { id: true, userId: true },
     });
     if (!catalog) throw new Error("CATALOG_NOT_FOUND");
 
@@ -55,9 +56,19 @@ export async function createPublicOrder(
         active: true,
         id: { in: data.items.map((item) => item.productId) },
       },
-      select: { id: true, name: true, price: true, salePrice: true, saleStartsAt: true, saleEndsAt: true },
+      select: {
+        id: true, name: true, price: true, salePrice: true, saleStartsAt: true, saleEndsAt: true,
+        inventoryItem: { select: { userId: true, commercialTerms: { select: { userId: true, unitSalePrice: true } } } },
+        publication: { select: { userId: true, priceOverride: true } },
+      },
     });
-    const { items, total } = calculatePublicOrder(data.items, products, pricingTime);
+    const pricedProducts = products.flatMap(product => {
+      const price = resolvePublicProductPrice(product, catalog.userId);
+      if (price === null) return [];
+      const { inventoryItem: _inventoryItem, publication: _publication, ...publicProduct } = product;
+      return [{ ...publicProduct, price }];
+    });
+    const { items, total } = calculatePublicOrder(data.items, pricedProducts, pricingTime);
 
     return transaction.order.create({
       data: {

@@ -9,6 +9,7 @@ import PublicRouteLoading from "@/components/public/PublicRouteLoading";
 import type { CatalogThemeStyle } from "@/lib/catalog-theme";
 import themeStyles from "./catalog-theme.module.css";
 import { CUSTOMER_CONSENT } from "@/lib/customer-consent";
+import { acceptPublicCartPrices, canSubmitPublicCart, hydratePublicCartPrices, parsePublicCart, reconcilePublicCart, removePublicCartItem, serializePublicCart, setPublicCartQuantity, type PublicCart } from "@/lib/public-cart.mjs";
 
 type OrderReceipt = {
   id: string;
@@ -29,8 +30,9 @@ const cartThemes = {
 export default function PublicShoppingCartPage({ publicId }: { publicId: string }) {
   const [catalog, setCatalog] = useState<PublicCatalog | null>(null);
   const [catalogTheme, setCatalogTheme] = useState<CatalogThemeStyle>();
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [cart, setCart] = useState<PublicCart>({ version: 2, items: {} });
   const [cartReady, setCartReady] = useState(false);
+  const [priceChangeNotice, setPriceChangeNotice] = useState(false);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
@@ -61,15 +63,11 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
         rememberPublicCatalogTemplate(loadedCatalog.publicId, loadedCatalog.template);
         try {
           const storedCart = sessionStorage.getItem(cartStorageKey);
-          const parsed: unknown = storedCart ? JSON.parse(storedCart) : {};
-          const validIds = new Set(loadedCatalog.products.map((product) => product.id));
-          const restored = typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-            ? Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, number] =>
-              validIds.has(entry[0]) && typeof entry[1] === "number" && Number.isInteger(entry[1]) && entry[1] > 0 && entry[1] <= 99
-            ))
-            : {};
+          const restored = hydratePublicCartPrices(parsePublicCart(storedCart), loadedCatalog.products);
+          const reconciliation = reconcilePublicCart(restored, loadedCatalog.products);
           startTransition(() => {
-            setQuantities(restored);
+            setCart(restored);
+            setPriceChangeNotice(reconciliation.hasPriceChanges);
             setCartReady(true);
           });
         } catch {
@@ -89,21 +87,23 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
   }, [cartStorageKey, publicId]);
 
   useEffect(() => {
-    if (cartReady) sessionStorage.setItem(cartStorageKey, JSON.stringify(quantities));
-  }, [cartReady, cartStorageKey, quantities]);
+    if (cartReady) sessionStorage.setItem(cartStorageKey, serializePublicCart(cart));
+  }, [cart, cartReady, cartStorageKey]);
 
-  const cartItems = catalog?.products.filter((product) => (quantities[product.id] ?? 0) > 0) ?? [];
-  const cartCount = Object.values(quantities).reduce((sum, quantity) => sum + quantity, 0);
-  const cartTotal = cartItems.reduce((sum, product) => sum + product.price * (quantities[product.id] ?? 0), 0);
+  const reconciliation = reconcilePublicCart(cart, catalog?.products ?? []);
+  const cartRows = reconciliation.rows;
+  const cartCount = Object.values(cart.items).reduce((sum, item) => sum + item.quantity, 0);
+  const cartTotal = reconciliation.total;
 
   function changeQuantity(product: PublicProduct, delta: number) {
-    setQuantities((current) => {
-      const nextQuantity = Math.max(0, Math.min(99, (current[product.id] ?? 0) + delta));
-      const next = { ...current };
-      if (nextQuantity === 0) delete next[product.id];
-      else next[product.id] = nextQuantity;
-      return next;
-    });
+    setCart(current => setPublicCartQuantity(current, product, Math.max(0, Math.min(99, (current.items[product.id]?.quantity ?? 0) + delta))));
+  }
+
+  function confirmCurrentPrices() {
+    if (!catalog) return;
+    setCart(current => acceptPublicCartPrices(current, catalog.products));
+    setPriceChangeNotice(true);
+    setError("");
   }
 
   async function submitOrder(event: FormEvent<HTMLFormElement>) {
@@ -117,6 +117,22 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
     setReceipt(null);
     setWhatsAppUrl("");
     try {
+      const { catalog: latestCatalog } = await publicApiRequest<{ catalog: PublicCatalog }>(`/public/catalogs/${encodeURIComponent(publicId)}`);
+      const latest = reconcilePublicCart(cart, latestCatalog.products);
+      setCatalog(latestCatalog);
+      if (latest.hasUnavailable) {
+        setError("Uno o más productos ya no están disponibles. Retíralos del carrito para continuar.");
+        return;
+      }
+      if (latest.hasPriceChanges) {
+        setPriceChangeNotice(true);
+        setError("Uno o más precios cambiaron. Revisa y confirma los precios actualizados antes de enviar el pedido.");
+        return;
+      }
+      if (latest.rows.length === 0) {
+        setError("El carrito está vacío.");
+        return;
+      }
       const orderPayload = {
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim(),
@@ -125,7 +141,7 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
         consent: true,
         customerConsentVersion: CUSTOMER_CONSENT.version,
         notes: notes.trim() || undefined,
-        items: cartItems.map((product) => ({ productId: product.id, quantity: quantities[product.id] })),
+        items: latest.rows.map(row => ({ productId: row.productId, quantity: row.item.quantity })),
       };
       const payloadSignature = JSON.stringify(orderPayload);
       if (!pendingOrderRef.current || pendingOrderRef.current.payload !== payloadSignature) {
@@ -153,7 +169,7 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
       setReceipt(order);
       pendingOrderRef.current = null;
       setWhatsAppUrl(`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`);
-      setQuantities({});
+      setCart({ version: 2, items: {} });
       sessionStorage.removeItem(cartStorageKey);
       setConsent(false);
     } catch (requestError) {
@@ -205,7 +221,7 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
           <p className="rounded-full border border-[var(--cart-border)] bg-[var(--cart-card)] px-3 py-1.5 text-sm text-[var(--cart-muted)]">{cartCount} {cartCount === 1 ? "unidad" : "unidades"}</p>
         </header>
 
-        {cartItems.length === 0 && !receipt ? (
+        {cartRows.length === 0 && !receipt ? (
           <section className="mx-auto my-10 max-w-2xl rounded-3xl border border-[var(--cart-border)] bg-[var(--cart-card)] px-6 py-16 text-center shadow-sm sm:my-14 sm:py-20">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--cart-accent)]">Todavía está vacío</p>
             <h2 className="mt-3 font-serif text-3xl">Empieza por algo que te guste.</h2>
@@ -216,9 +232,9 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
           <div className="grid items-start gap-10 pt-7 lg:grid-cols-[minmax(0,1fr)_minmax(340px,0.7fr)] lg:gap-16 lg:pt-10">
             <section aria-labelledby="cart-items-heading">
               <div className="mb-4 flex items-end justify-between gap-4"><h2 id="cart-items-heading" className="text-lg font-semibold">Productos</h2><span className="text-xs text-[var(--cart-muted)]">Precio en COP</span></div>
-              {cartItems.length > 0 ? (
+              {cartRows.length > 0 ? (
                 <ul className="divide-y divide-[var(--cart-border)] overflow-hidden rounded-2xl border border-[var(--cart-border)] bg-[var(--cart-card)] px-4 sm:px-5">
-                  {cartItems.map((product) => (
+                  {cartRows.map((row) => row.product ? (() => { const product = row.product; return (
                     <li key={product.id} className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-3 py-4 sm:grid-cols-[6rem_minmax(0,1fr)_auto] sm:gap-5">
                       <Link href={`/c/${encodeURIComponent(publicId)}/producto/${encodeURIComponent(product.slug)}`} aria-label={`Ver ${product.name}`} className="relative aspect-square overflow-hidden rounded-xl border border-[var(--cart-border)] bg-[var(--cart-surface)]">
                         {product.images[0] ? <Image src={product.images[0].url} alt={product.images[0].alt || product.name} fill unoptimized sizes="96px" className="object-cover" /> : <span className="grid h-full place-items-center px-2 text-center font-serif text-xs text-[var(--cart-muted)]">{product.name}</span>}
@@ -229,14 +245,20 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
                         <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
                           <p className={`text-xs font-semibold tabular-nums ${product.regularPrice !== null ? "text-[var(--cart-danger)]" : "text-[var(--cart-muted)]"}`}>${product.price.toLocaleString("es-CO")} c/u</p>
                           {product.regularPrice !== null && <p className="text-[10px] tabular-nums text-[var(--cart-muted)] line-through">${product.regularPrice.toLocaleString("es-CO")}</p>}
+                          {row.priceChanged && row.item.unitPrice !== null && <p className="basis-full text-[11px] text-[var(--cart-danger)]">Antes: <span className="line-through">${row.item.unitPrice.toLocaleString("es-CO")}</span>. Revisa el precio nuevo.</p>}
                         </div>
                         <div className="mt-3 flex items-center gap-2">
                           <button type="button" onClick={() => changeQuantity(product, -1)} aria-label={`Quitar una unidad de ${product.name}`} className="grid size-9 place-items-center rounded-lg border border-[var(--catalog-border,var(--cart-border))] bg-[var(--cart-bg)] text-lg transition hover:border-[var(--cart-accent)]">−</button>
-                          <span aria-live="polite" className="w-7 text-center text-sm tabular-nums">{quantities[product.id]}</span>
+                          <span aria-live="polite" className="w-7 text-center text-sm tabular-nums">{row.item.quantity}</span>
                           <button type="button" onClick={() => changeQuantity(product, 1)} aria-label={`Añadir una unidad de ${product.name}`} className="grid size-9 place-items-center rounded-lg border border-[var(--catalog-border,var(--cart-border))] bg-[var(--cart-bg)] text-lg transition hover:border-[var(--cart-accent)]">+</button>
                         </div>
                       </div>
-                      <p className="col-start-2 row-start-2 self-end text-sm font-semibold tabular-nums sm:col-start-3 sm:row-start-1 sm:self-center">${(product.price * quantities[product.id]).toLocaleString("es-CO")}</p>
+                      <p className="col-start-2 row-start-2 self-end text-sm font-semibold tabular-nums sm:col-start-3 sm:row-start-1 sm:self-center">${row.subtotal.toLocaleString("es-CO")}</p>
+                    </li>
+                  ); })() : (
+                    <li key={row.productId} className="flex flex-wrap items-center justify-between gap-4 py-5">
+                      <div><p className="text-sm font-semibold">Producto no disponible</p><p className="mt-1 text-xs text-[var(--cart-danger)]">Este producto fue retirado, desactivado o ya no tiene un precio válido.</p><p className="mt-1 text-xs text-[var(--cart-muted)]">Cantidad: {row.item.quantity}</p></div>
+                      <button type="button" onClick={() => setCart(current => removePublicCartItem(current, row.productId))} className="min-h-10 rounded-xl border border-[var(--cart-danger)] px-4 text-sm font-semibold text-[var(--cart-danger)]">Retirar del carrito</button>
                     </li>
                   ))}
                 </ul>
@@ -249,11 +271,14 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
               )}
             </section>
 
-            {cartItems.length > 0 && (
+            {cartRows.length > 0 && (
               <section className="lg:sticky lg:top-6">
                 <div className="rounded-2xl border border-[var(--cart-border)] bg-[var(--cart-card)] p-5 shadow-[0_18px_50px_-40px_rgba(0,0,0,0.35)] sm:p-6">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--cart-accent)]">Cierre de compra</p>
                   <h2 className="mt-1 text-xl font-semibold">Datos de entrega</h2>
+                  {reconciliation.hasPriceChanges && <div role="alert" className="mt-4 rounded-xl border border-[var(--cart-danger)] bg-[var(--catalog-danger-surface,#fff1ec)] p-3 text-sm"><p className="font-semibold">El precio de uno o más productos cambió.</p><p className="mt-1 text-xs text-[var(--cart-muted)]">Revisa los valores actualizados y confírmalos antes de enviar.</p><button type="button" onClick={confirmCurrentPrices} className="mt-3 min-h-10 rounded-lg bg-[var(--cart-accent)] px-4 text-xs font-semibold text-[var(--cart-accent-fg)]">Confirmar precios actualizados</button></div>}
+                  {priceChangeNotice && !reconciliation.hasPriceChanges && <p role="status" className="mt-4 rounded-xl bg-[var(--cart-soft)] p-3 text-sm">Precios actualizados y confirmados.</p>}
+                  {reconciliation.hasUnavailable && <p role="alert" className="mt-4 rounded-xl bg-[var(--catalog-danger-surface,#fff1ec)] p-3 text-sm text-[var(--cart-danger)]">Retira los productos no disponibles antes de enviar el pedido.</p>}
                   <form onSubmit={submitOrder} className="mt-5 space-y-4">
                     <label className="block text-sm font-medium">Nombre<input required maxLength={100} autoComplete="name" value={customerName} onChange={(event) => setCustomerName(event.target.value)} className={controlClass} /></label>
                     <label className="block text-sm font-medium">Teléfono<input required type="tel" maxLength={24} autoComplete="tel" value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} className={controlClass} /></label>
@@ -266,7 +291,7 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
                       <p className="flex justify-between text-sm text-[var(--cart-muted)]"><span>Subtotal</span><span className="tabular-nums">${cartTotal.toLocaleString("es-CO")}</span></p>
                       <p className="mt-2 flex justify-between text-base font-semibold"><span>Total</span><span className="tabular-nums">${cartTotal.toLocaleString("es-CO")}</span></p>
                     </div>
-                    <button type="submit" disabled={submitting || !catalog.whatsappPhone} className="min-h-12 w-full rounded-xl bg-[var(--cart-accent)] px-4 text-sm font-semibold text-[var(--cart-accent-fg)] transition hover:brightness-[var(--catalog-hover-brightness,1.1)] disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Preparando pedido..." : "Confirmar pedido"}</button>
+                    <button type="submit" disabled={submitting || !catalog.whatsappPhone || !canSubmitPublicCart(reconciliation)} className="min-h-12 w-full rounded-xl bg-[var(--cart-accent)] px-4 text-sm font-semibold text-[var(--cart-accent-fg)] transition hover:brightness-[var(--catalog-hover-brightness,1.1)] disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Preparando pedido..." : "Confirmar pedido"}</button>
                     {!catalog.whatsappPhone && <p className="text-xs leading-5 text-[var(--cart-danger)]">La tienda todavía no configuró WhatsApp para recibir pedidos.</p>}
                     <p className="text-[11px] leading-5 text-[var(--cart-muted)]">La disponibilidad y la entrega quedan por confirmar con el vendedor. No se solicitan pagos ni datos bancarios; el pedido queda pendiente de confirmación.</p>
                   </form>

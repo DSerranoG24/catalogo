@@ -9,6 +9,7 @@ import { publicApiRequest, PublicCatalog, PublicProduct, PublicProductReview, re
 import FloatingWhatsAppButton from "@/components/public/FloatingWhatsAppButton";
 import type { CatalogThemeStyle } from "@/lib/catalog-theme";
 import themeStyles from "./catalog-theme.module.css";
+import { parsePublicCart, serializePublicCart, setPublicCartQuantity } from "@/lib/public-cart.mjs";
 
 type PublicReviewFeed = {
   averageRating: number | null;
@@ -50,12 +51,8 @@ export default function PublicProductDetailPage({
     try {
       const storedCart = sessionStorage.getItem(cartStorageKey);
       if (!storedCart) return;
-      const parsed: unknown = JSON.parse(storedCart);
-      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return;
-      const storedQuantity = (parsed as Record<string, unknown>)[product?.id ?? ""];
-      if (typeof storedQuantity === "number" && Number.isInteger(storedQuantity)) {
-        startTransition(() => setQuantity(storedQuantity));
-      }
+      const storedQuantity = parsePublicCart(storedCart).items[product.id]?.quantity;
+      if (storedQuantity) startTransition(() => setQuantity(storedQuantity));
     } catch {
       sessionStorage.removeItem(cartStorageKey);
     }
@@ -78,19 +75,15 @@ export default function PublicProductDetailPage({
 
   function addToOrder() {
     if (!product) return;
-    let storedCart: Record<string, unknown> = {};
+    let storedCart = parsePublicCart(null);
     try {
-      const parsed: unknown = JSON.parse(sessionStorage.getItem(cartStorageKey) ?? "{}");
-      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-        storedCart = parsed as Record<string, unknown>;
-      }
+      storedCart = parsePublicCart(sessionStorage.getItem(cartStorageKey));
     } catch {
-      storedCart = {};
+      storedCart = parsePublicCart(null);
     }
-    const currentQuantity = storedCart[product.id];
-    const nextQuantity = Math.min(99, (typeof currentQuantity === "number" ? currentQuantity : 0) + 1);
-    const nextCart = { ...storedCart, [product.id]: nextQuantity };
-    sessionStorage.setItem(cartStorageKey, JSON.stringify(nextCart));
+    const nextQuantity = Math.min(99, (storedCart.items[product.id]?.quantity ?? 0) + 1);
+    const nextCart = setPublicCartQuantity(storedCart, product, nextQuantity);
+    sessionStorage.setItem(cartStorageKey, serializePublicCart(nextCart));
     setQuantity(nextQuantity);
     setAdded(true);
     router.push(`/c/${encodeURIComponent(publicId)}/carrito`);

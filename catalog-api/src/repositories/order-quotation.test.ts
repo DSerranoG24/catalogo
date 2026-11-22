@@ -51,6 +51,26 @@ test("core transaction persists prices and lines without any quotation operation
   await createPublicOrder("catalog-public", input, database);
 });
 
+test("catalog orders freeze the current linked inventory price without trusting materialized Product.price", async () => {
+  let created: Prisma.OrderCreateArgs | undefined;
+  const linked = { id: "product", name: "Vinculado", price: 5, salePrice: null, saleStartsAt: null, saleEndsAt: null, inventoryItem: { userId: "owner", commercialTerms: { userId: "owner", unitSalePrice: 1300n } }, publication: { userId: "owner", priceOverride: null } };
+  const database = databaseFixture({
+    catalog: { findFirst: async () => ({ id: "catalog", userId: "owner" }) },
+    product: { findMany: async () => [linked] },
+    order: { create: async (args: Prisma.OrderCreateArgs) => { created = args; return { id: "created" }; } },
+  });
+  await createPublicOrder("catalog-public", input, database);
+  assert.equal(created?.data.total, 2600);
+  assert.deepEqual(created?.data.items, { create: [{ productId: "product", productName: "Vinculado", quantity: 2, unitPrice: 1300, subtotal: 2600 }] });
+  assert.equal(linked.inventoryItem.commercialTerms.unitSalePrice, 1300n);
+
+  const foreign = databaseFixture({
+    catalog: { findFirst: async () => ({ id: "catalog", userId: "owner" }) },
+    product: { findMany: async () => [{ ...linked, inventoryItem: { userId: "other", commercialTerms: { userId: "other", unitSalePrice: 1n } } }] },
+  });
+  await assert.rejects(createPublicOrder("catalog-public", input, foreign), /PRODUCTS_UNAVAILABLE/);
+});
+
 test("idempotent retry returns the persisted order without allocating a quotation number", async () => {
   const receipt = { id: "original", total: 4000 };
   const database = databaseFixture({

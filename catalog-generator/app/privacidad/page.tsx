@@ -43,7 +43,7 @@ export default function PrivacyPage() {
     <table><caption>Almacenamiento utilizado por la aplicación</caption><thead><tr><th scope="col">Elemento</th><th scope="col">Uso y duración técnica</th></tr></thead><tbody>
       <tr><th scope="row">Cookie catalogo_session</th><td>Autenticación. HttpOnly, SameSite=Lax y Secure en producción; máximo configurado de siete días. Cerrar sesión solicita su eliminación.</td></tr>
       <tr><th scope="row">localStorage: catalogo-session</th><td>ID, correo y nombre del vendedor para la interfaz. No contiene JWT ni autoriza ninguna operación. Sin caducidad propia; se elimina al cerrar sesión.</td></tr>
-      <tr><th scope="row">sessionStorage: catalogo-cart-ID</th><td>Identificadores y cantidades del carrito por catálogo. Se limpia al registrar el pedido; normalmente finaliza con la sesión de la pestaña.</td></tr>
+      <tr><th scope="row">sessionStorage: catalogo-cart-ID</th><td>Identificadores, cantidades y último precio público visto de los productos del carrito por catálogo. Se limpia al registrar el pedido; normalmente finaliza con la sesión de la pestaña.</td></tr>
       <tr><th scope="row">sessionStorage: catalogo-template-ID</th><td>Plantilla recordada para el loading. Es una pista visual, no una fuente de verdad.</td></tr>
     </tbody></table>
     <p>No se ha identificado una integración explícita de analítica externa en el código revisado. Esto no acredita la configuración ni los registros de infraestructura. El acceso con Google utiliza un script externo; sus tratamientos y cookies requieren revisión.</p>

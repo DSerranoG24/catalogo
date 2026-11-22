@@ -17,6 +17,7 @@ import { PublicCatalogTemplateProps } from "@/components/public/PublicCatalogTem
 import type { CatalogThemeStyle } from "@/lib/catalog-theme";
 import themeStyles from "./catalog-theme.module.css";
 import { validPublicCategory } from "@/lib/public-category";
+import { parsePublicCart, publicCartQuantities, serializePublicCart, setPublicCartQuantity, type PublicCart } from "@/lib/public-cart.mjs";
 
 const templateComponents: Record<CatalogTemplateId, ComponentType<PublicCatalogTemplateProps>> = {
   TECH: TechnologyTemplate,
@@ -26,7 +27,7 @@ const templateComponents: Record<CatalogTemplateId, ComponentType<PublicCatalogT
 };
 
 export default function PublicCatalogPage({ publicId, initialCatalog: catalog, themeStyle, initialCategory = "" }: { publicId: string; initialCatalog: PublicCatalog; themeStyle?: CatalogThemeStyle; initialCategory?: string }) {
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [cart, setCart] = useState<PublicCart>({ version: 2, items: {} });
   const [cartReady, setCartReady] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(() => validPublicCategory(catalog.categories, initialCategory));
   const [searchQuery, setSearchQuery] = useState("");
@@ -60,20 +61,8 @@ export default function PublicCatalogPage({ publicId, initialCatalog: catalog, t
     try {
       const storedCart = sessionStorage.getItem(cartStorageKey);
       if (storedCart) {
-        const parsed: unknown = JSON.parse(storedCart);
-        if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-          const restored = Object.fromEntries(
-            Object.entries(parsed).filter((entry): entry is [string, number] =>
-              typeof entry[1] === "number" && Number.isInteger(entry[1]) && entry[1] > 0 && entry[1] <= 99
-            )
-          );
-          startTransition(() => {
-            setQuantities(restored);
-            setCartReady(true);
-          });
-        } else {
-          startTransition(() => setCartReady(true));
-        }
+          const restored = parsePublicCart(storedCart);
+          startTransition(() => { setCart(restored); setCartReady(true); });
       } else {
         startTransition(() => setCartReady(true));
       }
@@ -88,8 +77,8 @@ export default function PublicCatalogPage({ publicId, initialCatalog: catalog, t
   }, [cartStorageKey, catalog]);
 
   useEffect(() => {
-    if (cartReady) sessionStorage.setItem(cartStorageKey, JSON.stringify(quantities));
-  }, [cartReady, cartStorageKey, quantities]);
+    if (cartReady) sessionStorage.setItem(cartStorageKey, serializePublicCart(cart));
+  }, [cart, cartReady, cartStorageKey]);
 
   useEffect(() => {
     rememberPublicCatalogTemplate(publicId, catalog.template);
@@ -115,17 +104,12 @@ export default function PublicCatalogPage({ publicId, initialCatalog: catalog, t
   const pageCount = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
   const currentPage = Math.min(page, pageCount);
   const pageProducts = filteredProducts.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const quantities = publicCartQuantities(cart);
   const cartCount = Object.values(quantities).reduce((sum, quantity) => sum + quantity, 0);
   const cartTotal = catalog?.products.reduce((sum, product) => sum + product.price * (quantities[product.id] ?? 0), 0) ?? 0;
 
   function changeQuantity(product: PublicProduct, delta: number) {
-    setQuantities((current) => {
-      const nextQuantity = Math.max(0, Math.min(99, (current[product.id] ?? 0) + delta));
-      const next = { ...current };
-      if (nextQuantity === 0) delete next[product.id];
-      else next[product.id] = nextQuantity;
-      return next;
-    });
+    setCart(current => setPublicCartQuantity(current, product, Math.max(0, Math.min(99, (current.items[product.id]?.quantity ?? 0) + delta))));
   }
 
   const templateProps = {

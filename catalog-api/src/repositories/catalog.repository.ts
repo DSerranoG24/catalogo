@@ -2,6 +2,7 @@ import { prisma } from "../config/prisma";
 import { quotationCatalogFieldsSchema } from "../schemas/catalog.schema";
 import { assertCatalogThemeCompatibility } from "../schemas/catalog-theme";
 import { resolvePublicHighlights } from "../services/public-catalog-highlights";
+import { resolvePublicProductPrice } from "../services/public-product-price";
 
 export async function createCatalog(data: {
   userId: string;
@@ -226,12 +227,7 @@ export async function findPublicCatalog(publicId: string, database = prisma) {
   const products = catalog.products.flatMap(({ inventoryItem, publication, ...product }) => {
     const ownedInventory = inventoryItem?.userId === catalog.userId ? inventoryItem : null;
     if (inventoryItem && !ownedInventory) return [];
-    const ownedTerms = ownedInventory?.commercialTerms?.userId === catalog.userId ? ownedInventory.commercialTerms : null;
-    const ownedOverride = publication?.userId === catalog.userId ? publication.priceOverride : null;
-    const inventoryPrice = ownedTerms && ownedTerms.unitSalePrice >= 0n && ownedTerms.unitSalePrice <= 2_147_483_647n
-      ? Number(ownedTerms.unitSalePrice)
-      : null;
-    const price = ownedInventory ? ownedOverride ?? inventoryPrice : product.price;
+    const price = resolvePublicProductPrice({ ...product, inventoryItem, publication }, catalog.userId);
     if (price === null) return [];
     const inheritedImage = ownedInventory?.images[0];
     return [{
