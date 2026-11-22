@@ -163,7 +163,8 @@ export function rememberPublicCatalogTemplate(publicId: string, template: Catalo
 export class ApiError extends Error {
   constructor(
     message: string,
-    readonly status: number
+    readonly status: number,
+    readonly code?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -314,7 +315,7 @@ export async function publicApiRequest<T>(
 
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new ApiError(payload?.message ?? "La solicitud no pudo completarse.", response.status);
+    throw new ApiError(payload?.message ?? "La solicitud no pudo completarse.", response.status, typeof payload?.code === "string" ? payload.code : undefined);
   }
   return payload as T;
 }

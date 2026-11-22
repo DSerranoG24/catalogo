@@ -3,11 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { CSSProperties, FormEvent, startTransition, useEffect, useRef, useState } from "react";
-import { publicApiRequest, PublicCatalog, PublicProduct, rememberPublicCatalogTemplate } from "@/lib/api";
+import { ApiError, publicApiRequest, PublicCatalog, PublicProduct, rememberPublicCatalogTemplate } from "@/lib/api";
 import FloatingWhatsAppButton from "@/components/public/FloatingWhatsAppButton";
 import PublicRouteLoading from "@/components/public/PublicRouteLoading";
 import type { CatalogThemeStyle } from "@/lib/catalog-theme";
 import themeStyles from "./catalog-theme.module.css";
+import { parsePublicCartQuote, isConfirmedCartQuote, type CartQuote } from "@/lib/public-cart-quote.mjs";
 import { CUSTOMER_CONSENT } from "@/lib/customer-consent";
 import { acceptPublicCartPrices, canSubmitPublicCart, hydratePublicCartPrices, parsePublicCart, reconcilePublicCart, removePublicCartItem, serializePublicCart, setPublicCartQuantity, type PublicCart } from "@/lib/public-cart.mjs";
 
@@ -44,6 +45,11 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [quote, setQuote] = useState<CartQuote | null>(null);
+  const [confirmedQuoteToken, setConfirmedQuoteToken] = useState<string | null>(null);
+  const [quoteRevision, setQuoteRevision] = useState(0);
+  const quoteItems = JSON.stringify(Object.entries(cart.items).map(([productId, item]) => ({ productId, quantity: item.quantity })).sort((a, b) => a.productId.localeCompare(b.productId)));
+  const submitLockRef = useRef(false);
   const pendingOrderRef = useRef<{ key: string; payload: string } | null>(null);
   const cartStorageKey = `catalogo-cart-${publicId}`;
 
@@ -90,17 +96,40 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
     if (cartReady) sessionStorage.setItem(cartStorageKey, serializePublicCart(cart));
   }, [cart, cartReady, cartStorageKey]);
 
+  useEffect(() => {
+    if (!cartReady || quoteItems === "[]") return;
+    let active = true;
+    publicApiRequest<{ quote: unknown }>(`/public/catalogs/${encodeURIComponent(publicId)}/quote`, {
+      method: "POST", body: JSON.stringify({ items: JSON.parse(quoteItems) }),
+    }).then(({ quote: responseQuote }) => {
+      const current = parsePublicCartQuote(responseQuote, JSON.parse(quoteItems));
+      if (!active) return;
+      setQuote(current);
+      setConfirmedQuoteToken(null);
+      setCatalog(previous => previous ? { ...previous, products: previous.products.flatMap(product => {
+        const line = current.lines.find(line => line.productId === product.id);
+        return line ? (line.product ? [{ ...product, ...line.product }] : []) : [product];
+      }) } : previous);
+    }).catch(error => {
+      if (active) setError(error instanceof Error ? error.message : "No se pudo cotizar el carrito.");
+    });
+    return () => { active = false; };
+  }, [cartReady, publicId, quoteItems, quoteRevision]);
+
   const reconciliation = reconcilePublicCart(cart, catalog?.products ?? []);
   const cartRows = reconciliation.rows;
   const cartCount = Object.values(cart.items).reduce((sum, item) => sum + item.quantity, 0);
   const cartTotal = reconciliation.total;
 
   function changeQuantity(product: PublicProduct, delta: number) {
+    setConfirmedQuoteToken(null);
+    setQuote(null);
     setCart(current => setPublicCartQuantity(current, product, Math.max(0, Math.min(99, (current.items[product.id]?.quantity ?? 0) + delta))));
   }
 
   function confirmCurrentPrices() {
-    if (!catalog) return;
+    if (!catalog || !quote?.available) return;
+    setConfirmedQuoteToken(quote.token);
     setCart(current => acceptPublicCartPrices(current, catalog.products));
     setPriceChangeNotice(true);
     setError("");
@@ -108,10 +137,16 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
 
   async function submitOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitLockRef.current) return;
+    if (!isConfirmedCartQuote(quote, confirmedQuoteToken, JSON.parse(quoteItems))) {
+      setError("Revisa y confirma la cotización antes de enviar el pedido.");
+      return;
+    }
     if (!catalog?.whatsappPhone) {
       setError("Esta tienda todavía no configuró WhatsApp para recibir pedidos.");
       return;
     }
+    submitLockRef.current = true;
     setSubmitting(true);
     setError("");
     setReceipt(null);
@@ -125,6 +160,9 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
         return;
       }
       if (latest.hasPriceChanges) {
+        setQuote(null);
+        setConfirmedQuoteToken(null);
+        setQuoteRevision(current => current + 1);
         setPriceChangeNotice(true);
         setError("Uno o más precios cambiaron. Revisa y confirma los precios actualizados antes de enviar el pedido.");
         return;
@@ -134,6 +172,7 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
         return;
       }
       const orderPayload = {
+        quoteToken: confirmedQuoteToken,
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim(),
         customerEmail: customerEmail.trim() || undefined,
@@ -173,8 +212,14 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
       sessionStorage.removeItem(cartStorageKey);
       setConsent(false);
     } catch (requestError) {
+      if (requestError instanceof ApiError && requestError.code?.startsWith("QUOTE_")) {
+        setConfirmedQuoteToken(null);
+        setQuote(null);
+        setQuoteRevision(current => current + 1);
+      }
       setError(requestError instanceof Error ? requestError.message : "No se pudo registrar el pedido.");
     } finally {
+      submitLockRef.current = false;
       setSubmitting(false);
     }
   }
@@ -247,6 +292,7 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
                           {product.regularPrice !== null && <p className="text-[10px] tabular-nums text-[var(--cart-muted)] line-through">${product.regularPrice.toLocaleString("es-CO")}</p>}
                           {row.priceChanged && row.item.unitPrice !== null && <p className="basis-full text-[11px] text-[var(--cart-danger)]">Antes: <span className="line-through">${row.item.unitPrice.toLocaleString("es-CO")}</span>. Revisa el precio nuevo.</p>}
                         </div>
+                        <p className="mt-2 text-xs text-[var(--cart-muted)]">Disponibilidad actual: {quote?.lines.find(line => line.productId === product.id)?.product?.stock ?? "Por consultar"} unidades. Sujeta a confirmación del vendedor.</p>
                         <div className="mt-3 flex items-center gap-2">
                           <button type="button" onClick={() => changeQuantity(product, -1)} aria-label={`Quitar una unidad de ${product.name}`} className="grid size-9 place-items-center rounded-lg border border-[var(--catalog-border,var(--cart-border))] bg-[var(--cart-bg)] text-lg transition hover:border-[var(--cart-accent)]">−</button>
                           <span aria-live="polite" className="w-7 text-center text-sm tabular-nums">{row.item.quantity}</span>
@@ -258,7 +304,7 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
                   ); })() : (
                     <li key={row.productId} className="flex flex-wrap items-center justify-between gap-4 py-5">
                       <div><p className="text-sm font-semibold">Producto no disponible</p><p className="mt-1 text-xs text-[var(--cart-danger)]">Este producto fue retirado, desactivado o ya no tiene un precio válido.</p><p className="mt-1 text-xs text-[var(--cart-muted)]">Cantidad: {row.item.quantity}</p></div>
-                      <button type="button" onClick={() => setCart(current => removePublicCartItem(current, row.productId))} className="min-h-10 rounded-xl border border-[var(--cart-danger)] px-4 text-sm font-semibold text-[var(--cart-danger)]">Retirar del carrito</button>
+                      <button type="button" onClick={() => { setQuote(null); setConfirmedQuoteToken(null); setCart(current => removePublicCartItem(current, row.productId)); }} className="min-h-10 rounded-xl border border-[var(--cart-danger)] px-4 text-sm font-semibold text-[var(--cart-danger)]">Retirar del carrito</button>
                     </li>
                   ))}
                 </ul>
@@ -279,6 +325,8 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
                   {reconciliation.hasPriceChanges && <div role="alert" className="mt-4 rounded-xl border border-[var(--cart-danger)] bg-[var(--catalog-danger-surface,#fff1ec)] p-3 text-sm"><p className="font-semibold">El precio de uno o más productos cambió.</p><p className="mt-1 text-xs text-[var(--cart-muted)]">Revisa los valores actualizados y confírmalos antes de enviar.</p><button type="button" onClick={confirmCurrentPrices} className="mt-3 min-h-10 rounded-lg bg-[var(--cart-accent)] px-4 text-xs font-semibold text-[var(--cart-accent-fg)]">Confirmar precios actualizados</button></div>}
                   {priceChangeNotice && !reconciliation.hasPriceChanges && <p role="status" className="mt-4 rounded-xl bg-[var(--cart-soft)] p-3 text-sm">Precios actualizados y confirmados.</p>}
                   {reconciliation.hasUnavailable && <p role="alert" className="mt-4 rounded-xl bg-[var(--catalog-danger-surface,#fff1ec)] p-3 text-sm text-[var(--cart-danger)]">Retira los productos no disponibles antes de enviar el pedido.</p>}
+                  {quote && confirmedQuoteToken !== quote.token && <div role="status" className="mt-4 text-sm"><p>Revisa precios, promociones y disponibilidad antes de confirmar.</p><button type="button" disabled={!quote.available || submitting} onClick={confirmCurrentPrices} className="mt-3 min-h-10 rounded-lg border px-4">Confirmar cotización actual</button></div>}
+                  {!quote && <button type="button" onClick={() => setQuoteRevision(current => current + 1)} className="mt-3 min-h-10 rounded-lg border px-4">Actualizar cotización</button>}
                   <form onSubmit={submitOrder} className="mt-5 space-y-4">
                     <label className="block text-sm font-medium">Nombre<input required maxLength={100} autoComplete="name" value={customerName} onChange={(event) => setCustomerName(event.target.value)} className={controlClass} /></label>
                     <label className="block text-sm font-medium">Teléfono<input required type="tel" maxLength={24} autoComplete="tel" value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} className={controlClass} /></label>
@@ -291,7 +339,7 @@ export default function PublicShoppingCartPage({ publicId }: { publicId: string 
                       <p className="flex justify-between text-sm text-[var(--cart-muted)]"><span>Subtotal</span><span className="tabular-nums">${cartTotal.toLocaleString("es-CO")}</span></p>
                       <p className="mt-2 flex justify-between text-base font-semibold"><span>Total</span><span className="tabular-nums">${cartTotal.toLocaleString("es-CO")}</span></p>
                     </div>
-                    <button type="submit" disabled={submitting || !catalog.whatsappPhone || !canSubmitPublicCart(reconciliation)} className="min-h-12 w-full rounded-xl bg-[var(--cart-accent)] px-4 text-sm font-semibold text-[var(--cart-accent-fg)] transition hover:brightness-[var(--catalog-hover-brightness,1.1)] disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Preparando pedido..." : "Confirmar pedido"}</button>
+                    <button type="submit" disabled={submitting || !isConfirmedCartQuote(quote, confirmedQuoteToken, JSON.parse(quoteItems)) || !catalog.whatsappPhone || !canSubmitPublicCart(reconciliation)} className="min-h-12 w-full rounded-xl bg-[var(--cart-accent)] px-4 text-sm font-semibold text-[var(--cart-accent-fg)] transition hover:brightness-[var(--catalog-hover-brightness,1.1)] disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Preparando pedido..." : "Confirmar pedido"}</button>
                     {!catalog.whatsappPhone && <p className="text-xs leading-5 text-[var(--cart-danger)]">La tienda todavía no configuró WhatsApp para recibir pedidos.</p>}
                     <p className="text-[11px] leading-5 text-[var(--cart-muted)]">La disponibilidad y la entrega quedan por confirmar con el vendedor. No se solicitan pagos ni datos bancarios; el pedido queda pendiente de confirmación.</p>
                   </form>

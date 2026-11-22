@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { Prisma, type OrderStatus } from "@prisma/client";
 import { prisma } from "../config/prisma";
 import { anonymizeOrder, deletePendingOrder, deletedOrderKeyHash } from "./order-privacy.repository";
+import { getCartQuote } from "../services/cart-quote";
 import { createPublicOrder, findOrdersByCatalog } from "./order.repository";
 import { createPublicOrderSchema } from "../schemas/order.schema";
 import { CUSTOMER_CONSENT_VERSIONS } from "../services/customer-consent";
@@ -33,6 +34,7 @@ function fixture(status: OrderStatus = "COMPLETED") {
       try { return await fn(database); } catch (error) { state = original; throw error; }
     };
     if (key === "$queryRaw") return async (sql: TemplateStringsArray, ...values: unknown[]) => {
+      if (!Array.isArray(sql)) return [{ id: "catalog" }];
       locks.push(sql.join("?"));
       return sql.join("").includes("FROM orders") && (values[0] !== "order" || values[1] !== "owner" || state.deleted) ? [] : [{ id: "catalog" }];
     };
@@ -118,7 +120,7 @@ test("consent accepts displayed versions or transition null/omission, rejecting 
 test("new orders persist the displayed consent version; idempotent receipt leaves historical null intact", async () => {
   const store = fixture("PENDING");
   const data = { customerName: "Cliente", customerPhone: "3000000000", customerAddress: "Dirección", consent: true as const, customerConsentVersion: "2026-10-27.v1", items: [{ productId: "product", quantity: 2 }] };
-  await createPublicOrder("public", data, store.database);
+  await createPublicOrder("public", { ...data, quoteToken: (await getCartQuote("public", data.items, store.database)).token }, store.database);
   await createPublicOrder("public", { ...data, idempotencyKey: "old-key" }, store.database);
   assert.equal(store.state.creates, 1); assert.equal(store.state.order.customerConsentVersion, null);
 });

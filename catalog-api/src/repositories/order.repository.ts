@@ -1,9 +1,8 @@
 import { OrderStatus, Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma";
 import { recoverIdempotentOrder } from "./order-idempotency";
-import { calculatePublicOrder } from "../services/order-calculation";
+import { lockCartQuote, resolveCartQuote, quoteOrder, QuoteChangedError } from "../services/cart-quote";
 import { deletedOrderKeyHash } from "./order-privacy.repository";
-import { resolvePublicProductPrice } from "../services/public-product-price";
 const publicOrderReceipt = {
   id: true,
   status: true,
@@ -23,6 +22,7 @@ export async function createPublicOrder(
     customerConsentVersion?: string | null;
     notes?: string;
     idempotencyKey?: string;
+    quoteToken?: string;
     items: { productId: string; quantity: number }[];
   },
   database = prisma
@@ -49,26 +49,16 @@ export async function createPublicOrder(
       if (existing) return existing;
     }
 
-    const pricingTime = new Date();
-    const products = await transaction.product.findMany({
-      where: {
-        catalogId: catalog.id,
-        active: true,
-        id: { in: data.items.map((item) => item.productId) },
-      },
-      select: {
-        id: true, name: true, price: true, salePrice: true, saleStartsAt: true, saleEndsAt: true,
-        inventoryItem: { select: { userId: true, commercialTerms: { select: { userId: true, unitSalePrice: true } } } },
-        publication: { select: { userId: true, priceOverride: true } },
-      },
+    await lockCartQuote(transaction, catalog.id, data.items);
+    const currentCatalog = await transaction.catalog.findFirst({
+      where: { id: catalog.id, userId: catalog.userId, active: true, archivedAt: null }, select: { id: true },
     });
-    const pricedProducts = products.flatMap(product => {
-      const price = resolvePublicProductPrice(product, catalog.userId);
-      if (price === null) return [];
-      const { inventoryItem: _inventoryItem, publication: _publication, ...publicProduct } = product;
-      return [{ ...publicProduct, price }];
-    });
-    const { items, total } = calculatePublicOrder(data.items, pricedProducts, pricingTime);
+    if (!currentCatalog) throw new QuoteChangedError(null);
+    const quote = await resolveCartQuote(transaction, catalog, data.items);
+    if (!data.quoteToken) throw new QuoteChangedError(quote, "QUOTE_REQUIRED");
+    if (!/^q1\.[a-f0-9]{64}$/.test(data.quoteToken)) throw new QuoteChangedError(quote, "QUOTE_INVALID");
+    if (quote.token !== data.quoteToken || !quote.available) throw new QuoteChangedError(quote);
+    const { items, total } = quoteOrder(quote);
 
     return transaction.order.create({
       data: {

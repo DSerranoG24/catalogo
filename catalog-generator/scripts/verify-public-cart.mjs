@@ -50,3 +50,15 @@ assert.equal(reconcilePublicCart(legacy, [product(linkedId, 500)]).hasPriceChang
 assert.deepEqual(parsePublicCart(serializePublicCart(legacy)), legacy);
 
 console.log("PASS public cart price refresh, totals, explicit acceptance, unavailable products and catalog isolation");
+
+const { parsePublicCartQuote, isConfirmedCartQuote } = await import("../lib/public-cart-quote.mjs");
+const quoteItems = [{ productId: historicalId, quantity: 2 }];
+const quote = { token: "q1." + "a".repeat(64), available: true, lines: [{ ...quoteItems[0], product: { id: historicalId, name: "Historical", price: 100, stock: 5, regularPrice: null, discountPercent: null, saleEndsAt: null } }] };
+assert.deepEqual(parsePublicCartQuote(quote, quoteItems), quote);
+assert.equal(isConfirmedCartQuote(quote, null, quoteItems), false);
+assert.equal(isConfirmedCartQuote(quote, quote.token, quoteItems), true);
+assert.equal(isConfirmedCartQuote({ ...quote, token: "q1." + "b".repeat(64) }, quote.token, quoteItems), false);
+assert.equal(isConfirmedCartQuote(null, quote.token, quoteItems), false);
+assert.equal(isConfirmedCartQuote(quote, quote.token, [{ ...quoteItems[0], quantity: 3 }]), false);
+for (const invalid of [null, {}, { ...quote, token: "bad" }, { ...quote, available: false }, { ...quote, lines: [] }, { ...quote, lines: [{ ...quote.lines[0], quantity: 3 }] }]) assert.throws(() => parsePublicCartQuote(invalid, quoteItems));
+console.log("PASS quote validation, explicit confirmation, changed token, unavailable quote and quantity invalidation");

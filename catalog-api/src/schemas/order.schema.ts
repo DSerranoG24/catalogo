@@ -2,6 +2,16 @@ import { OrderStatus } from "@prisma/client";
 import { z } from "zod";
 import { isAcceptedConsentVersion } from "../services/customer-consent";
 
+export const publicQuoteItemsSchema = z.array(z.object({
+    productId: z.string().uuid(),
+    quantity: z.number().int().min(1).max(99),
+  })).min(1).max(50).refine(
+    (items) => new Set(items.map((item) => item.productId)).size === items.length,
+    "No repitas productos en la orden"
+  );
+
+export const publicQuoteSchema = z.object({ items: publicQuoteItemsSchema });
+
 export const createPublicOrderSchema = z.object({
   idempotencyKey: z.string().min(1).max(100).regex(/^[A-Za-z0-9_-]+$/).optional(),
   customerName: z.string().trim().min(1).max(100),
@@ -11,13 +21,8 @@ export const createPublicOrderSchema = z.object({
   consent: z.literal(true),
   customerConsentVersion: z.string().max(80).refine(isAcceptedConsentVersion, "Versión de consentimiento no admitida").nullable().optional(),
   notes: z.string().trim().max(500).optional(),
-  items: z.array(z.object({
-    productId: z.string().uuid(),
-    quantity: z.number().int().min(1).max(99),
-  })).min(1).max(50).refine(
-    (items) => new Set(items.map((item) => item.productId)).size === items.length,
-    "No repitas productos en la orden"
-  ),
+  quoteToken: z.string().max(200).optional(),
+  items: publicQuoteItemsSchema,
 });
 
 export const updateOrderSchema = z.object({

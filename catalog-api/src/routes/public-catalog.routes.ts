@@ -3,6 +3,7 @@ import { rateLimit } from "express-rate-limit";
 import { getQuotationController, quotationPrivacyHeaders } from "../controllers/quotation.controller";
 import {
   createPublicOrderController,
+  createCartQuoteController,
   getPublicCatalogController,
 } from "../controllers/public-catalog.controller";
 import {
@@ -45,6 +46,7 @@ router.get("/:publicId/orders/:orderId/quotation.pdf", (_req, res, next) => {
 }, quotationLimiter, getQuotationController);
 router.get("/:publicId/products/:productSlug/reviews", publicReadLimiter, getPublicProductReviewsController);
 router.post("/:publicId/products/:productSlug/reviews", reviewLimiter, createPublicProductReviewController);
+router.post("/:publicId/quote", publicReadLimiter, createCartQuoteController);
 router.post("/:publicId/orders", orderLimiter, createPublicOrderController);
 
 export default router;

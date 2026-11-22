@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { findPublicCatalog } from "../repositories/catalog.repository";
-import { createPublicOrderSchema } from "../schemas/order.schema";
+import { getCartQuote, QuoteChangedError } from "../services/cart-quote";
+import { createPublicOrderSchema, publicQuoteSchema } from "../schemas/order.schema";
 import { createPublicOrder } from "../services/order.service";
 import { createProductImageSignedUrl } from "../services/storage.service";
 import { getCurrentProductPricing } from "../services/product-pricing";
@@ -57,6 +58,10 @@ export function makePublicOrderController(deps = {
     try {
       order = await deps.create(req.params.publicId as string, parsed.data);
     } catch (error) {
+      if (error instanceof QuoteChangedError) {
+        return res.status(409).set("Cache-Control", "no-store").json({ success: false, code: error.code,
+          message: "La cotización cambió. Revisa el carrito y confirma nuevamente antes de enviar el pedido.", quote: error.quote });
+      }
         if (error instanceof Error && error.message === "ORDER_DELETED") {
           return res.status(409).json({ success: false, message: "Este pedido fue eliminado. Inicia un pedido nuevo para continuar." });
         }
@@ -94,3 +99,15 @@ export function makePublicOrderController(deps = {
 }
 
 export const createPublicOrderController = makePublicOrderController();
+
+export async function createCartQuoteController(req: Request, res: Response) {
+  const parsed = publicQuoteSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, message: "Revisa los productos y cantidades" });
+  try {
+    const quote = await getCartQuote(req.params.publicId as string, parsed.data.items);
+    return res.set("Cache-Control", "no-store").json({ success: true, quote });
+  } catch (error) {
+    if (error instanceof Error && error.message === "CATALOG_NOT_FOUND") return res.status(404).json({ success: false, message: "Catálogo no encontrado" });
+    return res.status(500).json({ success: false, message: "No se pudo cotizar el carrito" });
+  }
+}

@@ -5,6 +5,7 @@ import express from "express";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma";
+import { getCartQuote, QuoteChangedError } from "../services/cart-quote";
 import { createPublicOrder } from "../repositories/order.repository";
 import { quotationBaseUrl } from "../services/quotation-data";
 import { QuotationFailureEvent } from "../services/quotation-errors";
@@ -28,7 +29,7 @@ function purchaseStore() {
       if (key === "$queryRaw") return async () => [{ id: "catalog" }];
       if (key === "orderDeletionMarker") return { findUnique: async () => null };
       if (key === "catalog") return { findFirst: async () => ({ id: "catalog" }) };
-      if (key === "product") return { findMany: async () => [{ id: productId, name: "Producto", price: 1250, salePrice: null, saleStartsAt: null, saleEndsAt: null }] };
+      if (key === "product") return { findMany: async () => [{ id: productId, name: "Producto", stock: 10, price: 1250, salePrice: null, saleStartsAt: null, saleEndsAt: null }] };
       if (key === "order") return {
         findUnique: async () => saved,
         create: async (args: Prisma.OrderCreateArgs) => {
@@ -44,6 +45,7 @@ function purchaseStore() {
     },
   });
   return { create: (id: string, data: Parameters<typeof createPublicOrder>[1]) => createPublicOrder(id, data, database),
+    quote: () => getCartQuote(publicId, [{ productId, quantity: 2 }], database),
     get writes() { return writes; }, get saved() { return saved; } };
 }
 
@@ -74,7 +76,7 @@ async function withController(overrides: Partial<Dependencies>, verify: (context
     await verify({ events, store, submit: async () => {
       const response = await fetch(`http://127.0.0.1:${address.port}/catalogs/${publicId}/orders`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idempotencyKey: "same-purchase", customerName: "Cliente de prueba", customerPhone: "3000000000",
+        body: JSON.stringify({ quoteToken: (await store.quote()).token, idempotencyKey: "same-purchase", customerName: "Cliente de prueba", customerPhone: "3000000000",
           customerAddress: "Dirección de prueba", consent: true, items: [{ productId, quantity: 2 }] }),
       });
       assert.equal(response.status, 201);
@@ -141,4 +143,31 @@ test("quotation formatting failure returns 201 with all quotation fields null", 
     assert.equal(result.order.quotationIssuedAt, null);
     assert.equal(events[0]?.errorCode, "QUOTATION_INTEGRITY");
   });
+});
+
+test("quote conflicts return identifiable 409, current public quote and never issue a PDF", async () => {
+  process.env.SUPABASE_URL = "https://example.supabase.co";
+  process.env.SUPABASE_SECRET_KEY = "local-test-placeholder";
+  const { makePublicOrderController } = await import("./public-catalog.controller.js");
+  const store = purchaseStore();
+  const quote = await store.quote();
+  let issued = 0;
+  const app = express(); app.use(express.json());
+  app.post("/:publicId/orders", makePublicOrderController({
+    create: async () => { throw new QuoteChangedError(quote); },
+    issue: async () => { issued++; return null; }, base: () => "https://example.invalid", log: () => {},
+  }));
+  const server = app.listen(0, "127.0.0.1"); await once(server, "listening");
+  const address = server.address(); assert.ok(address && typeof address !== "string");
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/${publicId}/orders`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customerName: "Test", customerPhone: "0000000", customerAddress: "Test address", consent: true, items: [{ productId, quantity: 2 }], quoteToken: quote.token }),
+    });
+    assert.equal(response.status, 409);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    const body = await response.json();
+    assert.equal(body.code, "QUOTE_CHANGED"); assert.deepEqual(body.quote, quote);
+    assert.equal(issued, 0); assert.equal(store.writes, 0);
+  } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 });

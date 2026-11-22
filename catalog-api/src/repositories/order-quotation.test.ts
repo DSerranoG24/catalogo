@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mock, test } from "node:test";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma";
+import { getCartQuote } from "../services/cart-quote";
 import { createPublicOrder } from "./order.repository";
 import { findQuotation, quotationStillAccessible } from "./quotation.repository";
 
@@ -48,7 +49,7 @@ test("core transaction persists prices and lines without any quotation operation
       return { id: "created" };
     } },
   });
-  await createPublicOrder("catalog-public", input, database);
+  await createPublicOrder("catalog-public", { ...input, quoteToken: (await getCartQuote("catalog-public", input.items, database)).token }, database);
 });
 
 test("catalog orders freeze the current linked inventory price without trusting materialized Product.price", async () => {
@@ -59,7 +60,7 @@ test("catalog orders freeze the current linked inventory price without trusting 
     product: { findMany: async () => [linked] },
     order: { create: async (args: Prisma.OrderCreateArgs) => { created = args; return { id: "created" }; } },
   });
-  await createPublicOrder("catalog-public", input, database);
+  await createPublicOrder("catalog-public", { ...input, quoteToken: (await getCartQuote("catalog-public", input.items, database)).token }, database);
   assert.equal(created?.data.total, 2600);
   assert.deepEqual(created?.data.items, { create: [{ productId: "product", productName: "Vinculado", quantity: 2, unitPrice: 1300, subtotal: 2600 }] });
   assert.equal(linked.inventoryItem.commercialTerms.unitSalePrice, 1300n);
@@ -68,7 +69,7 @@ test("catalog orders freeze the current linked inventory price without trusting 
     catalog: { findFirst: async () => ({ id: "catalog", userId: "owner" }) },
     product: { findMany: async () => [{ ...linked, inventoryItem: { userId: "other", commercialTerms: { userId: "other", unitSalePrice: 1n } } }] },
   });
-  await assert.rejects(createPublicOrder("catalog-public", input, foreign), /PRODUCTS_UNAVAILABLE/);
+  await assert.rejects(createPublicOrder("catalog-public", input, foreign), /QUOTE_REQUIRED/);
 });
 
 test("idempotent retry returns the persisted order without allocating a quotation number", async () => {
