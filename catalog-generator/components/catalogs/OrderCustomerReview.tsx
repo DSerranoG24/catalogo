@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { ApiError, apiRequest } from "@/lib/api";
-import { orderCustomerCommand, parseOrderCustomerMatches, parseOrderCustomerPreview, parseOrderCustomerResult, type CustomerPreview, type CustomerMatch, type ReviewFields } from "@/lib/order-customer-review.mjs";
+import { orderCustomerCommand, parseOrderCustomerMatches, parseOrderCustomerPreview, parseOrderCustomerResult, parseOrderCustomerMatchPage, sameReviewPhone, type CustomerPreview, type CustomerMatch, type ReviewFields } from "@/lib/order-customer-review.mjs";
 
 export default function OrderCustomerReview({ orderId, onSaved }: { orderId: string; onSaved: () => void }) {
   const [preview, setPreview] = useState<CustomerPreview | null>(null);
@@ -11,6 +11,7 @@ export default function OrderCustomerReview({ orderId, onSaved }: { orderId: str
   const [hasMore, setHasMore] = useState(false);
   const [matchPage, setMatchPage] = useState(1);
   const [matchingPhone, setMatchingPhone] = useState("");
+  const [invalidMatchResponse, setInvalidMatchResponse] = useState(false);
   const [associateSale, setAssociateSale] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -26,17 +27,28 @@ export default function OrderCustomerReview({ orderId, onSaved }: { orderId: str
       const response = await apiRequest<unknown>(`/orders/${orderId}/customer-preview`, { method: "POST", body: "{}" });
       if (typeof response !== "object" || response === null || !("result" in response)) throw new Error("No se pudo validar la revisión del pedido.");
       const result = parseOrderCustomerPreview(response.result);
-      setPreview(result); setFields(result.fields); setMatches(result.matches); setHasMore(result.hasMore); setMatchPage(1); setMatchingPhone(result.matches[0]?.phone ?? ""); setAssociateSale(false); pending.current = null;
+      setPreview(result); setFields(result.fields); setMatches(result.matches); setHasMore(result.hasMore); setMatchPage(1); setMatchingPhone(result.matches[0]?.phone ?? ""); setInvalidMatchResponse(false); setAssociateSale(false); pending.current = null;
     } catch (error) { setError(error instanceof Error ? error.message : "No se pudo revisar el cliente del pedido."); }
     finally { lock.current = false; setBusy(false); }
   }
   async function confirm(selected: CustomerMatch | null = null) {
     if (!fields || lock.current) return;
-    lock.current = true; setBusy(true); setError("");
-    const command = orderCustomerCommand(fields, associateSale, selected);
-    const signature = JSON.stringify(command);
-    if (!pending.current || pending.current.signature !== signature) pending.current = { signature, operationId: crypto.randomUUID() };
+    if (invalidMatchResponse) {
+      setError("No se pudieron validar las coincidencias. Cancela y vuelve a revisar el pedido."); return;
+    }
+    if (!selected && (preview?.customerId || matchingPhone)) {
+      setError("Revisa las coincidencias antes de confirmar. Puedes usar un cliente existente o cancelar y actualizar la revisión."); return;
+    }
+    lock.current = true; setBusy(true); setError(""); setMessage("");
     try {
+      const command = orderCustomerCommand(fields, associateSale, selected);
+      const signature = JSON.stringify(command);
+      if (!pending.current || pending.current.signature !== signature) {
+        let operationId: string;
+        try { operationId = crypto.randomUUID(); }
+        catch { throw new Error("No se pudo preparar la confirmación. Recarga la página antes de intentarlo otra vez."); }
+        pending.current = { signature, operationId };
+      }
       const response = await apiRequest<unknown>(`/orders/${orderId}/customer-confirm`, { method: "POST", body: JSON.stringify({ ...command, operationId: pending.current.operationId }) });
       if (typeof response !== "object" || response === null || !("result" in response)) throw new Error("No se pudo validar la confirmación. Reintenta con los mismos datos.");
       parseOrderCustomerResult(response.result, orderId);
@@ -45,25 +57,30 @@ export default function OrderCustomerReview({ orderId, onSaved }: { orderId: str
       if (error instanceof ApiError && error.code === "CUSTOMER_PHONE_MATCH") {
         try {
           const details = error.details;
-          if (typeof details !== "object" || details === null || !("matches" in details)) throw new Error("Respuesta inválida");
+          if (typeof details !== "object" || details === null || !("matches" in details) || !("hasMore" in details) || typeof details.hasMore !== "boolean") throw new Error("Respuesta inválida");
           const found = parseOrderCustomerMatches(details.matches);
-          setMatches(found); setMatchingPhone(found[0]?.phone ?? ""); setMatchPage(1); setHasMore("hasMore" in details && details.hasMore === true);
-        } catch { setError("No se pudieron validar las coincidencias. Cancela y vuelve a revisar el pedido."); return; }
+          if (!found.length || found.some(row => !sameReviewPhone(row.phone, fields.phone))) throw new Error("Respuesta inválida");
+          setMatches(found); setMatchingPhone(found[0].phone); setMatchPage(1); setHasMore(details.hasMore); setInvalidMatchResponse(false);
+        } catch { setInvalidMatchResponse(true); setError("No se pudieron validar las coincidencias. Cancela y vuelve a revisar el pedido."); return; }
       }
       setError(error instanceof Error ? error.message : "No se pudo guardar el cliente.");
     } finally { lock.current = false; setBusy(false); }
   }
   function edit(field: keyof ReviewFields, value: string) {
-    setFields(current => current ? { ...current, [field]: value } : null); setMatches([]); setHasMore(false); setMatchPage(1); setMatchingPhone(""); setError("");
+    const phoneChanged = field === "phone" && fields && !sameReviewPhone(fields.phone, value);
+    setFields(current => current ? { ...current, [field]: value } : null);
+    if (phoneChanged) { setMatches([]); setHasMore(false); setMatchPage(1); setMatchingPhone(""); }
+    if (!invalidMatchResponse) setError(""); setMessage("");
   }
   async function loadMatches(page: number) {
     if (lock.current || !matchingPhone) return;
-    lock.current = true; setBusy(true); setError("");
+    lock.current = true; setBusy(true); setError(""); setMessage("");
     try {
       const response = await apiRequest<unknown>(`/orders/${orderId}/customer-matches?phone=${encodeURIComponent(matchingPhone)}&page=${page}`);
-      if (typeof response !== "object" || response === null || !("result" in response) || typeof response.result !== "object" || response.result === null
-        || !("matches" in response.result) || !("hasMore" in response.result) || typeof response.result.hasMore !== "boolean") throw new Error("No se pudo validar la página de coincidencias.");
-      setMatches(parseOrderCustomerMatches(response.result.matches)); setHasMore(response.result.hasMore); setMatchPage(page);
+      if (typeof response !== "object" || response === null || !("result" in response)) throw new Error("No se pudo validar la página de coincidencias.");
+      const result = parseOrderCustomerMatchPage(response.result, matchingPhone, page);
+      setMatches(result.matches); setHasMore(result.hasMore); setMatchPage(page);
+      if (!result.matches.length && page === 1) { setMatchingPhone(""); setMessage("Ya no hay coincidencias activas con ese teléfono. Revisa los datos antes de pulsar Crear cliente."); }
     } catch (error) { setError(error instanceof Error ? error.message : "No se pudieron cargar las coincidencias."); }
     finally { lock.current = false; setBusy(false); }
   }
@@ -86,8 +103,8 @@ export default function OrderCustomerReview({ orderId, onSaved }: { orderId: str
       {preview.sale && <label className="flex items-start gap-2 text-sm"><input type="checkbox" disabled={busy} checked={associateSale} onChange={event => setAssociateSale(event.target.checked)} />Asociar también a la venta existente, conservando sus snapshots históricos.</label>}
       {preview.existingCustomer?.archivedAt && <p role="status">El cliente ya guardado está archivado. Reactívalo en Clientes antes de usarlo.</p>}
       {choices.length > 0 && <p className="text-sm">Usar un cliente existente no sobrescribe su ficha con los datos revisados.</p>}
-      {(choices.length > 0 || matchPage > 1) && <div className="space-y-2 rounded-lg border p-3"><p className="font-semibold">Cliente guardado o coincidencias de teléfono</p>{choices.map(customer => <div key={customer.id} className="flex flex-wrap items-center justify-between gap-2 text-sm"><span>{customer.fullName} · {customer.phone}{customer.email ? ` · ${customer.email}` : ""}</span><button type="button" disabled={busy} className="min-h-11 rounded border px-3 focus-visible:outline-2" onClick={() => void confirm(customer)}>Usar cliente existente</button></div>)}{(hasMore || matchPage > 1) && <nav aria-label="Páginas de coincidencias" className="flex gap-2"><button type="button" disabled={busy || matchPage === 1} className="min-h-11 rounded border px-3" onClick={() => void loadMatches(matchPage - 1)}>Anterior</button><span>Página {matchPage}</span><button type="button" disabled={busy || !hasMore} className="min-h-11 rounded border px-3" onClick={() => void loadMatches(matchPage + 1)}>Más coincidencias</button></nav>}</div>}
-      <div className="flex flex-wrap gap-2"><button type="submit" disabled={busy || Boolean(preview.customerId) || Boolean(matchingPhone)} className="min-h-11 rounded-lg border px-3 font-semibold focus-visible:outline-2">{busy ? "Guardando..." : "Crear cliente"}</button><button type="button" disabled={busy} className="min-h-11 rounded-lg border px-3 focus-visible:outline-2" onClick={() => { setPreview(null); setFields(null); setError(""); pending.current = null; }}>Cancelar</button></div>
+      {(choices.length > 0 || matchPage > 1) && <div className="space-y-2 rounded-lg border p-3"><p className="font-semibold">Cliente guardado o coincidencias de teléfono</p>{!matches.length && matchPage > 1 && <p role="status">No hay coincidencias en esta página. Vuelve a la anterior o actualiza la lista.</p>}{choices.map(customer => <div key={customer.id} className="flex flex-wrap items-center justify-between gap-2 text-sm"><span>{customer.fullName} · {customer.phone}{customer.email ? ` · ${customer.email}` : ""}</span><button type="button" disabled={busy || invalidMatchResponse} className="min-h-11 rounded border px-3 focus-visible:outline-2" onClick={() => void confirm(customer)}>Usar cliente existente</button></div>)}{matchingPhone && <button type="button" disabled={busy || invalidMatchResponse} className="min-h-11 rounded border px-3 focus-visible:outline-2" onClick={() => void loadMatches(1)}>Actualizar coincidencias</button>}{(hasMore || matchPage > 1) && <nav aria-label="Páginas de coincidencias" className="flex gap-2"><button type="button" disabled={busy || matchPage === 1 || invalidMatchResponse} className="min-h-11 rounded border px-3" onClick={() => void loadMatches(matchPage - 1)}>Anterior</button><span>Página {matchPage}</span><button type="button" disabled={busy || !hasMore || invalidMatchResponse} className="min-h-11 rounded border px-3" onClick={() => void loadMatches(matchPage + 1)}>Más coincidencias</button></nav>}</div>}
+      <div className="flex flex-wrap gap-2"><button type="submit" disabled={busy || Boolean(preview.customerId) || Boolean(matchingPhone) || invalidMatchResponse} className="min-h-11 rounded-lg border px-3 font-semibold focus-visible:outline-2">{busy ? "Guardando..." : "Crear cliente"}</button><button type="button" disabled={busy} className="min-h-11 rounded-lg border px-3 focus-visible:outline-2" onClick={() => { setPreview(null); setFields(null); setError(""); pending.current = null; }}>Cancelar</button></div>
     </form>}
     {error && <p role="alert" className="mt-2 text-sm text-[#a5432a]">{error}</p>}{message && <p role="status" className="mt-2 text-sm">{message}</p>}
   </section>;

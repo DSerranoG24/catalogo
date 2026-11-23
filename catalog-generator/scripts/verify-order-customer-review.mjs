@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { orderCustomerCommand, parseOrderCustomerPreview, parseOrderCustomerMatches, parseOrderCustomerResult, canReviewOrderCustomer } from "../lib/order-customer-review.mjs";
+import { orderCustomerCommand, parseOrderCustomerPreview, parseOrderCustomerMatches, parseOrderCustomerResult, canReviewOrderCustomer, sameReviewPhone, parseOrderCustomerMatchPage } from "../lib/order-customer-review.mjs";
 
 const id = "00000000-0000-4000-8000-000000000001";
 const fields = { fullName: "Comprador", phone: "3000000000", email: null, address: "Dirección", notes: "Nota" };
@@ -9,9 +9,17 @@ assert.deepEqual(parseOrderCustomerPreview(preview), preview);
 assert.deepEqual(orderCustomerCommand({ ...fields, ownerId: "forged", customerNameSnapshot: "forged", id: "forged" }, false), { action: "CREATE", customer: fields, associateSale: false });
 assert.deepEqual(orderCustomerCommand(fields, true, match), { action: "USE_EXISTING", customerId: id, phone: fields.phone, associateSale: true });
 assert.deepEqual(parseOrderCustomerMatches([match]), [match]);
-assert.deepEqual(parseOrderCustomerPreview({ ...preview, matches: [match], existingCustomer: { ...match, archivedAt: null }, sale: { id, customerId: null } }).matches, [match]);
+assert.deepEqual(parseOrderCustomerPreview({ ...preview, customerId: id, matches: [match], existingCustomer: { ...match, archivedAt: null }, sale: { id, customerId: null } }).matches, [match]);
 for (const value of [null, {}, { ...preview, fields: null }, { ...preview, customerId: "bad" }, { ...preview, sale: { id: "bad" } }, { ...preview, matches: [{}] }]) assert.throws(() => parseOrderCustomerPreview(value));
 assert.throws(() => parseOrderCustomerMatches(Array.from({ length: 26 }, () => match)));
+assert.throws(() => parseOrderCustomerMatches([match, match]));
+assert.throws(() => parseOrderCustomerMatches([{ ...match, phone: "" }]));
+assert.equal(sameReviewPhone("(300) 000-0000", match.phone), true);
+assert.equal(sameReviewPhone("3110000000", match.phone), false);
+assert.deepEqual(parseOrderCustomerMatchPage({ matches: [], page: 2, hasMore: false }, match.phone, 2), { matches: [], page: 2, hasMore: false });
+for (const invalid of [null, { matches: [match], page: 2, hasMore: false }, { matches: [match], page: 1, hasMore: "yes" }, { matches: [], page: 1, hasMore: true }, { matches: [{ ...match, phone: "3110000000" }], page: 1, hasMore: false }]) assert.throws(() => parseOrderCustomerMatchPage(invalid, match.phone, 1));
+assert.throws(() => parseOrderCustomerPreview({ ...preview, hasMore: true }));
+assert.throws(() => parseOrderCustomerPreview({ ...preview, existingCustomer: { ...match, archivedAt: null } }));
 assert.equal(orderCustomerCommand(fields, false).action, "CREATE");
 assert.equal(orderCustomerCommand(fields, false, match).action, "USE_EXISTING");
 assert.equal(parseOrderCustomerResult({ customer: { id }, orderId: id, associatedSaleId: null, idempotent: true }, id).idempotent, true);

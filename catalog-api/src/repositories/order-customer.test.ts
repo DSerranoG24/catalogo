@@ -233,6 +233,55 @@ test("strict commands reject arbitrary IDs, ownership, snapshots and invalid cus
   ]) assert.equal(confirmOrderCustomerSchema.safeParse(value).success, false);
 });
 
+test("different operation keys racing on one order still produce only one customer and association", async () => {
+  const f = fixture(); f.addSale();
+  const results = await Promise.allSettled([f.service.confirm(owner, f.orders[0].id, create(true)), f.service.confirm(owner, f.orders[0].id, create(true))]);
+  assert.equal(results.filter(result => result.status === "fulfilled").length, 1);
+  assert.equal(f.customers.length, 1); assert.equal(f.operations.length, 1); assert.equal(f.sales[0].version, 2);
+});
+
+test("equivalent normalized retries recover the original result and phone conflicts do not consume a key", async () => {
+  const f = fixture(); const command = create();
+  const first = await f.service.confirm(owner, f.orders[0].id, command);
+  const retry = await f.service.confirm(owner, f.orders[0].id, { ...command, customer: { ...fields, fullName: "  Comprador  ", phone: "(300) 000-0000" } });
+  assert.equal(retry.customer.id, first.customer.id); assert.equal(retry.idempotent, true); assert.equal(f.customers.length, 1);
+  const g = fixture(); g.customers.push(customer()); const rejected = create();
+  await assert.rejects(g.service.confirm(owner, g.orders[0].id, rejected), /CUSTOMER_PHONE_MATCH/);
+  assert.equal(g.operations.length, 0);
+  const selected = await g.service.confirm(owner, g.orders[0].id, { ...select(g.customers[0]), operationId: rejected.operationId });
+  assert.equal(selected.customer.id, g.customers[0].id); assert.equal(g.customers.length, 1); assert.equal(g.operations.length, 1);
+});
+
+test("matching pages reject terminal/private resources and malformed queries without writing", async () => {
+  for (const state of ["cancelled", "anonymized"]) {
+    const f = fixture(); if (state === "cancelled") f.orders[0].status = "CANCELLED"; else f.orders[0].anonymizedAt = new Date();
+    await assert.rejects(f.service.matchingPage(owner, f.orders[0].id, { phone: fields.phone })); assert.equal(f.writes, 0);
+  }
+  const f = fixture();
+  for (const query of [{ phone: "" }, { phone: fields.phone, page: ["1", "2"] }, { phone: fields.phone, ownerId: other }, { phone: fields.phone, page: "10001" }]) await assert.rejects(f.service.matchingPage(owner, f.orders[0].id, query));
+  const empty = await f.service.matchingPage(owner, f.orders[0].id, { phone: fields.phone, page: "2" });
+  assert.deepEqual(empty, { matches: [], hasMore: false, page: 2 }); assert.equal(f.writes, 0);
+});
+
+test("foreign sales and conflicting order links cannot change customers or associations", async () => {
+  const f = fixture(); f.addSale().userId = other;
+  await assert.rejects(f.service.confirm(owner, f.orders[0].id, create(true)), /ORDER_SALE_NOT_FOUND/);
+  assert.equal(f.customers.length, 0); assert.equal(f.operations.length, 0); assert.equal(f.orders[0].customerId, null);
+  const g = fixture(); const a = customer(), b = customer(); g.customers.push(a, b); g.orders[0].customerId = a.id;
+  await assert.rejects(g.service.confirm(owner, g.orders[0].id, select(b)), /ORDER_CUSTOMER_CONFLICT/);
+  assert.equal(g.orders[0].customerId, a.id); assert.equal(g.operations.length, 0);
+});
+
+test("owner-scoped operation keys remain isolated and repeated explicit association never duplicates a sale link", async () => {
+  const f = fixture(); const command = create();
+  f.orders.push({ ...f.orders[0], id: randomUUID(), ownerId: other });
+  const a = await f.service.confirm(owner, f.orders[0].id, command), b = await f.service.confirm(other, f.orders[1].id, command);
+  assert.notEqual(a.customer.id, b.customer.id); assert.equal(a.customer.ownerId, owner); assert.equal(b.customer.ownerId, other); assert.equal(f.operations.length, 2);
+  const g = fixture(); g.addSale(); const first = await g.service.confirm(owner, g.orders[0].id, create(true));
+  await g.service.confirm(owner, g.orders[0].id, select(first.customer, true));
+  assert.equal(g.customers.length, 1); assert.equal(g.sales.length, 1); assert.equal(g.sales[0].version, 2);
+});
+
 test("private HTTP preview/confirm validates, exposes matches and protects against missing authentication", async () => {
   const f = fixture(); const controller = makeOrderCustomerController(f.service);
   const app = express(); app.use(express.json());
