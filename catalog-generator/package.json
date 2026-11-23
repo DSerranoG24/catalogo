@@ -12,6 +12,7 @@
     "lint": "eslint",
     "test": "node scripts/verify-product-import.mjs && node scripts/verify-inventory.mjs && node scripts/verify-inventory-sheet.mjs && node scripts/verify-workbook-reading.mjs && node scripts/verify-free-workbook-restore.mjs && node scripts/verify-public-cart.mjs && node scripts/verify-sale-customer.mjs && node scripts/verify-order-customer-review.mjs",
     "test:inventory-browser": "node scripts/verify-inventory-browser.mjs",
+    "test:order-customers-browser": "node scripts/verify-order-customer-browser.mjs",
     "test:inventory-e2e": "node scripts/verify-inventory-e2e.mjs",
     "test:import-flow": "node scripts/verify-product-import-flow.mjs",
     "test:import-browser": "node scripts/verify-product-import-browser.mjs"

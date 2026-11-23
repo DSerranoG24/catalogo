@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { orderCustomerCommand, parseOrderCustomerPreview, parseOrderCustomerMatches, parseOrderCustomerResult } from "../lib/order-customer-review.mjs";
+import { orderCustomerCommand, parseOrderCustomerPreview, parseOrderCustomerMatches, parseOrderCustomerResult, canReviewOrderCustomer } from "../lib/order-customer-review.mjs";
 
 const id = "00000000-0000-4000-8000-000000000001";
 const fields = { fullName: "Comprador", phone: "3000000000", email: null, address: "Dirección", notes: "Nota" };
@@ -17,4 +17,7 @@ assert.equal(orderCustomerCommand(fields, false, match).action, "USE_EXISTING");
 assert.equal(parseOrderCustomerResult({ customer: { id }, orderId: id, associatedSaleId: null, idempotent: true }, id).idempotent, true);
 assert.throws(() => parseOrderCustomerResult(null, id));
 assert.throws(() => parseOrderCustomerResult({ customer: { id }, orderId: "bad", associatedSaleId: null, idempotent: false }, id));
+const order = { status: "PENDING", customerName: "Comprador", customerPhone: "+57 (300) 000-0000", anonymizedAt: null };
+for (const status of ["PENDING", "CONFIRMED", "COMPLETED"]) assert.equal(canReviewOrderCustomer({ ...order, status }), true);
+for (const invalid of [null, {}, { ...order, status: "CANCELLED" }, { ...order, anonymizedAt: "2026-11-23T12:00:00Z" }, { ...order, customerName: " " }, { ...order, customerPhone: "" }, { ...order, customerPhone: "300" }, { ...order, customerPhone: "--- ---" }]) assert.equal(canReviewOrderCustomer(invalid), false);
 console.log("PASS order customer review validation, explicit create/use selection, optional sale association and payload allowlist");

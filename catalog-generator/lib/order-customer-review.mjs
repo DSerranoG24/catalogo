@@ -2,6 +2,11 @@ const uuid = value => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-
 const object = value => typeof value === "object" && value !== null && !Array.isArray(value);
 const optionalText = value => value === null || typeof value === "string";
 const match = value => object(value) && uuid(value.id) && typeof value.fullName === "string" && typeof value.phone === "string" && optionalText(value.email);
+export function canReviewOrderCustomer(order) {
+  return object(order) && ["PENDING", "CONFIRMED", "COMPLETED"].includes(order.status) && !order.anonymizedAt
+    && typeof order.customerName === "string" && order.customerName.trim().length > 0
+    && typeof order.customerPhone === "string" && order.customerPhone.replace(/[^0-9]/g, "").length >= 7;
+}
 export function parseOrderCustomerMatches(value) {
   if (!Array.isArray(value) || value.length > 25 || !value.every(match)) throw new Error("No se pudo validar la lista de coincidencias.");
   return value;

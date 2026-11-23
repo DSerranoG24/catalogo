@@ -8,7 +8,7 @@ import { once } from 'node:events';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url), { WebSocket } = require('next/dist/compiled/ws');
-export async function privatePanelFixture(handler, run) {
+export async function privatePanelFixture(handler, run, { browser = "edge", sandbox = true } = {}) {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'catalog-bulk-browser-'));
   let api, next, chrome, socket, sequence = 0;
   const pending = new Map(), errors = [];
@@ -26,8 +26,9 @@ export async function privatePanelFixture(handler, run) {
     api.listen(4339, '127.0.0.1'); await once(api, 'listening');
     next = spawn(process.execPath, [require.resolve('next/dist/bin/next'), 'start', '--hostname', '127.0.0.1', '--port', '4338'], { env: { ...process.env, CATALOG_API_URL: 'https://127.0.0.1:4339/api', NODE_EXTRA_CA_CERTS: ca }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }); next.stdout.resume(); next.stderr.resume();
     await poll(async () => { try { return (await fetch('http://localhost:4338/login')).ok; } catch { return false; } });
-    const executable = ['C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Google/Chrome/Application/chrome.exe'].find(fs.existsSync); assert.ok(executable);
-    chrome = spawn(executable, ['--headless=new', '--disable-gpu', '--disable-background-networking', '--disable-component-update', '--disable-sync', '--no-first-run', '--no-default-browser-check', '--allow-insecure-localhost', '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', `--user-data-dir=${path.join(folder, 'profile')}`, 'about:blank'], { windowsHide: true, stdio: 'ignore' });
+    const browsers = ['C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Google/Chrome/Application/chrome.exe'];
+    const executable = (browser === "chrome" ? browsers.toReversed() : browsers).find(fs.existsSync); assert.ok(executable);
+    chrome = spawn(executable, [...(sandbox ? [] : ['--no-sandbox']), '--headless=new', '--disable-gpu', '--disable-background-networking', '--disable-component-update', '--disable-sync', '--no-first-run', '--no-default-browser-check', '--allow-insecure-localhost', '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', `--user-data-dir=${path.join(folder, 'profile')}`, 'about:blank'], { windowsHide: true, stdio: 'ignore' });
     const portFile = path.join(folder, 'profile', 'DevToolsActivePort'); await poll(() => fs.existsSync(portFile)); const port = Number(fs.readFileSync(portFile, 'utf8').split(/\r?\n/)[0]);
     const target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(page => page.type === 'page');
     socket = new WebSocket(target.webSocketDebuggerUrl); await once(socket, 'open');

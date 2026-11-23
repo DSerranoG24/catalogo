@@ -1,4 +1,5 @@
 export type ReviewFields = { fullName: string; phone: string; email: string | null; address: string | null; notes: string | null };
+export function canReviewOrderCustomer(order: unknown): boolean;
 export type CustomerMatch = { id: string; fullName: string; phone: string; email: string | null };
 export type CustomerPreview = { fields: ReviewFields; invalidFields: string[]; matches: CustomerMatch[]; hasMore: boolean; customerId: string | null; existingCustomer: (CustomerMatch & { archivedAt: string | null }) | null; sale: { id: string; customerId: string | null } | null };
 export function parseOrderCustomerMatches(value: unknown): CustomerMatch[];
