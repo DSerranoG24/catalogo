@@ -99,6 +99,7 @@ model Customer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  sales Sale[]
 
   @@unique([id, ownerId])
   @@index([ownerId, phone])
@@ -232,6 +233,11 @@ model Sale {
   currency String @default("COP")
   customerName String?
   customerPhone String?
+  customerId String?
+  customerNameSnapshot String? @db.VarChar(160)
+  customerPhoneSnapshot String? @db.VarChar(15)
+  customerEmailSnapshot String? @db.VarChar(254)
+  customer Customer? @relation(fields: [customerId, userId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
   subtotal BigInt @default(0)
   discountTotal BigInt @default(0)
   total BigInt @default(0)
@@ -249,6 +255,7 @@ model Sale {
   movements InventoryMovement[]
   @@index([userId, createdAt, id])
   @@index([userId, status, createdAt])
+  @@index([customerId, userId])
 }
 
 /// Migration SQL must add CHECK constraints: quantity > 0, unitPrice/unitCost/unitDiscount/lineTotal >= 0,

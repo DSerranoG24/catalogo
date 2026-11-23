@@ -6,6 +6,129 @@
     "description": "Contrato generado desde los esquemas Zod que validan las solicitudes de la API."
   },
   "paths": {
+    "/api/sales": {
+      "get": {
+        "summary": "Listar las últimas 50 ventas propias con snapshots y ficha actual del cliente",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "Solicitud inválida"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "Crear borrador, opcionalmente asociado a un cliente activo propio",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "INVALID_SALE_INPUT"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "CUSTOMER_NOT_FOUND"
+          },
+          "409": {
+            "description": "CUSTOMER_ARCHIVED o IDEMPOTENCY_CONFLICT"
+          },
+          "500": {
+            "description": "SALE_OPERATION_FAILED"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSale"
+              }
+            }
+          }
+        },
+        "description": "Responde {result: Sale}; customerNameSnapshot, customerPhoneSnapshot y customerEmailSnapshot son históricos. customer contiene la ficha actual. Sin customerId los nuevos campos son null. Importe BigInt como string decimal. No se admiten snapshots desde el cliente."
+      }
+    },
+    "/api/sales/{id}": {
+      "get": {
+        "summary": "Consultar venta propia con snapshots y relación actual, sin sustituir los datos históricos",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "Solicitud inválida"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ]
+      },
+      "patch": {
+        "summary": "Editar borrador; customerId omitido conserva asociación, null desvincula y UUID asigna cliente activo propio",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "INVALID_SALE_INPUT o datos de líneas inválidos"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "NOT_FOUND o CUSTOMER_NOT_FOUND"
+          },
+          "409": {
+            "description": "INVALID_TRANSITION, VERSION_CONFLICT, CUSTOMER_ARCHIVED o IDEMPOTENCY_CONFLICT"
+          },
+          "500": {
+            "description": "SALE_OPERATION_FAILED"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDraftSale"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/customers": {
       "get": {
         "summary": "Listar clientes del propietario autenticado",
@@ -2065,6 +2188,130 @@
             "pattern": "^[1-9][0-9]{0,4}$"
           }
         },
+        "additionalProperties": false
+      },
+      "CreateSale": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "customerId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "customerName": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "customerPhone": {
+            "type": "string",
+            "maxLength": 40
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateDraftSale": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "lines": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "inventoryItemId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "quantity": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647
+                },
+                "unitDiscount": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "inventoryItemId",
+                "quantity",
+                "unitDiscount"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "customerId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "customerName": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "customerPhone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedVersion",
+          "lines"
+        ],
         "additionalProperties": false
       }
     }

@@ -8,6 +8,7 @@ import { createProductSchema, updateProductSchema } from "../schemas/product.sch
 import { createPublicOrderSchema, updateOrderSchema } from "../schemas/order.schema";
 import { createProductReviewSchema, moderateProductReviewSchema } from "../schemas/product-review.schema";
 import { createCustomerSchema, updateCustomerSchema, customerListSchema } from "../schemas/customer.schema";
+import { createSaleSchema, updateDraftSaleSchema } from "../schemas/sales.schema";
 
 const schemas = {
   Register: registerSchema,
@@ -26,6 +27,8 @@ const schemas = {
   CreateCustomer: createCustomerSchema,
   UpdateCustomer: updateCustomerSchema,
   CustomerListQuery: customerListSchema,
+  CreateSale: createSaleSchema,
+  UpdateDraftSale: updateDraftSaleSchema,
 } satisfies Record<string, z.ZodType>;
 
 const ref = (name: keyof typeof schemas) => ({ $ref: `#/components/schemas/${name}` });
@@ -42,6 +45,21 @@ const operation = (summary: string, options: Record<string, unknown> = {}) => ({
 });
 
 const paths = {
+  "/api/sales": {
+    get: operation("Listar las últimas 50 ventas propias con snapshots y ficha actual del cliente", { security: secured }),
+    post: operation("Crear borrador, opcionalmente asociado a un cliente activo propio", {
+      security: secured, requestBody: jsonBody("CreateSale"),
+      description: "Responde {result: Sale}; customerNameSnapshot, customerPhoneSnapshot y customerEmailSnapshot son históricos. customer contiene la ficha actual. Sin customerId los nuevos campos son null. Importe BigInt como string decimal. No se admiten snapshots desde el cliente.",
+      responses: { "200": response, "400": { description: "INVALID_SALE_INPUT" }, "401": { description: "Sesión requerida" }, "404": { description: "CUSTOMER_NOT_FOUND" }, "409": { description: "CUSTOMER_ARCHIVED o IDEMPOTENCY_CONFLICT" }, "500": { description: "SALE_OPERATION_FAILED" } },
+    }),
+  },
+  "/api/sales/{id}": {
+    get: operation("Consultar venta propia con snapshots y relación actual, sin sustituir los datos históricos", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }] }),
+    patch: operation("Editar borrador; customerId omitido conserva asociación, null desvincula y UUID asigna cliente activo propio", {
+      security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("UpdateDraftSale"),
+      responses: { "200": response, "400": { description: "INVALID_SALE_INPUT o datos de líneas inválidos" }, "401": { description: "Sesión requerida" }, "404": { description: "NOT_FOUND o CUSTOMER_NOT_FOUND" }, "409": { description: "INVALID_TRANSITION, VERSION_CONFLICT, CUSTOMER_ARCHIVED o IDEMPOTENCY_CONFLICT" }, "500": { description: "SALE_OPERATION_FAILED" } },
+    }),
+  },
   "/api/customers": {
     get: operation("Listar clientes del propietario autenticado", {
       security: secured,

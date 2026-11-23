@@ -45,6 +45,12 @@ test("administrative routes reject missing and invalid JWTs", async () => {
   });
   assert.equal(invalidToken.status, 401);
   for (const authorization of [undefined, "Bearer invalid-token"]) {
+    const response = await fetch(`${baseUrl}/api/sales`, {
+      headers: authorization ? { Authorization: authorization } : {},
+    });
+    assert.equal(response.status, 401);
+  }
+  for (const authorization of [undefined, "Bearer invalid-token"]) {
     const response = await fetch(`${baseUrl}/api/customers`, {
       headers: authorization ? { Authorization: authorization } : {},
     });
