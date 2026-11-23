@@ -6,6 +6,52 @@
     "description": "Contrato generado desde los esquemas Zod que validan las solicitudes de la API."
   },
   "paths": {
+    "/api/orders/{orderId}/convert-to-sale": {
+      "post": {
+        "summary": "Convertir pedido propio conservando snapshots del comprador del pedido",
+        "responses": {
+          "200": {
+            "description": "{success, sale, idempotent}"
+          },
+          "400": {
+            "description": "Conversión inválida o producto no vinculado"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "ORDER_NOT_FOUND o CUSTOMER_NOT_FOUND"
+          },
+          "409": {
+            "description": "CUSTOMER_ARCHIVED, ORDER_BUYER_PHONE_TOO_LONG o conflictos existentes de stock, estado, precio o idempotencia"
+          },
+          "500": {
+            "description": "CONVERSION_FAILED"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/orderId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConvertOrderToSale"
+              }
+            }
+          }
+        },
+        "description": "Los snapshots proceden exclusivamente del pedido. customerId opcional enlaza un cliente activo propio sin sustituir los snapshots ni crear clientes. Conserva precios, stock e idempotencia del flujo anterior."
+      }
+    },
     "/api/sales": {
       "get": {
         "summary": "Listar las últimas 50 ventas propias con snapshots y ficha actual del cliente",
@@ -2311,6 +2357,51 @@
           "operationId",
           "expectedVersion",
           "lines"
+        ],
+        "additionalProperties": false
+      },
+      "ConvertOrderToSale": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "customerId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mode": {
+            "default": "DRAFT",
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "CONFIRMED",
+              "DELIVERED"
+            ]
+          },
+          "acceptPriceDifference": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId"
         ],
         "additionalProperties": false
       }

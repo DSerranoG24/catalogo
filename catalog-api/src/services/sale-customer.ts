@@ -13,14 +13,29 @@ export const saleCustomerInclude = (userId: string) => ({
 const requestHash = (input: unknown) => createHash("sha256").update(JSON.stringify(input)).digest("hex");
 const emptySnapshot = { customerId: null, customerNameSnapshot: null, customerPhoneSnapshot: null, customerEmailSnapshot: null };
 
-async function captureCustomer(tx: Prisma.TransactionClient, userId: string, customerId: string) {
+export async function findActiveSaleCustomer(tx: Prisma.TransactionClient, userId: string, customerId: string) {
   // Customer edit/archive must wait until the sale and its snapshot have committed.
   await tx.$queryRaw`SELECT id FROM customers WHERE id = ${customerId} AND "ownerId" = ${userId} FOR SHARE`;
   const customer = await tx.customer.findFirst({ where: { id: customerId, ownerId: userId }, select: { id: true, fullName: true, phone: true, email: true, archivedAt: true } });
   if (!customer) throw new Error("CUSTOMER_NOT_FOUND");
   if (customer.archivedAt) throw new Error("CUSTOMER_ARCHIVED");
+  return customer;
+}
+
+async function captureCustomer(tx: Prisma.TransactionClient, userId: string, customerId: string) {
+  const customer = await findActiveSaleCustomer(tx, userId, customerId);
   return { customerId: customer.id, customerNameSnapshot: customer.fullName, customerPhoneSnapshot: customer.phone,
     customerEmailSnapshot: customer.email, customerName: customer.fullName, customerPhone: customer.phone };
+}
+
+export function orderBuyerSnapshots(order: { customerName?: string | null; customerPhone?: string | null; customerEmail?: string | null }) {
+  // Match the public order contract; never truncate a legacy buyer's phone.
+  if (order.customerPhone && order.customerPhone.length > 24) throw new Error("ORDER_BUYER_PHONE_TOO_LONG");
+  return {
+    customerNameSnapshot: order.customerName ?? null,
+    customerPhoneSnapshot: order.customerPhone ?? null,
+    customerEmailSnapshot: order.customerEmail || null,
+  };
 }
 
 export async function createInternalSale(userId: string, raw: z.infer<typeof createSaleSchema>, database = prisma) {

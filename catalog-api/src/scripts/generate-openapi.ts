@@ -8,7 +8,7 @@ import { createProductSchema, updateProductSchema } from "../schemas/product.sch
 import { createPublicOrderSchema, updateOrderSchema } from "../schemas/order.schema";
 import { createProductReviewSchema, moderateProductReviewSchema } from "../schemas/product-review.schema";
 import { createCustomerSchema, updateCustomerSchema, customerListSchema } from "../schemas/customer.schema";
-import { createSaleSchema, updateDraftSaleSchema } from "../schemas/sales.schema";
+import { createSaleSchema, updateDraftSaleSchema, convertOrderToSaleSchema } from "../schemas/sales.schema";
 
 const schemas = {
   Register: registerSchema,
@@ -29,6 +29,7 @@ const schemas = {
   CustomerListQuery: customerListSchema,
   CreateSale: createSaleSchema,
   UpdateDraftSale: updateDraftSaleSchema,
+  ConvertOrderToSale: convertOrderToSaleSchema,
 } satisfies Record<string, z.ZodType>;
 
 const ref = (name: keyof typeof schemas) => ({ $ref: `#/components/schemas/${name}` });
@@ -45,6 +46,13 @@ const operation = (summary: string, options: Record<string, unknown> = {}) => ({
 });
 
 const paths = {
+  "/api/orders/{orderId}/convert-to-sale": {
+    post: operation("Convertir pedido propio conservando snapshots del comprador del pedido", {
+      security: secured, parameters: [{ $ref: "#/components/parameters/orderId" }], requestBody: jsonBody("ConvertOrderToSale"),
+      description: "Los snapshots proceden exclusivamente del pedido. customerId opcional enlaza un cliente activo propio sin sustituir los snapshots ni crear clientes. Conserva precios, stock e idempotencia del flujo anterior.",
+      responses: { "200": { description: "{success, sale, idempotent}" }, "400": { description: "Conversión inválida o producto no vinculado" }, "401": { description: "Sesión requerida" }, "404": { description: "ORDER_NOT_FOUND o CUSTOMER_NOT_FOUND" }, "409": { description: "CUSTOMER_ARCHIVED, ORDER_BUYER_PHONE_TOO_LONG o conflictos existentes de stock, estado, precio o idempotencia" }, "500": { description: "CONVERSION_FAILED" } },
+    }),
+  },
   "/api/sales": {
     get: operation("Listar las últimas 50 ventas propias con snapshots y ficha actual del cliente", { security: secured }),
     post: operation("Crear borrador, opcionalmente asociado a un cliente activo propio", {

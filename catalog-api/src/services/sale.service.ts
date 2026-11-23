@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "../config/prisma";
 import { lockInventoryOwner } from "../repositories/inventory.repository";
 import { z } from "zod";
-import { createInternalSale, updateInternalSaleDraft, saleCustomerInclude } from "./sale-customer";
+import { createInternalSale, updateInternalSaleDraft, saleCustomerInclude, findActiveSaleCustomer, orderBuyerSnapshots } from "./sale-customer";
 import { createSaleSchema, updateDraftSaleSchema, confirmSaleSchema, transitionSaleSchema, cancelSaleSchema, returnSaleSchema, convertOrderToSaleSchema } from "../schemas/sales.schema";
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -16,17 +16,18 @@ export function makeSaleService(database = prisma) {
     return tx.saleOperation.create({ data: { id: input.operationId, saleId, userId, type, requestId: input.requestId ?? input.operationId, expectedSaleVersion: input.expectedVersion ?? null, requestHash, status: "PREPARED" } });
   }
   return {
-    async convertOrderToSale(userId: string, orderId: string, input: z.infer<typeof convertOrderToSaleSchema>) { return database.$transaction(async tx => {
+    async convertOrderToSale(userId: string, orderId: string, input: z.infer<typeof convertOrderToSaleSchema>) { input = convertOrderToSaleSchema.parse(input); return database.$transaction(async tx => {
       await lockInventoryOwner(tx, userId);
       await tx.$queryRaw`SELECT o.id FROM orders o JOIN catalogs c ON c.id=o."catalogId" WHERE o.id=${orderId} AND c."userId"=${userId} FOR UPDATE`;
       const existingOperation = await tx.saleOperation.findFirst({ where: { userId, OR: [{ id: input.operationId }, { requestId: input.requestId }] }, include: { sale: { include: { lines: true } } } });
-      if (existingOperation) { if (existingOperation.requestHash !== hash(input)) throw new Error("IDEMPOTENCY_CONFLICT"); return { sale: existingOperation.sale, idempotent: true }; }
+      if (existingOperation) { if (existingOperation.type !== "ORDER_CONVERSION" || existingOperation.sale?.userId !== userId || existingOperation.sale?.sourceOrderId !== orderId || existingOperation.requestHash !== hash(input)) throw new Error("IDEMPOTENCY_CONFLICT"); return { sale: existingOperation.sale, idempotent: true }; }
       const order = await tx.order.findFirst({ where: { id: orderId, catalog: { userId } }, include: { items: { include: { product: { include: { inventoryItem: { include: { commercialTerms: true } } } } } }, catalog: true } });
       if (!order) throw new Error("ORDER_NOT_FOUND");
       if (!["PENDING", "CONFIRMED"].includes(order.status)) throw new Error("ORDER_STATUS_NOT_CONVERTIBLE");
+      const customer = input.customerId ? await findActiveSaleCustomer(tx, userId, input.customerId) : null;
       const lines = order.items.map((line: any) => { const item = line.product?.inventoryItem; if (!line.productId || !item) throw new Error("ORDER_ITEM_NOT_INVENTORY"); if (!item.commercialTerms) throw new Error("PRICE_REQUIRED"); const currentPrice = Number(item.commercialTerms.unitSalePrice); if (currentPrice !== line.unitPrice && !input.acceptPriceDifference) throw new Error("PRICE_DIFFERENCE_REQUIRES_CONFIRMATION"); const orderPrice = BigInt(line.unitPrice); const discount = 0n; return { line, item, orderPrice, discount, total: orderPrice * BigInt(line.quantity) }; });
       const subtotal = lines.reduce((sum: bigint, row: any) => sum + row.total, 0n);
-      const sale = await tx.sale.create({ data: { userId, sourceOrderId: order.id, customerName: order.customerName, customerPhone: order.customerPhone, subtotal, discountTotal: 0n, total: subtotal, status: "DRAFT" } });
+      const sale = await tx.sale.create({ data: { userId, sourceOrderId: order.id, customerId: customer?.id ?? null, ...orderBuyerSnapshots(order), customerName: order.customerName, customerPhone: order.customerPhone, subtotal, discountTotal: 0n, total: subtotal, status: "DRAFT" } });
       for (const row of lines) await tx.saleLine.create({ data: { saleId: sale.id, inventoryItemId: row.item.id, quantity: row.line.quantity, itemName: row.item.name, sku: row.item.sku, unitPrice: row.orderPrice, unitCost: row.item.commercialTerms.referenceUnitCost, unitDiscount: row.discount, lineTotal: row.total, commercialTermsVersion: row.item.commercialTerms.version } });
       const op = await tx.saleOperation.create({ data: { id: input.operationId, saleId: sale.id, userId, type: "ORDER_CONVERSION", requestId: input.requestId, expectedSaleVersion: 1, requestHash: hash(input), status: "PREPARED" } });
       if (input.mode !== "DRAFT") {

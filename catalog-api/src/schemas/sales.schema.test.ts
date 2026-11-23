@@ -30,4 +30,10 @@ test("order conversion requires distinct operation/request identifiers and stric
   assert.equal(convertOrderToSaleSchema.safeParse({ ...valid, extra: true }).success, false);
   assert.equal(convertOrderToSaleSchema.safeParse({ ...valid, operationId: valid.requestId }).success, false);
   assert.equal(convertOrderToSaleSchema.safeParse({ ...valid, requestId: "not-a-uuid" }).success, false);
+  assert.equal(convertOrderToSaleSchema.safeParse({ ...valid, customerId: randomUUID() }).success, true);
+  assert.equal(convertOrderToSaleSchema.safeParse({ ...valid, customerId: null }).success, true);
+  assert.equal(convertOrderToSaleSchema.safeParse({ ...valid, customerId: "invalid" }).success, false);
+  for (const key of ["customerNameSnapshot", "customerPhoneSnapshot", "customerEmailSnapshot", "customerName", "customerPhone", "customerEmail", "userId"]) {
+    assert.equal(convertOrderToSaleSchema.safeParse({ ...valid, [key]: "untrusted" }).success, false);
+  }
 });

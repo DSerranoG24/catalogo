@@ -64,7 +64,8 @@ de una edición ya aplicada solo devuelve la venta; no realiza otra mutación.
 
 Los esquemas estrictos rechazan snapshots o correo de comprador enviados por
 el cliente, owner/userId y UUID inválidos. Los campos nuevos no se admiten en
-confirmar, entregar, cancelar, devolver o convertir un pedido.
+confirmar, entregar, cancelar o devolver. La conversión acepta solo customerId
+como vínculo operativo privado, además de sus parámetros anteriores.
 
 Errores identificables de la API de ventas:
 
@@ -93,8 +94,9 @@ No se refrescan snapshots al confirmar o entregar. Los reintentos muestran la
 ficha actual por separado, no sustituyen la instantánea histórica.
 
 No se rediseña la idempotencia de las demás transiciones del servicio anterior.
-Tampoco se cambia la conversión: sigue copiando el contacto libre de Order y los
-precios congelados de sus líneas; customerId y los nuevos snapshots quedan null.
+La conversión conserva el contacto libre de Order, sus precios congelados y sus
+reglas de stock. Además captura nombre, teléfono y correo del pedido en los tres
+snapshots, incluso sin Customer. Ver el contrato de [comprador del pedido](order-sale-buyer.md).
 
 ## Frontend
 

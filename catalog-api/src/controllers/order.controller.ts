@@ -10,8 +10,17 @@ const saleService = makeSaleService();
 export async function convertOrderToSaleController(req: AuthenticatedRequest, res: Response) {
   const parsed = convertOrderToSaleSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ success: false, message: "Datos de conversión inválidos" });
-  try { const result = await saleService.convertOrderToSale(req.user!.id, req.params.orderId as string, parsed.data); const sale = JSON.parse(JSON.stringify(result.sale, (_key, value) => typeof value === "bigint" ? value.toString() : value)); return res.json({ success: true, sale, idempotent: result.idempotent }); }
-  catch (error) { const code = error instanceof Error ? error.message : "CONVERSION_FAILED"; const status = ["ORDER_NOT_FOUND"].includes(code) ? 404 : ["IDEMPOTENCY_CONFLICT", "STOCK_INSUFFICIENT", "PRICE_DIFFERENCE_REQUIRES_CONFIRMATION", "ORDER_STATUS_NOT_CONVERTIBLE"].includes(code) ? 409 : 400; return res.status(status).json({ success: false, message: code }); }
+  if (!req.user) return res.status(401).json({ success: false, message: "Sesión requerida" });
+  try { const result = await saleService.convertOrderToSale(req.user.id, req.params.orderId as string, parsed.data); const sale = JSON.parse(JSON.stringify(result.sale, (_key, value) => typeof value === "bigint" ? value.toString() : value)); return res.json({ success: true, sale, idempotent: result.idempotent }); }
+  catch (error) {
+    const code = error instanceof Error ? error.message : "CONVERSION_FAILED";
+    if (["ORDER_NOT_FOUND", "CUSTOMER_NOT_FOUND"].includes(code)) return res.status(404).json({ success: false, error: code, message: code });
+    if (["IDEMPOTENCY_CONFLICT", "STOCK_INSUFFICIENT", "PRICE_DIFFERENCE_REQUIRES_CONFIRMATION", "ORDER_STATUS_NOT_CONVERTIBLE", "CUSTOMER_ARCHIVED"].includes(code)) return res.status(409).json({ success: false, error: code, message: code });
+    if (code === "ORDER_BUYER_PHONE_TOO_LONG") return res.status(409).json({ success: false, error: code, message: "El teléfono del pedido supera la capacidad del snapshot de la venta. No se creó la venta ni se recortó el teléfono." });
+    if (["ORDER_ITEM_NOT_INVENTORY", "PRICE_REQUIRED"].includes(code)) return res.status(400).json({ success: false, error: code, message: code });
+    if (code === "ACCOUNT_CLOSED") return res.status(401).json({ success: false, message: "Sesión no disponible" });
+    return res.status(500).json({ success: false, error: "CONVERSION_FAILED", message: "No se pudo convertir el pedido." });
+  }
 }
 
 export async function getCatalogOrdersController(req: AuthenticatedRequest, res: Response) {

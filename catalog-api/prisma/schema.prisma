@@ -235,7 +235,7 @@ model Sale {
   customerPhone String?
   customerId String?
   customerNameSnapshot String? @db.VarChar(160)
-  customerPhoneSnapshot String? @db.VarChar(15)
+  customerPhoneSnapshot String? @db.VarChar(24)
   customerEmailSnapshot String? @db.VarChar(254)
   customer Customer? @relation(fields: [customerId, userId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
   subtotal BigInt @default(0)

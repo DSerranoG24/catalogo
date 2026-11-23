@@ -16,6 +16,7 @@ export const returnSaleSchema = transitionSaleSchema.extend({ reason: z.string()
 export const convertOrderToSaleSchema = z.object({
   operationId: uuid,
   requestId: uuid,
+  customerId: uuid.nullable().optional(),
   mode: z.enum(["DRAFT", "CONFIRMED", "DELIVERED"]).default("DRAFT"),
   acceptPriceDifference: z.boolean().default(false),
 }).strict().superRefine((value, ctx) => { if (value.operationId === value.requestId) ctx.addIssue({ code: "custom", path: ["requestId"], message: "operationId y requestId deben ser distintos." }); });
