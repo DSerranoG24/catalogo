@@ -6,6 +6,256 @@
     "description": "Contrato generado desde los esquemas Zod que validan las solicitudes de la API."
   },
   "paths": {
+    "/api/customers": {
+      "get": {
+        "summary": "Listar clientes del propietario autenticado",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "Consulta inválida"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "500": {
+            "description": "Operación no disponible"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 160
+            },
+            "description": "Nombre o teléfono; búsqueda literal, sin distinguir mayúsculas en nombres"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "archived",
+                "all"
+              ],
+              "default": "active"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 1
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Crear cliente; coincidencias de teléfono generan advertencia, no rechazo",
+        "responses": {
+          "201": {
+            "description": "Cliente creado y warnings (CUSTOMER_PHONE_MATCH si hay coincidencia)"
+          },
+          "400": {
+            "description": "Datos inválidos"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "500": {
+            "description": "Operación no disponible"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCustomer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/customers/{id}": {
+      "get": {
+        "summary": "Consultar cliente propio, activo o archivado",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "ID inválido"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "Cliente no encontrado"
+          },
+          "500": {
+            "description": "Operación no disponible"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ]
+      },
+      "patch": {
+        "summary": "Actualizar parcialmente cliente propio",
+        "responses": {
+          "200": {
+            "description": "Cliente actualizado y warnings"
+          },
+          "400": {
+            "description": "Datos inválidos o actualización vacía"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "Cliente no encontrado"
+          },
+          "500": {
+            "description": "Operación no disponible"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCustomer"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Eliminación física no permitida; usar archivado",
+        "responses": {
+          "400": {
+            "description": "ID inválido"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "405": {
+            "description": "CUSTOMER_DELETION_NOT_ALLOWED"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ]
+      }
+    },
+    "/api/customers/{id}/archive": {
+      "post": {
+        "summary": "Archivar cliente propio sin eliminarlo",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "ID inválido"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "Cliente no encontrado"
+          },
+          "500": {
+            "description": "Operación no disponible"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ]
+      }
+    },
+    "/api/customers/{id}/reactivate": {
+      "post": {
+        "summary": "Reactivar cliente propio archivado",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "ID inválido"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "Cliente no encontrado"
+          },
+          "500": {
+            "description": "Operación no disponible"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ]
+      }
+    },
     "/api/auth/google": {
       "post": {
         "summary": "Google sign-in",
@@ -1687,6 +1937,135 @@
         "required": [
           "status"
         ]
+      },
+      "CreateCustomer": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "phone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "^\\+?(?:[0-9]+|\\([0-9]+\\))(?:[ .-]?(?:[0-9]+|\\([0-9]+\\)))*$"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 254
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300,
+                "pattern": "^[^\\u0000]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000,
+                "pattern": "^[^\\u0000]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "fullName",
+          "phone"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateCustomer": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "phone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "^\\+?(?:[0-9]+|\\([0-9]+\\))(?:[ .-]?(?:[0-9]+|\\([0-9]+\\)))*$"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 254
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300,
+                "pattern": "^[^\\u0000]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000,
+                "pattern": "^[^\\u0000]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "CustomerListQuery": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "status": {
+            "default": "active",
+            "type": "string",
+            "enum": [
+              "active",
+              "archived",
+              "all"
+            ]
+          },
+          "page": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,4}$"
+          }
+        },
+        "additionalProperties": false
       }
     }
   }

@@ -7,6 +7,7 @@ import { createCategorySchema, updateCategorySchema } from "../schemas/category.
 import { createProductSchema, updateProductSchema } from "../schemas/product.schema";
 import { createPublicOrderSchema, updateOrderSchema } from "../schemas/order.schema";
 import { createProductReviewSchema, moderateProductReviewSchema } from "../schemas/product-review.schema";
+import { createCustomerSchema, updateCustomerSchema, customerListSchema } from "../schemas/customer.schema";
 
 const schemas = {
   Register: registerSchema,
@@ -22,6 +23,9 @@ const schemas = {
   UpdateOrder: updateOrderSchema,
   CreateProductReview: createProductReviewSchema,
   ModerateProductReview: moderateProductReviewSchema,
+  CreateCustomer: createCustomerSchema,
+  UpdateCustomer: updateCustomerSchema,
+  CustomerListQuery: customerListSchema,
 } satisfies Record<string, z.ZodType>;
 
 const ref = (name: keyof typeof schemas) => ({ $ref: `#/components/schemas/${name}` });
@@ -38,6 +42,32 @@ const operation = (summary: string, options: Record<string, unknown> = {}) => ({
 });
 
 const paths = {
+  "/api/customers": {
+    get: operation("Listar clientes del propietario autenticado", {
+      security: secured,
+      parameters: [
+        { name: "q", in: "query", schema: { type: "string", maxLength: 160 }, description: "Nombre o teléfono; búsqueda literal, sin distinguir mayúsculas en nombres" },
+        { name: "status", in: "query", schema: { type: "string", enum: ["active", "archived", "all"], default: "active" } },
+        { name: "page", in: "query", schema: { type: "integer", minimum: 1, maximum: 10000, default: 1 } },
+      ],
+      responses: { "200": response, "400": { description: "Consulta inválida" }, "401": { description: "Sesión requerida" }, "500": { description: "Operación no disponible" } },
+    }),
+    post: operation("Crear cliente; coincidencias de teléfono generan advertencia, no rechazo", {
+      security: secured, requestBody: jsonBody("CreateCustomer"),
+      responses: { "201": { description: "Cliente creado y warnings (CUSTOMER_PHONE_MATCH si hay coincidencia)" }, "400": { description: "Datos inválidos" }, "401": { description: "Sesión requerida" }, "500": { description: "Operación no disponible" } },
+    }),
+  },
+  "/api/customers/{id}": {
+    get: operation("Consultar cliente propio, activo o archivado", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], responses: { "200": response, "400": { description: "ID inválido" }, "401": { description: "Sesión requerida" }, "404": { description: "Cliente no encontrado" }, "500": { description: "Operación no disponible" } } }),
+    patch: operation("Actualizar parcialmente cliente propio", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("UpdateCustomer"), responses: { "200": { description: "Cliente actualizado y warnings" }, "400": { description: "Datos inválidos o actualización vacía" }, "401": { description: "Sesión requerida" }, "404": { description: "Cliente no encontrado" }, "500": { description: "Operación no disponible" } } }),
+    delete: operation("Eliminación física no permitida; usar archivado", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], responses: { "400": { description: "ID inválido" }, "401": { description: "Sesión requerida" }, "405": { description: "CUSTOMER_DELETION_NOT_ALLOWED" } } }),
+  },
+  "/api/customers/{id}/archive": {
+    post: operation("Archivar cliente propio sin eliminarlo", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], responses: { "200": response, "400": { description: "ID inválido" }, "401": { description: "Sesión requerida" }, "404": { description: "Cliente no encontrado" }, "500": { description: "Operación no disponible" } } }),
+  },
+  "/api/customers/{id}/reactivate": {
+    post: operation("Reactivar cliente propio archivado", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], responses: { "200": response, "400": { description: "ID inválido" }, "401": { description: "Sesión requerida" }, "404": { description: "Cliente no encontrado" }, "500": { description: "Operación no disponible" } } }),
+  },
   "/api/auth/google": { post: operation("Google sign-in", { requestBody: jsonBody("GoogleLogin") }) },
   "/api/me": { get: operation("Get authenticated user", { security: secured }) },
   "/api/health": { get: operation("Check API health") },
