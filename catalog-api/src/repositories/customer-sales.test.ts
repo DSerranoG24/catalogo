@@ -68,16 +68,18 @@ function fixture() {
 
 test("repository: stable pagination, fixed queries, bigint snapshots and no inferred links or writes", async () => {
   const f = fixture(); const before = structuredClone(f.rows);
-  const seen: string[] = []; let cursor: string | undefined;
+  const seen: string[] = [], pageSizes: number[] = []; let cursor: string | undefined;
   do {
     const start = f.reads(); const page = await f.service.list(owner, customerId, { status: "all", cursor });
     assert.ok(f.reads() - start <= 3);
+    pageSizes.push(page.sales.length);
     for (const s of page.sales) {
       assert.equal(s.total, "9007199254740993"); assert.equal(s.customerNameSnapshot, "Comprador original"); seen.push(s.id);
     }
     cursor = page.nextCursor ?? undefined;
   } while (cursor);
   assert.equal(seen.length, 55); assert.equal(new Set(seen).size, 55);
+  assert.deepEqual(pageSizes, [25, 25, 5]);
   assert.deepEqual(f.rows, before);
 });
 test("repository: archived customer, every status including cancellations and returns, and current name does not replace snapshot", async () => {
@@ -85,6 +87,7 @@ test("repository: archived customer, every status including cancellations and re
   for (const status of Object.values(SaleStatus)) {
     const result = await f.service.list(owner, customerId, { status });
     assert.equal(result.sales.length, 11); assert.equal(result.customer.fullName, "Nombre editado");
+    assert.equal(result.customer.archivedAt?.getTime(), f.customers[0].archivedAt.getTime());
     assert.ok(result.sales.every(s => s.status === status && s.customerNameSnapshot === "Comprador original"));
   }
 });
@@ -115,9 +118,11 @@ test("service: validation rejects malformed ids, repeated/unknown params and rep
 
 test("existing sale detail reads stored lines and snapshots without consulting current inventory or recalculating", async () => {
   const line = { id: id(700), itemName: "Producto histórico", sku: "OLD", quantity: 3, unitPrice: 101n, unitDiscount: 2n, lineTotal: 297n };
-  const stored = { id: id(100), userId: owner, customerId, status: "RETURNED", total: 297n, lines: [line],
-    customerNameSnapshot: "Comprador histórico", customerPhoneSnapshot: null, customerEmailSnapshot: null,
-    customer: { id: customerId, fullName: "Nombre actual cambiado", archivedAt: new Date() } };
+  const secondLine = { id: id(701), itemName: "Otro nombre histórico", sku: "OLD-2", quantity: 2, unitPrice: 9007199254740993n, unitDiscount: 0n, lineTotal: 18014398509481986n };
+  const stored = { id: id(100), userId: owner, customerId, status: "RETURNED", total: 18014398509482283n, lines: [line, secondLine],
+    customerNameSnapshot: "Comprador histórico", customerPhoneSnapshot: "3000000000", customerEmailSnapshot: "original@example.invalid",
+    customer: { id: customerId, fullName: "Nombre actual cambiado", phone: "3110000000", email: "changed@example.invalid", archivedAt: new Date() } };
+  const before = structuredClone(stored);
   const db = new Proxy(prisma, { get(_target, key) {
     if (key === "$transaction") return async (fn: (tx: Prisma.TransactionClient) => Promise<unknown>) => fn(db);
     if (key === "$queryRaw") return async () => [{ id: owner }];
@@ -130,8 +135,15 @@ test("existing sale detail reads stored lines and snapshots without consulting c
   } });
   const service = makeSaleService(db);
   const result = await service.get(owner, stored.id);
-  assert.deepEqual(result.lines, [line]); assert.equal(result.total, 297n);
+  assert.deepEqual(result.lines, [line, secondLine]); assert.equal(result.total, 18014398509482283n);
   assert.equal(result.customerNameSnapshot, "Comprador histórico"); assert.equal(result.status, "RETURNED");
+  assert.equal(result.customerPhoneSnapshot, "3000000000"); assert.equal(result.customerEmailSnapshot, "original@example.invalid");
+  stored.customer.fullName = "Editado otra vez"; stored.customer.phone = "3220000000";
+  const reread = await service.get(owner, stored.id);
+  assert.deepEqual(reread.lines, before.lines); assert.equal(reread.total, before.total);
+  assert.equal(reread.customerNameSnapshot, before.customerNameSnapshot);
+  assert.equal(reread.customerPhoneSnapshot, before.customerPhoneSnapshot);
+  assert.equal(reread.customerEmailSnapshot, before.customerEmailSnapshot);
   await assert.rejects(service.get(otherOwner, stored.id), /NOT_FOUND/);
   await assert.rejects(service.get(owner, id(999)), /NOT_FOUND/);
 });
@@ -154,6 +166,15 @@ test("HTTP: real authentication, ownership, safe errors, strict queries and priv
     assert.equal((await get(`${customerId}/sales`, jwt.sign({ userId: owner, email: user.email, sessionVersion: 1 }, process.env.JWT_SECRET))).status, 401);
     const ok = await get(`${customerId}/sales`); assert.equal(ok.status, 200); assert.equal(ok.headers.get("cache-control"), "private, no-store");
     assert.equal((await ok.json()).sales[0].total, "9007199254740993");
+    f.customers[0].archivedAt = new Date();
+    const archivedResponse = await get(`${customerId}/sales?status=CANCELLED`);
+    assert.equal(archivedResponse.status, 200);
+    const archivedPage = await archivedResponse.json();
+    assert.ok(archivedPage.customer.archivedAt);
+    assert.equal(archivedPage.sales.length, 11);
+    assert.ok(archivedPage.sales.every((s: { status: string }) => s.status === "CANCELLED"));
+    const invalidCursor = await get(`${customerId}/sales?cursor=${id(999)}`);
+    assert.equal(invalidCursor.status, 404); assert.equal((await invalidCursor.json()).error, "CUSTOMER_SALES_NOT_FOUND");
     const foreign = await get(`${otherCustomer}/sales`), missing = await get(`${id(88)}/sales`);
     assert.equal(foreign.status, 404); assert.deepEqual(await foreign.json(), await missing.json());
     for (const query of ["?status=PAID", "?cursor=bad", "?status=all&status=DRAFT", "?ownerId=x"]) {

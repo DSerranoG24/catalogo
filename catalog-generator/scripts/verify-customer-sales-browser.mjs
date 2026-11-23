@@ -29,14 +29,23 @@ async function api(req, res) {
     if (localMode === "SESSION") return reply({ message: "Sesión requerida" }, 401);
     if (localMode === "INVALID") return reply({ success: true, customer: selected, sales: null });
     const status = url.searchParams.get("status");
+    if (localMode === "PAGED") {
+      const cursor = url.searchParams.get("cursor");
+      if (cursor && cursor !== id(124)) return reply({ error: "CUSTOMER_SALES_NOT_FOUND", message: "Cursor no disponible." }, 404);
+      const rows = Array.from({ length: cursor ? 2 : 25 }, (_, i) => ({ ...sale((cursor ? 125 : 100) + i), status: status === "all" ? "CANCELLED" : status }));
+      return reply({ success: true, customer: selected, sales: rows, nextCursor: cursor ? null : id(124) });
+    }
     const rows = localMode === "EMPTY" || url.searchParams.has("cursor") ? [] : Array.from({ length: 25 }, (_, i) => ({ ...sale(100 + i), status: status === "all" ? "CANCELLED" : status }));
     return reply({ success: true, customer: selected, sales: rows, nextCursor: rows.length ? rows.at(-1).id : null });
   }
   if (/\/api\/sales\/[^/]+$/.test(url.pathname)) {
     if (detailMode === "MISSING") return reply({ error: "NOT_FOUND", message: "Venta no encontrada." }, 404);
     if (detailMode === "INVALID") return reply({ result: {} });
-    return reply({ result: { ...sale(100), customerId: customer.id, customerPhoneSnapshot: null, customerEmailSnapshot: null, customerPhone: null,
-      customer: { fullName: "Nombre actual NO histórico" }, lines: [{ id: id(500), itemName: "Producto histórico", sku: "OLD", quantity: 3, unitPrice: "100", unitDiscount: "1", lineTotal: "297" }] } });
+    return reply({ result: { ...sale(100), customerId: customer.id, customerPhoneSnapshot: detailMode === "OPTIONAL" ? null : "3000000000", customerEmailSnapshot: detailMode === "OPTIONAL" ? null : "original@example.invalid", customerPhone: null,
+      customer: { fullName: "Nombre actual NO histórico", phone: "3110000000", email: "changed@example.invalid" }, lines: [
+        { id: id(500), itemName: "Producto histórico", sku: "OLD", quantity: 3, unitPrice: "100", unitDiscount: "1", lineTotal: "297" },
+        { id: id(501), itemName: "Segunda línea histórica", sku: "OLD-2", quantity: 2, unitPrice: "4503599627370348", unitDiscount: "0", lineTotal: "9007199254740696" },
+      ] } });
   }
   unknown.push(url.pathname); return reply({}, 404);
 }
@@ -56,9 +65,23 @@ try {
     checks.push("Real sales route, explicit query, historical buyer, cancelled state and precise bigint");
     await click("Ver líneas de venta 00000000"); await waitText("Producto histórico");
     assert.ok((await text()).includes("Cantidad 3")); assert.ok(!(await text()).includes("Nombre actual NO histórico"));
-    assert.ok((await text()).includes("No registrado")); checks.push("Read-only detail with original lines and absent optional snapshots");
+    assert.ok((await text()).includes("Segunda línea histórica"));
+    assert.ok((await text()).includes("3000000000")); assert.ok((await text()).includes("original@example.invalid"));
+    assert.ok(!(await text()).includes("changed@example.invalid"));
+    detailMode = "OPTIONAL"; await click("Ver líneas de venta 00000000"); await waitText("No registrado"); detailMode = "NORMAL";
+    checks.push("Read-only multiline detail with original name, phone, email and exact prices/totals");
     await click("Siguiente página de ventas"); await waitText("No hay ventas vinculadas en esta página.");
     await click("Volver al inicio"); await waitText("Comprador original"); checks.push("Multiple sales and empty cursor page with return to start");
+    mode = "PAGED"; await click("Consultar ventas"); await waitText("Comprador original");
+    assert.equal(await evaluate(`${root}.querySelector('ul').children.length`), 25);
+    await click("Siguiente página de ventas"); await waitText(id(125));
+    assert.equal(await evaluate(`${root}.querySelector('ul').children.length`), 2);
+    assert.ok(!(await text()).includes(id(100))); assert.ok((await text()).includes(id(126)));
+    assert.equal(await evaluate(`[...${root}.querySelectorAll('button')].some(b=>b.textContent==='Siguiente página de ventas')`), false);
+    await choose(archived.id); await click("Consultar ventas"); await waitText("Comprador original");
+    assert.ok((await text()).includes("Cliente archivado · Archivado"));
+    checks.push("27 distinct sales across cursor pages and archived customer with linked sales");
+    await choose(customer.id); mode = "NORMAL"; await click("Consultar ventas"); await waitText("Comprador original");
     for (const [value, expected] of [["ERROR", "Error temporal de red"], ["INVALID", "La respuesta de ventas no es válida"], ["NOT_FOUND", "Cliente o página"], ["SESSION", "Tu sesión expiró"]]) {
       mode = value; await click("Consultar ventas"); await waitText(expected);
       mode = "NORMAL"; await click("Reintentar ventas"); await waitText("Comprador original");

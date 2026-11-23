@@ -19,4 +19,10 @@ assert.throws(() => parseCustomerSales(page, customer.id, "all", sale.id));
 for (const bad of [null, { result: { ...detail, customerId: id(99) } }, { result: { ...detail, id: id(99) } }, { result: { ...detail, lines: [{ ...detail.lines[0], unitPrice: 100 }] } }]) assert.throws(() => parseCustomerSaleDetail(bad, sale.id, customer.id));
 assert.equal(parseCustomerSearch({ success: true, page: 1, pageSize: 25, hasMore: false, customers: [customer] }, 1).customers[0].id, customer.id);
 assert.throws(() => parseCustomerSearch({ success: true, page: 2, pageSize: 25, hasMore: false, customers: [customer] }, 1));
+const multipleLines = { ...detail, customerNameSnapshot: "Nombre original", customerPhoneSnapshot: "3000000000", customerEmailSnapshot: "original@example.invalid",
+  lines: [...detail.lines, { id: id(4), itemName: "Segundo nombre histórico", sku: "OLD-2", quantity: 2, unitPrice: "9007199254740993", unitDiscount: "0", lineTotal: "18014398509481986" }], total: "18014398509482283" };
+assert.deepEqual(parseCustomerSaleDetail({ result: multipleLines }, sale.id, customer.id), multipleLines);
+const firstPage = { ...page, sales: Array.from({ length: 25 }, (_, i) => ({ ...sale, id: id(100 + i) })), nextCursor: id(124) };
+assert.equal(parseCustomerSales(firstPage, customer.id, "all", null).nextCursor, id(124));
+assert.equal(parseCustomerSales({ ...page, sales: [{ ...sale, id: id(125) }] }, customer.id, "all", firstPage.nextCursor).sales[0].id, id(125));
 console.log("Customer sales: historical values, bigint, statuses, empty pages and malformed/mixed responses passed.");

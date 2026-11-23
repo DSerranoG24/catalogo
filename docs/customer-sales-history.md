@@ -3,6 +3,117 @@
 Implementación local: 23 de noviembre de 2026. No se ejecutaron migraciones,
 despliegues ni operaciones con datos reales. El estado inicial de Git estaba limpio.
 
+## Cierre de validación: aprobación parcial
+
+Resultado desplegado comunicado por el propietario durante este cierre; no es una
+prueba ejecutada por el agente ni una nueva inspección de producción. Se aprobó
+parcialmente el flujo básico: acceso a `/dashboard/ventas`, búsqueda sin resultados,
+selección explícita, cliente sin ventas, creación de borrador asociado, consulta
+del vínculo, comprador/teléfono/correo/total históricos y apertura del detalle
+privado. Se confirmó la protección de la asociación explícita.
+
+Quedó una venta sintética, identificada por el usuario con el prefijo `fb13793c`,
+cliente de prueba «Prueba Cliente Vitrinaya Editado», estado `DRAFT`, total $0 y
+sin líneas. No se obtuvo ni se dedujo su UUID completo ni su propietario; no se
+consultó, canceló o eliminó durante esta tarea. Su retirada sigue pendiente.
+
+Limitaciones de la prueba desplegada que permanecen abiertas:
+
+- No se recorrieron más de 25 ventas reales.
+- No se consultó un cliente archivado.
+- No se abrió una venta con varias líneas históricas reales.
+- No existe acción visible para cancelar o eliminar un borrador.
+- Sigue pendiente EXPLAIN/medición con volumen representativo en PostgreSQL aislado.
+
+La cobertura automatizada de abajo reduce riesgo, pero no convierte estos casos
+en validaciones desplegadas. El estado de aceptación permanece **parcial**, sin
+autorizar nuevas publicaciones ni operaciones sobre datos reales.
+
+### Retirada administrativa del dato sintético — no ejecutada
+
+La inspección de `sales.routes.ts`, `sale.service.ts` y Prisma confirmó que no hay
+endpoint DELETE de ventas, columna de archivado ni herramienta administrativa
+de retirada en este repositorio. El endpoint de cancelación existente rechaza
+`DRAFT` con `INVALID_TRANSITION`. No debe llamarse para esta venta, ni confirmar
+el borrador para luego cancelarlo, ni parchear su estado por SQL como atajo.
+
+Si se exige eliminación del dato sintético, hace falta una intervención de datos
+excepcional de un administrador/DBA, revisada y autorizada aparte; no es una
+operación del contrato público/privado actual. Procedimiento a preparar:
+
+1. Obtener el UUID completo y propietario desde un contexto administrativo
+   autorizado; verificar el entorno. Nunca ejecutar contra un prefijo o nombre.
+2. Respaldar de forma restringida la venta y sus dependencias y registrar la
+   autorización/ticket sin copiar contactos personales a logs o al repositorio.
+3. En una única transacción, bloquear y volver a verificar exactamente esa venta
+   y propietario: sigue siendo sintética, `DRAFT`, total/subtotal/descuento cero,
+   sin líneas, movimientos, devoluciones ni pedido origen. Revisar también
+   `SaleOperation` y referencias en `OrderCustomerOperation.associatedSaleId`.
+4. El alta genera al menos una `SaleOperation`; una eliminación directa de Sale
+   puede fallar por `ON DELETE RESTRICT`. El script revisado debe identificar
+   todas las dependencias con el esquema efectivo. Solo si son exclusivamente
+   recibos de alta de esta prueba y no existe otra historia o asociación, retirar
+   esos recibos y la venta de forma atómica, con conteos esperados exactos. Ante
+   cualquier dependencia adicional o cambio concurrente, abortar sin cascadas,
+   sin desactivar restricciones y sin modificar inventario, pedidos o Customer.
+5. Verificar integridad, conservar el registro administrativo de retirada y
+   confirmar la transacción únicamente con la autorización específica acordada.
+   Antes del commit, rollback completo; después, recuperación desde el respaldo
+   restringido mediante otro procedimiento autorizado.
+
+No se entrega SQL ejecutable con un ID incompleto ni se declara esta excepción
+como política de borrado de ventas. Hasta contar con revisión, identificación y
+autorización, la venta debe permanecer intacta. Cancelar, si se habilita en otra
+fase, conservaría historia; no equivaldría a eliminarla ni a ocultarla de «Todos».
+
+### Cobertura adicional y resultados de este cierre
+
+No se cambió código funcional, esquema, endpoints ni contratos. Se reforzaron
+pruebas existentes en lugar de duplicar escenarios ya cubiertos:
+
+- Repositorio/servicio: 55 ventas en páginas exactas `25/25/5`, sin repeticiones,
+  fechas empatadas, cursor inexistente/ajeno y cursor de otro estado; vacío real,
+  todos los filtros y aislamiento por propietario.
+- HTTP: cliente archivado con ventas canceladas, fecha de archivo preservada,
+  filtro aplicado y cursor ajeno rechazado con el error aprobado.
+- Detalle: dos líneas con nombres/SKU/cantidades/descuentos/precios y totales
+  históricos exactos, incluyendo BigInt grande; snapshots de nombre/teléfono/
+  correo diferentes de la ficha actual e intactos al volver a editarla. El doble
+  rechaza lecturas del inventario actual y escrituras inesperadas.
+- Frontend: validación de detalle con varias líneas y snapshots completos,
+  transición de cursor válido y conservación de strings monetarios.
+- Navegador local: 27 ventas distintas en dos páginas `25/2`, sin mezcla entre
+  páginas, cliente archivado con ventas, dos líneas históricas y contactos del
+  comprador original; siguen los casos vacío, errores, filtros, reintento y
+  respuestas tardías. 11 grupos, 36 peticiones al doble, cero escrituras.
+
+Comandos de cierre: específicas backend (7 aprobadas), `npm.cmd test` backend
+(329 aprobadas), específica frontend y `npm.cmd test` frontend (aprobadas),
+`test:customer-sales-browser` (11 grupos aprobados), builds backend/frontend
+(aprobados), lint frontend (0 errores, 4 advertencias previas), `git diff --check`.
+`test:order-customers-browser` volvió a aprobar sus 10 grupos y `test:import-flow`
+sus 22 comprobaciones. `test:import-browser` y `test:inventory-browser` volvieron
+a fallar en `Page.enable` con sandbox. Sus reintentos mediante adaptador temporal
+en memoria, solo para perfiles headless temporales y sin modificar los scripts,
+reprodujeron los fallos anteriores: importación exige un botón «Ver un ejemplo»
+que ahora es enlace; inventario falla en `LOST_REPLY_SWITCH_AND_RETRY` con
+`draft must not leak to another product`. No se corrigieron esos módulos aquí.
+El E2E con PostgreSQL no se ejecutó porque aplica migraciones; tampoco se realizó
+la medición pendiente. No hay scripts lint backend/typecheck independiente.
+El apartado histórico «Verificación local» conserva la evidencia anterior y no
+implica que toda la batería fuera aprobada.
+
+Archivos del cierre: `src/repositories/customer-sales.test.ts` (backend),
+`scripts/verify-customer-sales.mjs` y `scripts/verify-customer-sales-browser.mjs`
+(frontend), este informe y el plan separado
+[inventory-expanded-next-phase-plan.md](inventory-expanded-next-phase-plan.md).
+
+Recomendación de cierre: mantener aceptación parcial hasta verificar con datos
+sintéticos controlados los tres casos desplegados pendientes, medir PostgreSQL
+aislado y acordar/ejecutar la retirada administrativa autorizada del borrador.
+Los fallos de navegadores de otros módulos deben seguir identificados como
+pendientes separados. No se implementó inventario ni una política de anonimización.
+
 ## Acceso e interfaz
 
 La ruta existente `/dashboard/ventas` renderiza `SalesPanel`. Se añadió un bloque
