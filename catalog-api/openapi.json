@@ -407,6 +407,63 @@
         }
       }
     },
+    "/api/customers/{id}/sales": {
+      "get": {
+        "summary": "Consultar ventas vinculadas explícitamente a un cliente propio",
+        "responses": {
+          "200": {
+            "description": "{success:true,customer:{id,fullName,archivedAt},sales:[{id,status,version,currency,total:string,createdAt,sourceOrderId,customerNameSnapshot,customerName}],nextCursor:UUID|null}. Importes decimales enteros; Cache-Control private,no-store."
+          },
+          "400": {
+            "description": "INVALID_CUSTOMER_SALES_QUERY: ID, cursor, estado o parámetros desconocidos/repetidos inválidos"
+          },
+          "401": {
+            "description": "Sesión requerida o expirada"
+          },
+          "404": {
+            "description": "CUSTOMER_SALES_NOT_FOUND: cliente o cursor inexistente/ajeno al conjunto"
+          },
+          "500": {
+            "description": "CUSTOMER_SALES_FAILED: error genérico reintentable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Solo lectura. Admite clientes archivados. Orden createdAt DESC, id DESC; 25 ventas por página. No infiere vínculos ni recalcula importes históricos. El cursor debe pertenecer al mismo propietario, cliente y estado. Usa GET /api/sales/{id} para consultar líneas históricas.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "DRAFT",
+                "CONFIRMED",
+                "DELIVERED",
+                "CANCELLED",
+                "RETURNED"
+              ],
+              "default": "all"
+            }
+          }
+        ]
+      }
+    },
     "/api/customers/{id}": {
       "get": {
         "summary": "Consultar cliente propio, activo o archivado",
@@ -2688,6 +2745,36 @@
         "required": [
           "phone"
         ],
+        "additionalProperties": false
+      },
+      "CustomerSalesQuery": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "status": {
+            "default": "all",
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "all"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "DRAFT",
+                  "CONFIRMED",
+                  "DELIVERED",
+                  "CANCELLED",
+                  "RETURNED"
+                ]
+              }
+            ]
+          }
+        },
         "additionalProperties": false
       }
     }

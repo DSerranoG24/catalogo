@@ -1,0 +1,10 @@
+export type SaleStatus = "DRAFT" | "CONFIRMED" | "DELIVERED" | "CANCELLED" | "RETURNED";
+export const saleStatuses: SaleStatus[];
+export type HistoryCustomer = { id: string; fullName: string; archivedAt: string | null };
+export type HistoricalSale = { id: string; status: SaleStatus; version: number; currency: string; total: string; createdAt: string; sourceOrderId: string | null; customerNameSnapshot: string | null; customerName: string | null };
+export type HistoryPage = { customer: HistoryCustomer; sales: HistoricalSale[]; nextCursor: string | null };
+export type HistoricalSaleDetail = HistoricalSale & { customerId: string; customerPhoneSnapshot: string | null; customerEmailSnapshot: string | null; customerPhone: string | null; lines: { id: string; itemName: string; sku: string; quantity: number; unitPrice: string; unitDiscount: string; lineTotal: string }[] };
+export function parseCustomerSearch(value: unknown, page: number): { customers: HistoryCustomer[]; hasMore: boolean };
+export function parseCustomerSales(value: unknown, customerId: string, status: string, cursor: string | null): HistoryPage;
+export function parseCustomerSaleDetail(value: unknown, saleId: string, customerId: string): HistoricalSaleDetail;
+export function formatHistoricalMoney(value: string, currency: string): string;

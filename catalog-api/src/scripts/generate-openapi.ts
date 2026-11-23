@@ -10,6 +10,7 @@ import { createProductReviewSchema, moderateProductReviewSchema } from "../schem
 import { createCustomerSchema, updateCustomerSchema, customerListSchema } from "../schemas/customer.schema";
 import { createSaleSchema, updateDraftSaleSchema, convertOrderToSaleSchema } from "../schemas/sales.schema";
 import { orderCustomerPreviewSchema, confirmOrderCustomerSchema, orderCustomerMatchesSchema } from "../schemas/order-customer.schema";
+import { customerSalesQuerySchema } from "../schemas/customer-sales.schema";
 
 const schemas = {
   Register: registerSchema,
@@ -28,6 +29,7 @@ const schemas = {
   CreateCustomer: createCustomerSchema,
   UpdateCustomer: updateCustomerSchema,
   CustomerListQuery: customerListSchema,
+  CustomerSalesQuery: customerSalesQuerySchema,
   CreateSale: createSaleSchema,
   UpdateDraftSale: updateDraftSaleSchema,
   ConvertOrderToSale: convertOrderToSaleSchema,
@@ -104,6 +106,24 @@ const paths = {
     post: operation("Crear cliente; coincidencias de teléfono generan advertencia, no rechazo", {
       security: secured, requestBody: jsonBody("CreateCustomer"),
       responses: { "201": { description: "Cliente creado y warnings (CUSTOMER_PHONE_MATCH si hay coincidencia)" }, "400": { description: "Datos inválidos" }, "401": { description: "Sesión requerida" }, "500": { description: "Operación no disponible" } },
+    }),
+  },
+  "/api/customers/{id}/sales": {
+    get: operation("Consultar ventas vinculadas explícitamente a un cliente propio", {
+      security: secured,
+      description: "Solo lectura. Admite clientes archivados. Orden createdAt DESC, id DESC; 25 ventas por página. No infiere vínculos ni recalcula importes históricos. El cursor debe pertenecer al mismo propietario, cliente y estado. Usa GET /api/sales/{id} para consultar líneas históricas.",
+      parameters: [
+        { $ref: "#/components/parameters/id" },
+        { name: "cursor", in: "query", schema: { type: "string", format: "uuid" } },
+        { name: "status", in: "query", schema: { type: "string", enum: ["all", "DRAFT", "CONFIRMED", "DELIVERED", "CANCELLED", "RETURNED"], default: "all" } },
+      ],
+      responses: {
+        "200": { description: "{success:true,customer:{id,fullName,archivedAt},sales:[{id,status,version,currency,total:string,createdAt,sourceOrderId,customerNameSnapshot,customerName}],nextCursor:UUID|null}. Importes decimales enteros; Cache-Control private,no-store." },
+        "400": { description: "INVALID_CUSTOMER_SALES_QUERY: ID, cursor, estado o parámetros desconocidos/repetidos inválidos" },
+        "401": { description: "Sesión requerida o expirada" },
+        "404": { description: "CUSTOMER_SALES_NOT_FOUND: cliente o cursor inexistente/ajeno al conjunto" },
+        "500": { description: "CUSTOMER_SALES_FAILED: error genérico reintentable" },
+      },
     }),
   },
   "/api/customers/{id}": {

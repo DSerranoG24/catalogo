@@ -1,8 +1,10 @@
 # Propuesta: consultar ventas vinculadas a un cliente
 
-Estado: diseño técnico posterior al cierre de la revisión Order → Customer.
-Pendiente de aprobación explícita. Este documento NO implementa endpoints,
-pantallas, migraciones, consultas en producción ni modificaciones de datos.
+Estado: aprobado e implementado localmente el 23 de noviembre de 2026.
+La aprobación corresponde al incremento privado de solo lectura descrito aquí.
+Resultados, contrato definitivo y límites de verificación en
+[customer-sales-history.md](customer-sales-history.md). No autoriza despliegues,
+migraciones ni operaciones sobre datos reales.
 
 ## Problema y alcance propuesto
 
@@ -33,7 +35,7 @@ Se reutilizarán esos patrones. No se asume una página de clientes ya publicada
 ni se inventa una ruta de pedidos. La propuesta se integra inicialmente en el
 panel de ventas existente, mediante un bloque de consulta separado del alta.
 
-## Contrato nuevo propuesto — no existente
+## Contrato aprobado e implementado
 
 `GET /api/customers/:customerId/sales?cursor=...&status=all`
 
@@ -131,11 +133,13 @@ dependencias ni variables de entorno.
 - No más de un número fijo de consultas por página; evaluar índices con EXPLAIN
   en base aislada. Regresiones completas backend/frontend, builds, lint y diff-check.
 
-## Decisiones pendientes de aprobación
+## Decisiones aprobadas para este incremento
 
-1. Aprobar este incremento de solo lectura y su ubicación en el panel existente.
-2. Aprobar que se muestren solo vínculos explícitos y todos los estados por defecto.
-3. Aprobar el DTO mínimo y los errores del nuevo endpoint antes de codificarlo.
+1. Consulta de solo lectura en el panel existente `/dashboard/ventas`.
+2. Solo vínculos explícitos y todos los estados por defecto.
+3. DTO mínimo del listado; líneas mediante el detalle privado existente.
 4. Mantener fusiones, duplicados deliberados y política de retención fuera de alcance.
 
-Hasta esa aprobación no se desarrollará ni activará esta mejora.
+Los errores definitivos son `INVALID_CUSTOMER_SALES_QUERY` (400),
+`CUSTOMER_SALES_NOT_FOUND` (404) y `CUSTOMER_SALES_FAILED` (500), junto con
+la autenticación existente (401). La publicación requiere autorización aparte.
