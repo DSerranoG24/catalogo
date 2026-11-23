@@ -9,6 +9,7 @@ import { createPublicOrderSchema, updateOrderSchema } from "../schemas/order.sch
 import { createProductReviewSchema, moderateProductReviewSchema } from "../schemas/product-review.schema";
 import { createCustomerSchema, updateCustomerSchema, customerListSchema } from "../schemas/customer.schema";
 import { createSaleSchema, updateDraftSaleSchema, convertOrderToSaleSchema } from "../schemas/sales.schema";
+import { orderCustomerPreviewSchema, confirmOrderCustomerSchema, orderCustomerMatchesSchema } from "../schemas/order-customer.schema";
 
 const schemas = {
   Register: registerSchema,
@@ -30,6 +31,9 @@ const schemas = {
   CreateSale: createSaleSchema,
   UpdateDraftSale: updateDraftSaleSchema,
   ConvertOrderToSale: convertOrderToSaleSchema,
+  OrderCustomerPreview: orderCustomerPreviewSchema,
+  ConfirmOrderCustomer: confirmOrderCustomerSchema,
+  OrderCustomerMatches: orderCustomerMatchesSchema,
 } satisfies Record<string, z.ZodType>;
 
 const ref = (name: keyof typeof schemas) => ({ $ref: `#/components/schemas/${name}` });
@@ -46,6 +50,25 @@ const operation = (summary: string, options: Record<string, unknown> = {}) => ({
 });
 
 const paths = {
+  "/api/orders/{orderId}/customer-matches": {
+    get: operation("Paginar coincidencias activas exactas de teléfono tras autorizar el pedido propio", {
+      security: secured, parameters: [{ $ref: "#/components/parameters/orderId" }, { name: "phone", in: "query", required: true, schema: { type: "string", maxLength: 40 } }, { name: "page", in: "query", schema: { type: "integer", minimum: 1, maximum: 10000, default: 1 } }],
+      responses: { "200": { description: "{success,result:{matches,hasMore,page}}; 25 por página" }, "400": { description: "INVALID_CUSTOMER_INPUT" }, "401": { description: "Sesión requerida" }, "404": { description: "ORDER_NOT_FOUND" }, "409": { description: "Pedido cancelado o anonimizado" } },
+    }),
+  },
+  "/api/orders/{orderId}/customer-preview": {
+    post: operation("Revisar los datos del comprador de un pedido propio sin crear un cliente", {
+      security: secured, parameters: [{ $ref: "#/components/parameters/orderId" }], requestBody: jsonBody("OrderCustomerPreview"),
+      responses: { "200": { description: "{success,result:{fields,invalidFields,matches,hasMore,customerId,existingCustomer,sale}}" }, "400": { description: "INVALID_CUSTOMER_INPUT" }, "401": { description: "Sesión requerida" }, "404": { description: "ORDER_NOT_FOUND" }, "409": { description: "ORDER_CANCELLED u ORDER_ANONYMIZED" }, "500": { description: "ORDER_CUSTOMER_FAILED" } },
+    }),
+  },
+  "/api/orders/{orderId}/customer-confirm": {
+    post: operation("Confirmar explícitamente CREATE o USE_EXISTING con idempotencia y asociación opcional de venta", {
+      security: secured, parameters: [{ $ref: "#/components/parameters/orderId" }], requestBody: jsonBody("ConfirmOrderCustomer"),
+      description: "CREATE usa el contrato Customer. USE_EXISTING solo admite un cliente activo propio con el teléfono seleccionado. associateSale requiere una venta del pedido y conserva sus snapshots, precios, stock y estado. Un teléfono activo coincidente devuelve CUSTOMER_PHONE_MATCH sin crear ni asociar automáticamente.",
+      responses: { "200": { description: "{success,result:{customer,orderId,associatedSaleId,idempotent}}" }, "400": { description: "INVALID_CUSTOMER_INPUT" }, "401": { description: "Sesión requerida" }, "404": { description: "ORDER_NOT_FOUND o CUSTOMER_NOT_FOUND" }, "409": { description: "CUSTOMER_PHONE_MATCH (matches/hasMore), pedido cancelado/anonimizado, cliente archivado, vínculo incompatible o IDEMPOTENCY_CONFLICT" }, "500": { description: "ORDER_CUSTOMER_FAILED; reintentar la misma confirmación" } },
+    }),
+  },
   "/api/orders/{orderId}/convert-to-sale": {
     post: operation("Convertir pedido propio conservando snapshots del comprador del pedido", {
       security: secured, parameters: [{ $ref: "#/components/parameters/orderId" }], requestBody: jsonBody("ConvertOrderToSale"),

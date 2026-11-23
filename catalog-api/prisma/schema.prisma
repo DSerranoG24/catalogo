@@ -71,6 +71,7 @@ model User {
 
   catalogs Catalog[]
   customers Customer[]
+  orderCustomerOperations OrderCustomerOperation[]
   inventoryItems InventoryItem[]
   inventoryBatches InventoryBatch[]
   inventoryWorkbook InventoryWorkbook?
@@ -100,6 +101,8 @@ model Customer {
   updatedAt DateTime @updatedAt
   owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   sales Sale[]
+  orders Order[]
+  orderOperations OrderCustomerOperation[]
 
   @@unique([id, ownerId])
   @@index([ownerId, phone])
@@ -578,6 +581,7 @@ model Order {
   customerName      String
   customerPhone     String
   customerEmail     String?
+  customerId        String?
   customerAddress   String?
   notes             String?
   customerConsentAt DateTime?
@@ -592,13 +596,33 @@ model Order {
   catalog Catalog @relation(fields: [catalogId], references: [id], onDelete: Restrict)
   items   OrderItem[]
   convertedSale Sale? @relation("OrderToSale")
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  customerOperations OrderCustomerOperation[]
 
   @@index([catalogId])
   @@unique([catalogId, idempotencyKey])
   @@unique([catalogId, quotationNumber])
   @@index([status])
   @@index([createdAt])
+  @@index([customerId])
   @@map("orders")
+}
+
+model OrderCustomerOperation {
+  ownerId String
+  operationId String
+  orderId String
+  customerId String
+  associatedSaleId String?
+  requestHash String
+  createdAt DateTime @default(now())
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId, ownerId], references: [id, ownerId], onDelete: Restrict)
+
+  @@id([ownerId, operationId])
+  @@index([orderId])
+  @@map("order_customer_operations")
 }
 
 model OrderItem {

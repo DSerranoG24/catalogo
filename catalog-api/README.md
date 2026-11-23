@@ -7,6 +7,7 @@ API Express, Prisma y PostgreSQL para cuentas, catálogos, productos, imágenes 
 El módulo privado de clientes, su contrato y la migración pendiente se describen
 en [Clientes: primera fase](docs/customers.md). La asociación opcional con ventas
 internas y sus snapshots se documenta en [Clientes en ventas](docs/sale-customers.md).
+La acción privada de revisión y alta desde pedidos está en [Guardar comprador como cliente](docs/order-customers.md).
 
 Los esquemas Zod usados para validar las solicitudes son la fuente de verdad del contrato de entrada. Ejecuta `npm run contracts:generate` para generar `openapi.json` (OpenAPI 3.1) con esos esquemas y las operaciones principales. El documento se genera localmente y no hace falta instalar dependencias nuevas. Al agregar o cambiar un endpoint, actualiza el registro de operaciones en `src/scripts/generate-openapi.ts` y regenera el documento. La generación tipada del cliente del frontend queda como siguiente paso, después de completar la cobertura de respuestas y rutas.
 

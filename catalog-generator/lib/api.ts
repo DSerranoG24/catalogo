@@ -165,6 +165,7 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly code?: string,
+    readonly details?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
@@ -279,7 +280,9 @@ export async function apiRequest<T>(
   if (!response.ok) {
     throw new ApiError(
       payload?.message ?? "La solicitud no pudo completarse.",
-      response.status
+      response.status,
+      typeof payload?.error === "string" ? payload.error : undefined,
+      payload
     );
   }
 

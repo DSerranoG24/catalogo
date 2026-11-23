@@ -17,7 +17,7 @@ const seller = { name: "Negocio", nit: null, phone: "1111111", whatsappPhone: nu
 // In-memory transactional double. These tests verify repository decisions, not PostgreSQL locks.
 function fixture(status: OrderStatus = "COMPLETED") {
   let state = {
-    order: { id: "order", catalogId: "catalog", idempotencyKey: "old-key", status,
+    order: { id: "order", catalogId: "catalog", idempotencyKey: "old-key", status, customerId: "customer" as string | null,
       customerName: "Cliente prueba", customerPhone: "3000000000", customerEmail: "buyer@example.invalid",
       customerAddress: "Dirección de prueba", notes: "Nota privada", total: 4000,
       createdAt: new Date("2026-10-20T00:00:00Z"), firstConfirmedAt: new Date("2026-10-21T00:00:00Z"),
@@ -25,7 +25,7 @@ function fixture(status: OrderStatus = "COMPLETED") {
       quotationSellerSnapshot: structuredClone(seller), customerConsentAt: new Date("2026-10-20T00:00:00Z"),
       customerConsentVersion: null as string | null, anonymizedAt: null as Date | null },
     items: [{ productName: "Producto", quantity: 2, unitPrice: 2000, subtotal: 4000 }],
-    markers: [] as string[], deleted: false, creates: 0,
+    markers: [] as string[], deleted: false, creates: 0, customerOperations: 1,
   };
   const locks: string[] = [];
   const database = new Proxy(prisma, { get(_target, key) {
@@ -39,6 +39,9 @@ function fixture(status: OrderStatus = "COMPLETED") {
       return sql.join("").includes("FROM orders") && (values[0] !== "order" || values[1] !== "owner" || state.deleted) ? [] : [{ id: "catalog" }];
     };
     if (key === "catalog") return { findFirst: async () => ({ id: "catalog" }) };
+    if (key === "orderCustomerOperation") return { deleteMany: async (args: Prisma.OrderCustomerOperationDeleteManyArgs) => {
+      assert.deepEqual(args.where, { orderId: "order", ownerId: "owner" }); state.customerOperations = 0; return { count: 1 };
+    } };
     if (key === "orderDeletionMarker") return {
       upsert: async (args: Prisma.OrderDeletionMarkerUpsertArgs) => { state.markers.push(args.create.keyHash); return {}; },
       findUnique: async (args: Prisma.OrderDeletionMarkerFindUniqueArgs) => state.markers.includes(args.where.catalogId_keyHash?.keyHash ?? "") ? {} : null,
@@ -63,6 +66,7 @@ test("anonymization preserves business amounts, lines, dates, consent and seller
   assert.ok(result.anonymizedAt instanceof Date);
   assert.equal(store.state.order.customerName, "Cliente anonimizado");
   assert.equal(store.state.order.customerPhone, "");
+  assert.equal(store.state.order.customerId, null); assert.equal(store.state.customerOperations, 0);
   for (const key of ["customerEmail", "customerAddress", "notes"] as const) assert.equal(store.state.order[key], null);
   for (const key of ["total", "createdAt", "firstConfirmedAt", "quotationIssuedAt", "quotationNumber", "customerConsentAt", "customerConsentVersion", "quotationSellerSnapshot"] as const) assert.deepEqual(store.state.order[key], before.order[key]);
   assert.deepEqual(store.state.items, before.items);

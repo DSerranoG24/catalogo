@@ -31,9 +31,11 @@ export async function anonymizeOrder(id: string, userId: string, input: Anonymiz
       snapshot = seller;
     }
     if (input.redactProductNames) await tx.orderItem.updateMany({ where: { orderId: id }, data: { productName: "Producto (datos personales retirados)" } });
+    // Remove new identity links as well as free text; retries are denied for anonymized orders.
+    await tx.orderCustomerOperation.deleteMany({ where: { orderId: id, ownerId: userId } });
     return tx.order.update({
       where: { id },
-      data: { customerName: "Cliente anonimizado", customerPhone: "", customerEmail: null,
+      data: { customerId: null, customerName: "Cliente anonimizado", customerPhone: "", customerEmail: null,
         customerAddress: null, notes: null, anonymizedAt: new Date(),
         ...(snapshot === undefined ? {} : { quotationSellerSnapshot: snapshot }) },
       select: { anonymizedAt: true },

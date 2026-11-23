@@ -1,0 +1,7 @@
+export type ReviewFields = { fullName: string; phone: string; email: string | null; address: string | null; notes: string | null };
+export type CustomerMatch = { id: string; fullName: string; phone: string; email: string | null };
+export type CustomerPreview = { fields: ReviewFields; invalidFields: string[]; matches: CustomerMatch[]; hasMore: boolean; customerId: string | null; existingCustomer: (CustomerMatch & { archivedAt: string | null }) | null; sale: { id: string; customerId: string | null } | null };
+export function parseOrderCustomerMatches(value: unknown): CustomerMatch[];
+export function parseOrderCustomerPreview(value: unknown): CustomerPreview;
+export function orderCustomerCommand(fields: ReviewFields, associateSale: boolean, selected?: CustomerMatch | null): { action: string; customer?: ReviewFields; customerId?: string; phone?: string; associateSale: boolean };
+export function parseOrderCustomerResult(value: unknown, orderId: string): { customer: { id: string }; orderId: string; associatedSaleId: string | null; idempotent: boolean };

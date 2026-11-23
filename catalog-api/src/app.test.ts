@@ -37,6 +37,13 @@ test("unknown routes return the API 404 contract", async () => {
 });
 
 test("administrative routes reject missing and invalid JWTs", async () => {
+  for (const action of ["customer-preview", "customer-confirm"]) for (const authorization of [undefined, "Bearer invalid-token"]) {
+    const response = await fetch(`${baseUrl}/api/orders/00000000-0000-4000-8000-000000000001/${action}`, {
+      method: "POST", headers: { "Content-Type": "application/json", ...(authorization ? { Authorization: authorization } : {}) }, body: "{}",
+    });
+    assert.equal(response.status, 401);
+  }
+  assert.equal((await fetch(`${baseUrl}/api/orders/00000000-0000-4000-8000-000000000001/customer-matches?phone=3000000000`)).status, 401);
   const missingToken = await fetch(`${baseUrl}/api/products`);
   assert.equal(missingToken.status, 401);
 

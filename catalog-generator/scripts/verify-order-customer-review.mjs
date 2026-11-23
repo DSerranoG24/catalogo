@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+import { orderCustomerCommand, parseOrderCustomerPreview, parseOrderCustomerMatches, parseOrderCustomerResult } from "../lib/order-customer-review.mjs";
+
+const id = "00000000-0000-4000-8000-000000000001";
+const fields = { fullName: "Comprador", phone: "3000000000", email: null, address: "Dirección", notes: "Nota" };
+const match = { id, fullName: "Existente", phone: fields.phone, email: null };
+const preview = { fields, customerId: null, existingCustomer: null, sale: null, matches: [], hasMore: false, invalidFields: [] };
+assert.deepEqual(parseOrderCustomerPreview(preview), preview);
+assert.deepEqual(orderCustomerCommand({ ...fields, ownerId: "forged", customerNameSnapshot: "forged", id: "forged" }, false), { action: "CREATE", customer: fields, associateSale: false });
+assert.deepEqual(orderCustomerCommand(fields, true, match), { action: "USE_EXISTING", customerId: id, phone: fields.phone, associateSale: true });
+assert.deepEqual(parseOrderCustomerMatches([match]), [match]);
+assert.deepEqual(parseOrderCustomerPreview({ ...preview, matches: [match], existingCustomer: { ...match, archivedAt: null }, sale: { id, customerId: null } }).matches, [match]);
+for (const value of [null, {}, { ...preview, fields: null }, { ...preview, customerId: "bad" }, { ...preview, sale: { id: "bad" } }, { ...preview, matches: [{}] }]) assert.throws(() => parseOrderCustomerPreview(value));
+assert.throws(() => parseOrderCustomerMatches(Array.from({ length: 26 }, () => match)));
+assert.equal(orderCustomerCommand(fields, false).action, "CREATE");
+assert.equal(orderCustomerCommand(fields, false, match).action, "USE_EXISTING");
+assert.equal(parseOrderCustomerResult({ customer: { id }, orderId: id, associatedSaleId: null, idempotent: true }, id).idempotent, true);
+assert.throws(() => parseOrderCustomerResult(null, id));
+assert.throws(() => parseOrderCustomerResult({ customer: { id }, orderId: "bad", associatedSaleId: null, idempotent: false }, id));
+console.log("PASS order customer review validation, explicit create/use selection, optional sale association and payload allowlist");
