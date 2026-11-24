@@ -82,6 +82,22 @@ model User {
   saleOperations SaleOperation[]
   saleReturns SaleReturn[]
   inventoryPublications InventoryPublication[]
+  deviceBrand_createdById DeviceBrand[] @relation("DeviceBrand_createdById")
+  deviceBrand_updatedById DeviceBrand[] @relation("DeviceBrand_updatedById")
+  deviceModel_createdById DeviceModel[] @relation("DeviceModel_createdById")
+  deviceModel_updatedById DeviceModel[] @relation("DeviceModel_updatedById")
+  compatibilitySet_createdById CompatibilitySet[] @relation("CompatibilitySet_createdById")
+  compatibilitySet_updatedById CompatibilitySet[] @relation("CompatibilitySet_updatedById")
+  itemCompatibility_createdById ItemCompatibility[] @relation("ItemCompatibility_createdById")
+  itemCompatibility_updatedById ItemCompatibility[] @relation("ItemCompatibility_updatedById")
+  itemCompatibility_verifiedById ItemCompatibility[] @relation("ItemCompatibility_verifiedById")
+  compatibilityEvent_actorId CompatibilityEvent[] @relation("CompatibilityEvent_actorId")
+  deviceBrands DeviceBrand[]
+  deviceModels DeviceModel[]
+  compatibilitySets CompatibilitySet[]
+  itemCompatibilities ItemCompatibility[]
+  compatibilityOperations CompatibilityOperation[]
+  compatibilityEvents CompatibilityEvent[]
 
   @@index([createdAt])
 
@@ -149,6 +165,7 @@ model InventoryItem {
   images InventoryItemImage[]
   publications InventoryPublication[]
   catalogProducts Product[]
+  compatibilitySet CompatibilitySet?
 
   @@unique([id, userId])
   @@unique([userId, sku])
@@ -678,4 +695,178 @@ model ProductImageCleanupTask {
   @@unique([bucket, path])
   @@index([state, nextAttemptAt])
   @@map("product_image_cleanup_tasks")
+}
+
+
+enum CompatibilityStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  WITHDRAWN
+}
+enum CompatibilityEvidenceType {
+  SELLER_TEST
+  MANUFACTURER_REFERENCE
+  SUPPLIER_REFERENCE
+  DOCUMENTED_REVIEW
+}
+model DeviceBrand {
+  id String @id @default(uuid())
+  ownerId String
+  version Int @default(1)
+  retiredAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdById String
+  updatedById String
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  names DeviceBrandName[]
+  models DeviceModel[]
+  @@unique([id, ownerId])
+  @@index([ownerId, id])
+  @@map("device_brands")
+  createdBy User @relation("DeviceBrand_createdById", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy User @relation("DeviceBrand_updatedById", fields: [updatedById], references: [id], onDelete: Restrict)
+}
+model DeviceBrandName {
+  id String @id @default(uuid())
+  ownerId String
+  brandId String
+  label String @db.VarChar(100)
+  normalizedKey String @db.VarChar(320)
+  normalizationVersion Int @default(1)
+  isCanonical Boolean @default(false)
+  retiredAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  brand DeviceBrand @relation(fields: [brandId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([ownerId, normalizedKey])
+  @@index([ownerId, brandId, id])
+  @@map("device_brand_names")
+}
+model DeviceModel {
+  id String @id @default(uuid())
+  ownerId String
+  brandId String
+  manufacturerCode String? @db.VarChar(100)
+  manufacturerCodeKey String? @db.VarChar(320)
+  version Int @default(1)
+  retiredAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdById String
+  updatedById String
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  brand DeviceBrand @relation(fields: [brandId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  names DeviceModelName[]
+  compatibilities ItemCompatibility[]
+  @@unique([id, ownerId])
+  @@unique([id, ownerId, brandId])
+  @@unique([ownerId, brandId, manufacturerCodeKey])
+  @@index([ownerId, brandId, id])
+  @@map("device_models")
+  createdBy User @relation("DeviceModel_createdById", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy User @relation("DeviceModel_updatedById", fields: [updatedById], references: [id], onDelete: Restrict)
+}
+model DeviceModelName {
+  id String @id @default(uuid())
+  ownerId String
+  brandId String
+  modelId String
+  label String @db.VarChar(160)
+  normalizedKey String @db.VarChar(320)
+  normalizationVersion Int @default(1)
+  isCanonical Boolean @default(false)
+  retiredAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  model DeviceModel @relation(fields: [modelId, ownerId, brandId], references: [id, ownerId, brandId], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([ownerId, brandId, normalizedKey])
+  @@index([ownerId, modelId, id])
+  @@map("device_model_names")
+}
+model CompatibilitySet {
+  id String @id @default(uuid())
+  ownerId String
+  kind String @default("INVENTORY_ITEM")
+  inventoryItemId String @unique
+  version Int @default(1)
+  retiredAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdById String
+  updatedById String
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  item InventoryItem @relation(fields: [inventoryItemId, ownerId], references: [id, userId], onDelete: Restrict, onUpdate: Restrict)
+  compatibilities ItemCompatibility[]
+  events CompatibilityEvent[]
+  @@unique([id, ownerId])
+  @@unique([inventoryItemId, ownerId])
+  @@index([ownerId, inventoryItemId])
+  @@map("compatibility_sets")
+  createdBy User @relation("CompatibilitySet_createdById", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy User @relation("CompatibilitySet_updatedById", fields: [updatedById], references: [id], onDelete: Restrict)
+}
+model ItemCompatibility {
+  id String @id @default(uuid())
+  ownerId String
+  setId String
+  modelId String
+  status CompatibilityStatus @default(PENDING)
+  version Int @default(1)
+  evidenceType CompatibilityEvidenceType?
+  evidenceReference String? @db.VarChar(500)
+  note String? @db.VarChar(1000)
+  reviewReason String? @db.VarChar(500)
+  verifiedById String?
+  verifiedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdById String
+  updatedById String
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  set CompatibilitySet @relation(fields: [setId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  model DeviceModel @relation(fields: [modelId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([id, ownerId])
+  @@unique([setId, modelId])
+  @@index([ownerId, modelId, status, setId])
+  @@index([ownerId, setId, status, id])
+  @@map("item_compatibilities")
+  createdBy User @relation("ItemCompatibility_createdById", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy User @relation("ItemCompatibility_updatedById", fields: [updatedById], references: [id], onDelete: Restrict)
+  verifiedBy User? @relation("ItemCompatibility_verifiedById", fields: [verifiedById], references: [id], onDelete: Restrict)
+}
+model CompatibilityOperation {
+  ownerId String
+  operationId String
+  resourceKind String
+  resourceId String
+  requestHash String @db.VarChar(64)
+  responseSnapshot Json
+  createdAt DateTime @default(now())
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  events CompatibilityEvent[]
+  @@id([ownerId, operationId])
+  @@map("compatibility_operations")
+}
+model CompatibilityEvent {
+  id String @id @default(uuid())
+  ownerId String
+  operationId String
+  setId String?
+  entityKind String
+  entityId String
+  actorId String
+  eventType String
+  before Json?
+  after Json
+  occurredAt DateTime @default(now())
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  operation CompatibilityOperation @relation(fields: [ownerId, operationId], references: [ownerId, operationId], onDelete: Restrict, onUpdate: Restrict)
+  set CompatibilitySet? @relation(fields: [setId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([ownerId, operationId, entityKind, entityId])
+  @@index([ownerId, entityKind, entityId, occurredAt, id])
+  @@index([ownerId, setId, occurredAt, id])
+  @@map("compatibility_events")
+  actor User @relation("CompatibilityEvent_actorId", fields: [actorId], references: [id], onDelete: Restrict)
 }

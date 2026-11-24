@@ -6,6 +6,385 @@
     "description": "Contrato generado desde los esquemas Zod que validan las solicitudes de la API."
   },
   "paths": {
+    "/api/device-brands": {
+      "get": {
+        "summary": "Buscar marcas propias por nombre canónico o alias",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "Solicitud inválida"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "q literal (160), page 1..100000, status active/retired/all. {success,items,page,pageSize:25,hasMore}; solo lectura, private/no-store."
+      },
+      "post": {
+        "summary": "Crear marca propia y canónico atómicamente",
+        "responses": {
+          "200": {
+            "description": "Replay idempotente"
+          },
+          "201": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "Respuesta de la API"
+          },
+          "401": {
+            "description": "Respuesta de la API"
+          },
+          "409": {
+            "description": "NAME_CONFLICT o IDEMPOTENCY_CONFLICT"
+          },
+          "503": {
+            "description": "COMPATIBILITY_RETRY_SAME_OPERATION"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDeviceBrand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/device-brands/{id}": {
+      "get": {
+        "summary": "Consultar marca propia",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "Solicitud inválida"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ]
+      }
+    },
+    "/api/device-brands/{id}/names": {
+      "get": {
+        "summary": "Listar canónico y alias propios, 25 por página",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "Solicitud inválida"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ]
+      },
+      "post": {
+        "summary": "Añadir alias básico sin colisiones con canónicos",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "Solicitud inválida"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddBrandAlias"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/device-models": {
+      "get": {
+        "summary": "Buscar modelos propios en una marca explícita",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "Solicitud inválida"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "brandId UUID obligatorio; q, page, status como marcas. No infiere compatibilidades."
+      },
+      "post": {
+        "summary": "Crear modelo y canónico en marca propia",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "Solicitud inválida"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDeviceModel"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/device-models/{id}": {
+      "get": {
+        "summary": "Consultar modelo propio",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "Solicitud inválida"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ]
+      }
+    },
+    "/api/device-models/{id}/names": {
+      "get": {
+        "summary": "Listar canónico y alias de un modelo propio",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "Solicitud inválida"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ]
+      },
+      "post": {
+        "summary": "Añadir alias de modelo dentro del namespace de su marca",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "Solicitud inválida"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddModelAlias"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inventory/items/{id}/compatibilities": {
+      "get": {
+        "summary": "Consultar compatibilidades privadas del artículo propio",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "Solicitud inválida"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "description": "{success,source:{kind:INVENTORY_ITEM,id},set:{id,version}|null,compatibilities,page,pageSize:25,hasMore}. GET no crea conjuntos. page y status all/PENDING/VERIFIED/REJECTED/WITHDRAWN."
+      },
+      "post": {
+        "summary": "Añadir una compatibilidad PENDING por acción explícita",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "Solicitud inválida"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddItemCompatibility"
+              }
+            }
+          }
+        },
+        "description": "expectedSetVersion=0 cuando no hay conjunto. Verificar requiere otro PATCH con evidencia. {success,result:{compatibility,setVersion,idempotent}}. 201 nueva / 200 replay. No modifica inventario, precios, ventas ni catálogo público."
+      }
+    },
+    "/api/inventory/items/{id}/compatibilities/{compatibilityId}": {
+      "patch": {
+        "summary": "Editar, verificar, rechazar, retirar o reabrir una compatibilidad propia",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "Solicitud inválida"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          },
+          {
+            "name": "compatibilityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateItemCompatibility"
+              }
+            }
+          }
+        },
+        "description": "Versiones esperadas de fila y conjunto. VERIFIED exige evidencia confirmada, rechazar/retirar motivo >=3. REJECTED/WITHDRAWN solo vuelven a PENDING; evidencia modificada de VERIFIED vuelve a PENDING. Actor/fechas en servidor; recibo y auditoría transaccionales."
+      }
+    },
+    "/api/inventory/items/{id}/compatibility-events": {
+      "get": {
+        "summary": "Consultar auditoría privada del artículo propio",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "Solicitud inválida"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "description": "{success,items:[{id,actorId,eventType,entityKind,entityId,before,after,occurredAt}],page,pageSize:25,hasMore}. Todas las lecturas filtran propietario. Errores: 400 INVALID_COMPATIBILITY_INPUT, 401 sesión/cuenta, 404 COMPATIBILITY_RESOURCE_NOT_FOUND, 409 conflicto/versión/estado/idempotencia, 413 cuota y 503 COMPATIBILITY_RETRY_SAME_OPERATION. No DELETE."
+      }
+    },
     "/api/orders/{orderId}/customer-matches": {
       "get": {
         "summary": "Paginar coincidencias activas exactas de teléfono tras autorizar el pedido propio",
@@ -2770,6 +3149,325 @@
                   "DELIVERED",
                   "CANCELLED",
                   "RETURNED"
+                ]
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateDeviceBrand": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 400,
+            "pattern": "^[^\\p{Cc}\\p{Cf}]*$"
+          }
+        },
+        "required": [
+          "operationId",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "CreateDeviceModel": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "brandId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 640,
+            "pattern": "^[^\\p{Cc}\\p{Cf}]*$"
+          },
+          "manufacturerCode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 400,
+                "pattern": "^[^\\p{Cc}\\p{Cf}]*$"
+              },
+              {
+                "type": "string",
+                "const": ""
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "operationId",
+          "brandId",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "AddBrandAlias": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 400,
+            "pattern": "^[^\\p{Cc}\\p{Cf}]*$"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedVersion",
+          "label"
+        ],
+        "additionalProperties": false
+      },
+      "AddModelAlias": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 640,
+            "pattern": "^[^\\p{Cc}\\p{Cf}]*$"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedVersion",
+          "label"
+        ],
+        "additionalProperties": false
+      },
+      "AddItemCompatibility": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedSetVersion": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647
+              },
+              {
+                "type": "number",
+                "const": 0
+              }
+            ]
+          },
+          "modelId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedSetVersion",
+          "modelId"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateItemCompatibility": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedSetVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "VERIFIED",
+              "REJECTED",
+              "WITHDRAWN"
+            ]
+          },
+          "evidenceType": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "SELLER_TEST",
+                  "MANUFACTURER_REFERENCE",
+                  "SUPPLIER_REFERENCE",
+                  "DOCUMENTED_REVIEW"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidenceReference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500,
+                "pattern": "^[^\\u0000]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000,
+                "pattern": "^[^\\u0000]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reviewReason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500,
+                "pattern": "^[^\\u0000]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedSetVersion",
+          "expectedVersion"
+        ],
+        "additionalProperties": false
+      },
+      "DeviceBrandQuery": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "maxLength": 640,
+            "pattern": "^[^\\p{Cc}\\p{Cf}]*$"
+          },
+          "page": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,5}$"
+          },
+          "status": {
+            "default": "active",
+            "type": "string",
+            "enum": [
+              "active",
+              "retired",
+              "all"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeviceModelQuery": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "maxLength": 640,
+            "pattern": "^[^\\p{Cc}\\p{Cf}]*$"
+          },
+          "page": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,5}$"
+          },
+          "status": {
+            "default": "active",
+            "type": "string",
+            "enum": [
+              "active",
+              "retired",
+              "all"
+            ]
+          },
+          "brandId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "brandId"
+        ],
+        "additionalProperties": false
+      },
+      "ItemCompatibilityQuery": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,5}$"
+          },
+          "status": {
+            "default": "all",
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "all"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "PENDING",
+                  "VERIFIED",
+                  "REJECTED",
+                  "WITHDRAWN"
                 ]
               }
             ]

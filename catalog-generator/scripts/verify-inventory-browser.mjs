@@ -72,13 +72,15 @@ try {
     if (url.pathname === "/api/inventory/publications") return reply({ result: [] });
     if (!url.pathname.startsWith("/api/inventory/items")) return reply({}, 404);
     if (req.method === "GET") {
+      const page = Number(url.searchParams.get("page") || 1);
+      if (url.pathname.endsWith("/compatibilities")) return reply({ success: true, source: { kind: "INVENTORY_ITEM", id: url.pathname.split("/")[4] }, set: null, compatibilities: [], page, pageSize: 25, hasMore: false });
+      if (url.pathname.endsWith("/compatibility-events")) return reply({ success: true, items: [], page, pageSize: 25, hasMore: false });
       if (url.pathname.endsWith("/images")) return reply({ result: [] });
       if (url.pathname.endsWith("/commercial-terms")) {
         if (detailMode === "ERROR") return reply({ message: "Ficha temporalmente no disponible" }, 503);
         if (detailMode === "INVALID") return reply({ result: { items: [] } });
         return reply({ result: items.find(item => item.id === url.pathname.split("/")[4]) });
       }
-      const page = Number(url.searchParams.get("page") || 1);
       if (url.pathname.endsWith("/movements")) {
         const rows = movements.filter(row => row.itemId === url.pathname.split("/")[4]).toReversed();
         return reply({ result: { movements: rows.slice((page - 1) * 24, page * 24), total: rows.length, page } });

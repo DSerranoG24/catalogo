@@ -11,6 +11,8 @@ import { createCustomerSchema, updateCustomerSchema, customerListSchema } from "
 import { createSaleSchema, updateDraftSaleSchema, convertOrderToSaleSchema } from "../schemas/sales.schema";
 import { orderCustomerPreviewSchema, confirmOrderCustomerSchema, orderCustomerMatchesSchema } from "../schemas/order-customer.schema";
 import { customerSalesQuerySchema } from "../schemas/customer-sales.schema";
+import { createDeviceBrandSchema, createDeviceModelSchema, addBrandAliasSchema, addDeviceAliasSchema,
+  addCompatibilitySchema, updateCompatibilitySchema, deviceListSchema, modelListSchema, compatibilityPageSchema } from "../schemas/compatibility.schema";
 
 const schemas = {
   Register: registerSchema,
@@ -30,6 +32,15 @@ const schemas = {
   UpdateCustomer: updateCustomerSchema,
   CustomerListQuery: customerListSchema,
   CustomerSalesQuery: customerSalesQuerySchema,
+  CreateDeviceBrand: createDeviceBrandSchema,
+  CreateDeviceModel: createDeviceModelSchema,
+  AddBrandAlias: addBrandAliasSchema,
+  AddModelAlias: addDeviceAliasSchema,
+  AddItemCompatibility: addCompatibilitySchema,
+  UpdateItemCompatibility: updateCompatibilitySchema,
+  DeviceBrandQuery: deviceListSchema,
+  DeviceModelQuery: modelListSchema,
+  ItemCompatibilityQuery: compatibilityPageSchema,
   CreateSale: createSaleSchema,
   UpdateDraftSale: updateDraftSaleSchema,
   ConvertOrderToSale: convertOrderToSaleSchema,
@@ -52,6 +63,34 @@ const operation = (summary: string, options: Record<string, unknown> = {}) => ({
 });
 
 const paths = {
+  "/api/device-brands": {
+    get: operation("Buscar marcas propias por nombre canónico o alias", { security: secured, description: "q literal (160), page 1..100000, status active/retired/all. {success,items,page,pageSize:25,hasMore}; solo lectura, private/no-store." }),
+    post: operation("Crear marca propia y canónico atómicamente", { security: secured, requestBody: jsonBody("CreateDeviceBrand"), responses: { "201": response, "200": { description: "Replay idempotente" }, "400": response, "401": response, "409": { description: "NAME_CONFLICT o IDEMPOTENCY_CONFLICT" }, "503": { description: "COMPATIBILITY_RETRY_SAME_OPERATION" } } }),
+  },
+  "/api/device-brands/{id}": { get: operation("Consultar marca propia", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }] }) },
+  "/api/device-brands/{id}/names": {
+    get: operation("Listar canónico y alias propios, 25 por página", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }] }),
+    post: operation("Añadir alias básico sin colisiones con canónicos", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("AddBrandAlias") }),
+  },
+  "/api/device-models": {
+    get: operation("Buscar modelos propios en una marca explícita", { security: secured, description: "brandId UUID obligatorio; q, page, status como marcas. No infiere compatibilidades." }),
+    post: operation("Crear modelo y canónico en marca propia", { security: secured, requestBody: jsonBody("CreateDeviceModel") }),
+  },
+  "/api/device-models/{id}": { get: operation("Consultar modelo propio", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }] }) },
+  "/api/device-models/{id}/names": {
+    get: operation("Listar canónico y alias de un modelo propio", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }] }),
+    post: operation("Añadir alias de modelo dentro del namespace de su marca", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("AddModelAlias") }),
+  },
+  "/api/inventory/items/{id}/compatibilities": {
+    get: operation("Consultar compatibilidades privadas del artículo propio", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], description: "{success,source:{kind:INVENTORY_ITEM,id},set:{id,version}|null,compatibilities,page,pageSize:25,hasMore}. GET no crea conjuntos. page y status all/PENDING/VERIFIED/REJECTED/WITHDRAWN." }),
+    post: operation("Añadir una compatibilidad PENDING por acción explícita", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("AddItemCompatibility"), description: "expectedSetVersion=0 cuando no hay conjunto. Verificar requiere otro PATCH con evidencia. {success,result:{compatibility,setVersion,idempotent}}. 201 nueva / 200 replay. No modifica inventario, precios, ventas ni catálogo público." }),
+  },
+  "/api/inventory/items/{id}/compatibilities/{compatibilityId}": {
+    patch: operation("Editar, verificar, rechazar, retirar o reabrir una compatibilidad propia", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }, { name: "compatibilityId", in: "path", required: true, schema: { type: "string", format: "uuid" } }], requestBody: jsonBody("UpdateItemCompatibility"), description: "Versiones esperadas de fila y conjunto. VERIFIED exige evidencia confirmada, rechazar/retirar motivo >=3. REJECTED/WITHDRAWN solo vuelven a PENDING; evidencia modificada de VERIFIED vuelve a PENDING. Actor/fechas en servidor; recibo y auditoría transaccionales." }),
+  },
+  "/api/inventory/items/{id}/compatibility-events": {
+    get: operation("Consultar auditoría privada del artículo propio", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], description: "{success,items:[{id,actorId,eventType,entityKind,entityId,before,after,occurredAt}],page,pageSize:25,hasMore}. Todas las lecturas filtran propietario. Errores: 400 INVALID_COMPATIBILITY_INPUT, 401 sesión/cuenta, 404 COMPATIBILITY_RESOURCE_NOT_FOUND, 409 conflicto/versión/estado/idempotencia, 413 cuota y 503 COMPATIBILITY_RETRY_SAME_OPERATION. No DELETE." }),
+  },
   "/api/orders/{orderId}/customer-matches": {
     get: operation("Paginar coincidencias activas exactas de teléfono tras autorizar el pedido propio", {
       security: secured, parameters: [{ $ref: "#/components/parameters/orderId" }, { name: "phone", in: "query", required: true, schema: { type: "string", maxLength: 40 } }, { name: "page", in: "query", schema: { type: "integer", minimum: 1, maximum: 10000, default: 1 } }],

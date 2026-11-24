@@ -1,0 +1,16 @@
+export type CompatibilityStatus = "PENDING" | "VERIFIED" | "REJECTED" | "WITHDRAWN";
+export type EvidenceType = "SELLER_TEST" | "MANUFACTURER_REFERENCE" | "SUPPLIER_REFERENCE" | "DOCUMENTED_REVIEW";
+export const compatibilityStates: CompatibilityStatus[];
+export const evidenceTypes: EvidenceType[];
+export type DeviceBrand = { id: string; name: string; version: number; retiredAt: string | null };
+export type DeviceModel = DeviceBrand & { brandId: string; brandName: string; brandRetiredAt: string | null; manufacturerCode: string | null };
+export type ItemCompatibility = { id: string; version: number; status: CompatibilityStatus; model: { id: string; name: string; manufacturerCode: string | null; retiredAt: string | null; brand: { id: string; name: string; retiredAt: string | null } }; evidenceType: EvidenceType | null; evidenceReference: string | null; note: string | null; reviewReason: string | null; createdAt: string; updatedAt: string; verifiedAt: string | null };
+export type CompatibilityPage = { source: { kind: "INVENTORY_ITEM"; id: string }; set: { id: string; version: number } | null; compatibilities: ItemCompatibility[]; page: number; pageSize: 25; hasMore: boolean };
+export type EventPage = { items: { id: string; actorId: string; entityId: string; entityKind: string; eventType: string; before: Record<string,unknown> | null; after: Record<string,unknown>; occurredAt: string }[]; page: number; pageSize: 25; hasMore: boolean };
+export function parseDevicePage(value: unknown, kind: "brand", page: number, brandId?: string): { items: DeviceBrand[]; page: number; hasMore: boolean };
+export function parseDevicePage(value: unknown, kind: "model", page: number, brandId: string): { items: DeviceModel[]; page: number; hasMore: boolean };
+export function parseDeviceMutation(value: unknown, kind: "brand"): DeviceBrand;
+export function parseDeviceMutation(value: unknown, kind: "model"): DeviceModel;
+export function parseCompatibilityPage(value: unknown, itemId: string, page: number, status: string): CompatibilityPage;
+export function parseCompatibilityMutation(value: unknown, expectedModelId: string, expectedId?: string): { compatibility: ItemCompatibility; setVersion: number; idempotent: boolean };
+export function parseCompatibilityEvents(value: unknown, page: number): EventPage;
