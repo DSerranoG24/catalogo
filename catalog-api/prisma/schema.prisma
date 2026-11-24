@@ -224,6 +224,8 @@ model InventoryMovement {
   /// MANUAL | INVENTORY_BATCH | SALE. CHECK inventory_movements_origin_check/batch_check
   /// (migration 20261124200000_inventory_movements_allow_sale_origin): SALE requires
   /// saleId, saleLineId, saleMovementRole and actorUserId; other origins forbid sale references.
+  /// inventory_movements_sale_role_type_check: SALE_CONFIRMATION = OUT; SALE_CANCELLATION and
+  /// SALE_RETURN_RESELLABLE = IN; SALE_RETURN_DAMAGED is never written.
   origin String @default("MANUAL")
   batchId String?
   batchRowId String?
@@ -251,6 +253,8 @@ model Sale {
   userId String
   /// Unique source order; migration must enforce at most one Sale per Order.
   sourceOrderId String? @unique
+  /// Trigger sale_status_transition_guard: DRAFT -> CONFIRMED|DELIVERED, CONFIRMED -> DELIVERED|CANCELLED,
+  /// DELIVERED -> RETURNED. A DELIVERED sale is never cancelled; it is corrected with returns.
   status SaleStatus @default(DRAFT)
   version Int @default(1)
   currency String @default("COP")
@@ -346,6 +350,10 @@ model SaleReturnLine {
   saleReturn SaleReturn @relation(fields: [returnId], references: [id], onDelete: Restrict)
   saleLine SaleLine @relation(fields: [saleLineId], references: [id], onDelete: Restrict)
   @@unique([returnId, saleLineId])
+  @@index([saleLineId])
+  /// Trigger sale_return_line_guard (migration 20261124210000_sale_partial_returns_and_movement_roles):
+  /// the sum of receivedQuantity per saleLineId never exceeds the sold quantity, and the line
+  /// must belong to the same sale as its return. Several partial returns per sale are allowed.
   /// CHECK constraints (migration 20261124100000_sale_integrity_checks): receivedQuantity > 0,
   /// resellableQuantity >= 0, damagedQuantity >= 0, resellableQuantity + damagedQuantity = receivedQuantity.
 }

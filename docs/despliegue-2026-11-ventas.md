@@ -1,5 +1,7 @@
 # Runbook: migraciones de Ventas de noviembre de 2026
 
+> **Estado:** según el responsable, las dos migraciones de este runbook (F0b y F0c) se aplicaron en producción el 24/11/2026, y `main` se publicó en `648b1dc`. La migración siguiente, F0d, se aplica con el mismo procedimiento y las diferencias del [anexo F0d](#anexo-f0d-reglas-de-ventas-20261124210000).
+
 Preparado el 24 de noviembre de 2026 para que el responsable aplique en producción dos migraciones y publique el código que las acompaña. Lo ejecuta **una sola persona**, paso a paso, deteniéndose ante cualquier resultado distinto del esperado. Este documento no autoriza a ningún agente a ejecutarlo. Complementa [despliegue](despliegue.md) y [migraciones](migrations.md).
 
 ## Qué se despliega
@@ -334,3 +336,61 @@ Si un paso falla, anota el código HTTP y `error` (no hay datos personales en es
 - Volver al código anterior es compatible con el esquema nuevo: no necesita revertir las migraciones. Ten en cuenta que el código anterior confirma ventas sin bloquear artículos.
 - No elimines las restricciones por SQL para «volver atrás»: quitar la segunda volvería a bloquear las ventas. Cualquier cambio de esquema posterior se hace con una migración nueva revisada.
 - Restaurar el volcado sobre producción pierde las escrituras posteriores y no recupera Storage; es el último recurso y requiere una decisión explícita ([procedimiento en 2.6](#26-cómo-restaurar-desde-el-volcado-solo-si-hiciera-falta)).
+
+## Anexo F0d: reglas de Ventas (`20261124210000`)
+
+Migración `20261124210000_sale_partial_returns_and_movement_roles` y código de la rama `f0d-sale-rules` ([contrato v2.1](sales-contract.md#14-cambios-de-la-versión-21)). Se siguen los pasos 0 a 8 con estas diferencias. Ensayada el 24/11/2026 sobre la cadena completa de 39 migraciones (`npm.cmd run test:sales-postgres`, 24/24 etapas).
+
+**Qué cambia:**
+- solo se cancelan ventas `CONFIRMED`;
+- se admiten devoluciones parciales y acumulativas, nunca por encima de lo vendido;
+- la conversión de pedidos bloquea artículos;
+- el hash de idempotencia ya no incluye `requestId`;
+- las respuestas incluyen líneas y devoluciones.
+
+En la base de datos: un CHECK de rol frente a tipo en `inventory_movements`, un índice y dos triggers (devoluciones acumuladas y transiciones de estado). No modifica datos.
+
+**Compatibilidad**, para mantener el orden **migración → push**:
+- El código publicado (`648b1dc`) sigue funcionando con el esquema nuevo: sus movimientos cumplen la regla de rol frente a tipo, y sus devoluciones totales cumplen el trigger. Lo único que cambia es que, si alguien intentara cancelar una venta entregada en la ventana entre migración y push, la base de datos lo rechazaría (500). Es la regla buscada.
+- El código nuevo también funciona con el esquema actual, porque el servicio ya aplica todas las reglas.
+
+**Paso 0:** la rama es `f0d-sale-rules`. `git log --oneline -1 f0d-sale-rules` debe mostrar el commit F0d sobre `648b1dc`.
+
+**Paso 1, consulta previa** ([`verify-sale-integrity.sql`](sql/verify-sale-integrity.sql), ahora ampliada):
+
+| Consulta | Esperado antes de F0d | Si no se cumple |
+| --- | --- | --- |
+| Reglas (`WITH rules AS …`) | Todas las filas `CHECK` en 0, incluida `inventory_movements_sale_role_type_check`. | No migres. Una violación en movimientos no se puede reparar (registro inmutable): escala. |
+| Diagnóstico `Sale_cancelled_after_delivery` | **Al menos 1**: la venta de prueba `29b2435…`. No bloquea y no se corrige. Anota los IDs. | Si aparecen ventas reales, anótalas: la migración no las cambia. |
+| Otros diagnósticos | En 0. `SaleReturnLine_cumulative_within_sold` en 0 confirma que no hay devoluciones de más. | No bloquean la migración, pero revisa esas ventas antes de habilitar devoluciones parciales en la operación diaria. |
+| Roles y tipos | Solo `SALE_CONFIRMATION/OUT`, `SALE_CANCELLATION/IN` y `SALE_RETURN_RESELLABLE/IN`; **ninguna** fila `SALE_RETURN_DAMAGED`. | La migración fallaría: no migres. |
+| Objetos de `20261124210000` | 0 filas. | Algún objeto ya existe: no migres y revisa. |
+| Migraciones de Ventas | Las dos primeras con `finished_at`; ninguna fila de la tercera. | Revisa el estado antes de seguir (paso 4). |
+
+**Paso 2:** volcado manual obligatorio, igual que antes. El plan sigue siendo Free.
+
+**Paso 3:** `migrate status` debe mostrar **exactamente una** pendiente, `20261124210000_sale_partial_returns_and_movement_roles`. Tras `migrate deploy`, repite la consulta de objetos: ahora debe listar 6 (CHECK, índice, dos funciones y dos triggers).
+
+**Paso 4, si falla:** la migración es una sola transacción y no deja cambios parciales. La única causa esperable es una fila de movimientos que incumpla la regla de rol frente a tipo, o un objeto con el mismo nombre. Ninguna de las dos se corrige por SQL: `migrate resolve --rolled-back 20261124210000_sale_partial_returns_and_movement_roles` y escala. El código nuevo funciona igualmente con el esquema anterior.
+
+**Paso 5:** `git switch main`, `git merge --ff-only f0d-sale-rules` y `git push origin main`.
+
+**Paso 7, prueba de humo adicional** en la cuenta de prueba (ventana privada). Usa la función `api` y `ITEM` del paso 7.1, con al menos 2 unidades en stock:
+
+```js
+const key = () => ({ operationId: crypto.randomUUID(), requestId: crypto.randomUUID() });
+const s = await api("/sales", "POST", key());
+const d = await api(`/sales/${s.id}`, "PATCH", { operationId: crypto.randomUUID(), expectedVersion: s.version, lines: [{ inventoryItemId: ITEM, quantity: 2, unitDiscount: "0" }] });
+const confirmCmd = { ...key(), expectedVersion: d.version, deliverImmediately: true };
+const delivered = await api(`/sales/${s.id}/confirm`, "POST", confirmCmd);            // 200, DELIVERED, incluye lines
+await api(`/sales/${s.id}/confirm`, "POST", { ...confirmCmd, requestId: crypto.randomUUID() }); // 200, mismo resultado, sin movimiento nuevo
+await api(`/sales/${s.id}/cancel`, "POST", { ...key(), expectedVersion: delivered.version, reason: "Prueba F0d" }).catch(e => e); // 409 INVALID_TRANSITION
+const line = delivered.lines[0].id;
+const part = await api(`/sales/${s.id}/returns`, "POST", { ...key(), expectedVersion: delivered.version, reason: "Humo parcial 1", lines: [{ saleLineId: line, receivedQuantity: 1, resellableQuantity: 1, damagedQuantity: 0 }] }); // 200, DELIVERED, 1 devolución
+await api(`/sales/${s.id}/returns`, "POST", { ...key(), expectedVersion: part.version, reason: "Humo de más", lines: [{ saleLineId: line, receivedQuantity: 2, resellableQuantity: 2, damagedQuantity: 0 }] }).catch(e => e); // 409 RETURN_EXCEEDS_SOLD
+const done = await api(`/sales/${s.id}/returns`, "POST", { ...key(), expectedVersion: part.version, reason: "Humo parcial 2", lines: [{ saleLineId: line, receivedQuantity: 1, resellableQuantity: 1, damagedQuantity: 0 }] }); // 200, RETURNED, 2 devoluciones
+```
+
+Esperado en Inventario: el artículo baja 2 unidades al confirmar y recupera 1 con cada devolución, hasta volver al stock inicial. Hay un movimiento por cada paso con efecto y ninguno en los intentos rechazados.
+
+**Paso 8:** anota también los IDs que mostró `Sale_cancelled_after_delivery`.

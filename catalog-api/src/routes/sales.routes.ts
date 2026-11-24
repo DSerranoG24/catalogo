@@ -21,9 +21,9 @@ export function makeSalesRouter(service = makeSaleService(), authentication = au
       if (code === "CUSTOMER_NOT_FOUND") return res.status(404).json({ error: code, message: "Cliente no encontrado." });
       if (code === "CUSTOMER_ARCHIVED") return res.status(409).json({ error: code, message: "El cliente está archivado. Selecciona otro cliente o crea la venta sin cliente." });
       if (code === "ACCOUNT_CLOSED") return res.status(401).json({ error: "AUTH_REQUIRED", message: "Tu sesión ya no está disponible." });
-      if (["VERSION_CONFLICT", "INVALID_TRANSITION", "STOCK_INSUFFICIENT", "PRICE_CHANGED", "IDEMPOTENCY_CONFLICT", "RETURN_MUST_BE_TOTAL"].includes(code)) return res.status(409).json({ error: code, message: code });
+      if (["VERSION_CONFLICT", "INVALID_TRANSITION", "STOCK_INSUFFICIENT", "PRICE_CHANGED", "IDEMPOTENCY_CONFLICT", "RETURN_EXCEEDS_SOLD"].includes(code)) return res.status(409).json({ error: code, message: code });
       if (code === "NOT_FOUND") return res.status(404).json({ error: code, message: code });
-      if (["ITEM_NOT_FOUND", "PRICE_REQUIRED", "INVALID_DISCOUNT"].includes(code)) return res.status(400).json({ error: code, message: code });
+      if (["ITEM_NOT_FOUND", "PRICE_REQUIRED", "INVALID_DISCOUNT", "RETURN_LINE_DUPLICATE", "RETURN_LINE_NOT_FOUND"].includes(code)) return res.status(400).json({ error: code, message: code });
       return res.status(500).json({ error: "SALE_OPERATION_FAILED", message: "No se pudo completar la operación de venta." });
     }
   };

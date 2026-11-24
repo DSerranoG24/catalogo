@@ -2,7 +2,7 @@
 
 ## Estado del repositorio
 
-El historial versionado contiene 38 migraciones (24/11/2026); el recuento de CHECK está en [estado](estado.md#migraciones). No es una consulta al ledger remoto. Prisma recibe DATABASE_URL del proceso y puede cargar el archivo local como respaldo: confirmar siempre el destino sin imprimir credenciales.
+El historial versionado contiene 39 migraciones (24/11/2026); el recuento de CHECK está en [estado](estado.md#migraciones). No es una consulta al ledger remoto. Prisma recibe DATABASE_URL del proceso y puede cargar el archivo local como respaldo: confirmar siempre el destino sin imprimir credenciales.
 
 Las comunicaciones de despliegue y comprobaciones anteriores están en el [historial](historial/README.md); no sustituyen una verificación nueva. No hay una segunda historia de migraciones Supabase versionada en este repositorio.
 
@@ -348,6 +348,16 @@ Añade 11 CHECK a `"Sale"`, `"SaleLine"` y `"SaleReturnLine"` ([contrato](sales-
 2. Si alguna regla `CHECK` da más de 0, no aplicar la migración. Revisar esas ventas con el responsable; no corregir importes por SQL sin una decisión explícita.
 3. Si se aplica con datos inválidos, la transacción completa se revierte: no quedan restricciones a medias. Prisma registra la migración como fallida y bloquea despliegues posteriores (`P3009`). Tras corregir la causa: `npm.cmd exec prisma -- migrate resolve --rolled-back 20261124100000_sale_integrity_checks` y volver a ejecutar `prisma:migrate:deploy`. Este ciclo se ensayó en PostgreSQL local el 24/11/2026.
 4. `ALTER TABLE … ADD CONSTRAINT … CHECK` toma un bloqueo exclusivo de cada tabla mientras revisa sus filas: las ventas quedan en espera durante esos segundos. Aplicar en un momento de poca actividad.
+
+### Reglas de Ventas (`20261124210000_sale_partial_returns_and_movement_roles`)
+
+Añade:
+- `inventory_movements_sale_role_type_check`: `SALE_CONFIRMATION` = `OUT`; `SALE_CANCELLATION` y `SALE_RETURN_RESELLABLE` = `IN`; sin `SALE_RETURN_DAMAGED`;
+- el índice `SaleReturnLine_saleLineId_idx`;
+- el trigger `sale_return_line_guard`: lo devuelto en total por línea no supera lo vendido, y la línea es de la misma venta;
+- el trigger `sale_status_transition_guard`: transiciones permitidas; no se cancela una venta entregada.
+
+No modifica datos. El CHECK valida las filas existentes, y como el registro de movimientos es inmutable, una violación no se puede reparar: la migración fallaría sin cambios. Los triggers solo actúan sobre escrituras futuras, así que una venta histórica entregada y después cancelada no la rompe. La [consulta previa](sql/verify-sale-integrity.sql) cubre la regla, los diagnósticos de devoluciones y ventas canceladas tras entrega, y los nombres de objetos que crea. Procedimiento: [anexo F0d del runbook](despliegue-2026-11-ventas.md#anexo-f0d-reglas-de-ventas-20261124210000).
 
 ### Origen de movimientos de venta (`20261124200000_inventory_movements_allow_sale_origin`)
 

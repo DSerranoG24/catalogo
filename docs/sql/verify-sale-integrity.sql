@@ -1,6 +1,6 @@
 -- SOLO LECTURA. Comprueba si los datos actuales cumplen las reglas de las migraciones
--- 20261124100000_sale_integrity_checks y 20261124200000_inventory_movements_allow_sale_origin
--- ANTES de aplicarlas.
+-- 20261124100000_sale_integrity_checks, 20261124200000_inventory_movements_allow_sale_origin
+-- y 20261124210000_sale_partial_returns_and_movement_roles ANTES de aplicarlas.
 --
 -- Uso: ejecutar completo en el editor SQL de la base que se va a migrar. No modifica
 -- nada: la transacción es READ ONLY y termina en ROLLBACK. Solo devuelve IDs, nunca
@@ -80,6 +80,16 @@ WITH rules AS (
            AND m."actorUserId" IS NOT NULL
            AND m."batchId" IS NULL AND m."batchRowId" IS NULL AND m."batchOperationId" IS NULL), false)
 
+  -- inventory_movements (regla de 20261124210000_sale_partial_returns_and_movement_roles):
+  -- SALE_CONFIRMATION = OUT; SALE_CANCELLATION y SALE_RETURN_RESELLABLE = IN;
+  -- SALE_RETURN_DAMAGED no debe existir (el código nunca lo escribe).
+  UNION ALL
+  SELECT 'CHECK', 'inventory_movements_sale_role_type_check', m.id
+    FROM inventory_movements m
+   WHERE m."saleMovementRole" IS NOT NULL
+     AND NOT ((m."saleMovementRole"::text = 'SALE_CONFIRMATION' AND m.type = 'OUT')
+           OR (m."saleMovementRole"::text IN ('SALE_CANCELLATION', 'SALE_RETURN_RESELLABLE') AND m.type = 'IN'))
+
   -- Diagnósticos entre tablas (no son CHECK; no bloquean la migración) -----
   UNION ALL
   SELECT 'DIAGNÓSTICO', 'Sale_subtotal_matches_lines', s.id
@@ -89,18 +99,38 @@ WITH rules AS (
                  FROM "SaleLine" GROUP BY "saleId") t ON t."saleId" = s.id
    WHERE coalesce(t.base, 0) <> s.subtotal::numeric
       OR coalesce(t.discount, 0) <> s."discountTotal"::numeric
+  -- Devoluciones parciales: lo devuelto en total por línea nunca supera lo vendido.
+  -- El trigger nuevo lo impide desde la migración, pero no revisa filas anteriores.
   UNION ALL
-  SELECT 'DIAGNÓSTICO', 'SaleReturnLine_received_equals_sold', r.id
-    FROM "SaleReturnLine" r JOIN "SaleLine" l ON l.id = r."saleLineId"
-   WHERE r."receivedQuantity" <> l.quantity
+  SELECT 'DIAGNÓSTICO', 'SaleReturnLine_cumulative_within_sold', l.id
+    FROM "SaleLine" l JOIN "SaleReturnLine" r ON r."saleLineId" = l.id
+   GROUP BY l.id, l.quantity
+  HAVING sum(r."receivedQuantity")::numeric > l.quantity::numeric
   UNION ALL
-  SELECT 'DIAGNÓSTICO', 'Returned_sale_covers_all_lines', s.id
+  SELECT 'DIAGNÓSTICO', 'SaleReturnLine_line_belongs_to_return_sale', r.id
+    FROM "SaleReturnLine" r
+    JOIN "SaleReturn" h ON h.id = r."returnId"
+    JOIN "SaleLine" l ON l.id = r."saleLineId"
+   WHERE h."saleId" <> l."saleId"
+  UNION ALL
+  SELECT 'DIAGNÓSTICO', 'Returned_sale_fully_returned', s.id
     FROM "Sale" s
    WHERE s.status = 'RETURNED'
      AND EXISTS (SELECT 1 FROM "SaleLine" l WHERE l."saleId" = s.id
-                  AND NOT EXISTS (SELECT 1 FROM "SaleReturnLine" r
-                                    JOIN "SaleReturn" h ON h.id = r."returnId"
-                                   WHERE h."saleId" = s.id AND r."saleLineId" = l.id))
+                  AND coalesce((SELECT sum(r."receivedQuantity") FROM "SaleReturnLine" r WHERE r."saleLineId" = l.id), 0) < l.quantity)
+  UNION ALL
+  SELECT 'DIAGNÓSTICO', 'Delivered_sale_fully_returned', s.id
+    FROM "Sale" s
+   WHERE s.status = 'DELIVERED'
+     AND EXISTS (SELECT 1 FROM "SaleLine" l WHERE l."saleId" = s.id)
+     AND NOT EXISTS (SELECT 1 FROM "SaleLine" l WHERE l."saleId" = s.id
+                      AND coalesce((SELECT sum(r."receivedQuantity") FROM "SaleReturnLine" r WHERE r."saleLineId" = l.id), 0) < l.quantity)
+  -- Ventas entregadas y después canceladas (regla anterior a 20261124210000). Se conservan
+  -- tal cual; el trigger nuevo solo impide que vuelva a ocurrir. En producción existe al
+  -- menos una de prueba.
+  UNION ALL
+  SELECT 'DIAGNÓSTICO', 'Sale_cancelled_after_delivery', s.id
+    FROM "Sale" s WHERE s.status = 'CANCELLED' AND s."deliveredAt" IS NOT NULL
 ),
 catalog AS (
   SELECT * FROM (VALUES
@@ -111,8 +141,10 @@ catalog AS (
     ('CHECK', 'SaleReturnLine_received_positive_check'), ('CHECK', 'SaleReturnLine_split_nonnegative_check'),
     ('CHECK', 'SaleReturnLine_split_equation_check'),
     ('CHECK', 'inventory_movements_origin_check'), ('CHECK', 'inventory_movements_batch_check'),
-    ('DIAGNÓSTICO', 'Sale_subtotal_matches_lines'), ('DIAGNÓSTICO', 'SaleReturnLine_received_equals_sold'),
-    ('DIAGNÓSTICO', 'Returned_sale_covers_all_lines')
+    ('CHECK', 'inventory_movements_sale_role_type_check'),
+    ('DIAGNÓSTICO', 'Sale_subtotal_matches_lines'), ('DIAGNÓSTICO', 'SaleReturnLine_cumulative_within_sold'),
+    ('DIAGNÓSTICO', 'SaleReturnLine_line_belongs_to_return_sale'), ('DIAGNÓSTICO', 'Returned_sale_fully_returned'),
+    ('DIAGNÓSTICO', 'Delivered_sale_fully_returned'), ('DIAGNÓSTICO', 'Sale_cancelled_after_delivery')
   ) AS c(kind, rule)
 )
 SELECT c.kind AS tipo,
@@ -129,8 +161,8 @@ SELECT (SELECT count(*) FROM "Sale") AS ventas,
        (SELECT count(*) FROM "SaleLine") AS lineas,
        (SELECT count(*) FROM "SaleReturnLine") AS lineas_devueltas;
 
--- Orígenes existentes en inventory_movements. Antes de la segunda migración solo
--- deberían aparecer MANUAL e INVENTORY_BATCH, y ninguna fila con referencias de venta.
+-- Orígenes existentes en inventory_movements. Antes de 20261124200000 solo deberían
+-- aparecer MANUAL e INVENTORY_BATCH; después aparece SALE, siempre con referencias de venta.
 SELECT origin,
        count(*) AS movimientos,
        count(*) FILTER (WHERE "saleId" IS NOT NULL OR "saleLineId" IS NOT NULL OR "saleMovementRole" IS NOT NULL) AS con_referencias_de_venta,
@@ -147,10 +179,31 @@ SELECT conname AS restriccion, pg_get_constraintdef(oid) AS definicion_actual
    AND conname IN ('inventory_movements_origin_check', 'inventory_movements_batch_check')
  ORDER BY conname;
 
--- Migraciones registradas por Prisma de este bloque (debe estar vacío antes de aplicar).
+-- Roles y tipos de los movimientos de venta. Esperado: SALE_CONFIRMATION/OUT,
+-- SALE_CANCELLATION/IN y SALE_RETURN_RESELLABLE/IN; ninguna fila SALE_RETURN_DAMAGED.
+SELECT "saleMovementRole"::text AS rol, type AS tipo, count(*) AS movimientos
+  FROM inventory_movements
+ WHERE "saleMovementRole" IS NOT NULL
+ GROUP BY "saleMovementRole", type
+ ORDER BY 1, 2;
+
+-- Objetos que crea 20261124210000. Antes de aplicarla debe devolver 0 filas: si alguno
+-- ya existe, la migración fallaría sin aplicar cambios.
+SELECT 'constraint' AS clase, conname AS nombre FROM pg_constraint
+ WHERE conrelid = 'inventory_movements'::regclass AND conname = 'inventory_movements_sale_role_type_check'
+UNION ALL
+SELECT 'index', relname FROM pg_class WHERE relname = 'SaleReturnLine_saleLineId_idx'
+UNION ALL
+SELECT 'function', proname FROM pg_proc WHERE proname IN ('sale_return_line_guard', 'sale_status_transition_guard')
+UNION ALL
+SELECT 'trigger', tgname FROM pg_trigger WHERE tgname IN ('sale_return_line_guard', 'sale_status_transition_guard');
+
+-- Migraciones de Ventas registradas por Prisma. Antes de aplicar 20261124210000 deben
+-- figurar las dos primeras con finished_at y ninguna fila de la tercera.
 SELECT migration_name, finished_at, rolled_back_at
   FROM _prisma_migrations
- WHERE migration_name IN ('20261124100000_sale_integrity_checks', '20261124200000_inventory_movements_allow_sale_origin')
+ WHERE migration_name IN ('20261124100000_sale_integrity_checks', '20261124200000_inventory_movements_allow_sale_origin',
+                          '20261124210000_sale_partial_returns_and_movement_roles')
  ORDER BY started_at;
 
 ROLLBACK;

@@ -4,8 +4,8 @@ import test from "node:test";
 import { makeSaleService } from "./sale.service";
 
 // In-memory double with per-transaction undo logs and blocking row locks. It models
-// FOR UPDATE waits and stock >= 0; it is not a PostgreSQL certification (see
-// src/scripts/verify-sale-integrity-postgres.ts for the real-database rehearsal).
+// FOR UPDATE waits, stock >= 0 and the sale_return_line_guard trigger; it is not a
+// PostgreSQL certification (see src/scripts/verify-sale-integrity-postgres.ts).
 const owner = randomUUID(), other = randomUUID();
 const tick = () => new Promise(resolve => setImmediate(resolve));
 type Row = Record<string, any>;
@@ -26,6 +26,7 @@ function fixture() {
     const push = <T extends Row>(list: T[], row: T) => { list.push(row); undo.push(() => list.splice(list.indexOf(row), 1)); return row; };
     const patch = (row: Row, values: Row) => { const before = { ...row }; Object.assign(row, values); undo.push(() => { for (const key of Object.keys(row)) delete row[key]; Object.assign(row, before); }); };
     const view = (sale: Row) => ({ ...structuredClone(sale), lines: structuredClone(state.lines.filter(line => line.saleId === sale.id)), customer: null });
+    const result = (sale: Row) => ({ ...view(sale), returns: structuredClone(state.returns.filter(r => r.saleId === sale.id).map(r => ({ ...r, lines: state.returnLines.filter(l => l.returnId === r.id) }))) });
     return {
       async $queryRaw(first: any, ...rest: unknown[]) {
         const sql: string = Array.isArray(first) ? first.join("?") : first.sql; const values: unknown[] = Array.isArray(first) ? rest : first.values;
@@ -41,10 +42,18 @@ function fixture() {
       },
       sale: {
         async findFirst({ where }: any) { assert.ok(where.userId); await tick(); const sale = state.sales.find(s => s.id === where.id && s.userId === where.userId); return sale ? view(sale) : null; },
-        async update({ where, data }: any) { const sale = state.sales.find(s => s.id === where.id); assert.ok(sale); const { version, ...rest } = data; patch(sale, { ...rest, version: sale.version + (version?.increment ?? 0) }); return structuredClone(sale); },
+        async update({ where, data, include }: any) {
+          const sale = state.sales.find(s => s.id === where.id); assert.ok(sale); const { version, ...rest } = data;
+          // Mirrors sale_status_transition_guard.
+          const allowed: Row = { DRAFT: ["CONFIRMED", "DELIVERED"], CONFIRMED: ["DELIVERED", "CANCELLED"], DELIVERED: ["RETURNED"] };
+          if (rest.status && rest.status !== sale.status && !(allowed[sale.status] ?? []).includes(rest.status)) throw new Error("INVALID_SALE_TRANSITION");
+          patch(sale, { ...rest, version: sale.version + (version?.increment ?? 0) });
+          assert.ok(include?.lines && include?.returns, "mutation responses must include lines and returns");
+          return result(sale);
+        },
       },
       saleOperation: {
-        async findFirst({ where }: any) { assert.ok(where.userId); await tick(); return structuredClone(state.operations.find(op => op.userId === where.userId && (!where.saleId || op.saleId === where.saleId) && where.OR.some((c: Row) => (c.id && op.id === c.id) || (c.requestId && op.requestId === c.requestId))) ?? null); },
+        async findFirst({ where }: any) { assert.ok(where.userId); assert.equal(where.OR, undefined, "receipts are looked up by operationId only"); await tick(); return structuredClone(state.operations.find(op => op.userId === where.userId && op.id === where.id) ?? null); },
         async create({ data }: any) { if (state.operations.some(op => op.id === data.id || (op.userId === data.userId && op.requestId === data.requestId))) throw Object.assign(new Error("P2002"), { code: "P2002" }); return structuredClone(push(state.operations, { ...data, responseSnapshot: null })); },
         async update({ where, data }: any) { const op = state.operations.find(o => o.id === where.id); assert.ok(op); assert.doesNotThrow(() => JSON.stringify(data.responseSnapshot), "receipts are stored as plain JSON: BigInt amounts as decimal strings, the format replayed to clients"); patch(op, data); return structuredClone(op); },
       },
@@ -61,7 +70,17 @@ function fixture() {
       },
       inventoryMovement: { async create({ data }: any) { assert.equal(data.resultingStock, data.previousStock + data.delta); return push(state.movements, { ...data, at: state.movements.length }); } },
       saleReturn: { async create({ data }: any) { return push(state.returns, { id: randomUUID(), ...data }); } },
-      saleReturnLine: { async create({ data }: any) { return push(state.returnLines, { id: randomUUID(), ...data }); } },
+      saleReturnLine: {
+        async findMany({ where }: any) { await tick(); return structuredClone(state.returnLines.filter(l => where.saleLineId.in.includes(l.saleLineId))); },
+        async create({ data }: any) {
+          // Mirrors sale_return_line_guard: cumulative returns never exceed the sold quantity.
+          const line = state.lines.find(l => l.id === data.saleLineId); const ret = state.returns.find(r => r.id === data.returnId);
+          if (!line || !ret || line.saleId !== ret.saleId) throw new Error("SALE_RETURN_LINE_SALE_MISMATCH");
+          const already = state.returnLines.filter(l => l.saleLineId === data.saleLineId).reduce((sum, l) => sum + l.receivedQuantity, 0);
+          if (already + data.receivedQuantity > line.quantity) throw new Error("SALE_RETURN_EXCEEDS_SOLD");
+          return push(state.returnLines, { id: randomUUID(), ...data });
+        },
+      },
     };
   }
   const database: any = {
@@ -196,4 +215,94 @@ test("a fresh key on a stale version still fails, and a failed attempt leaves no
   await assert.rejects(f.service.confirm(owner, sale, confirmInput(1)), /VERSION_CONFLICT/);
   f.state.items[0].stock = 2;
   assert.equal((await f.service.confirm(owner, sale, input)).status, "CONFIRMED", "the same key may be retried after a rolled-back failure");
+});
+
+// ---- Sales rules fixed after the 2026-11-24 production test ----
+
+async function delivered(f: ReturnType<typeof fixture>, lines: { itemId: string; quantity: number }[]) {
+  const id = f.draft(lines); const sale: any = await f.service.confirm(owner, id, { ...confirmInput(), deliverImmediately: true });
+  return { id, sale, lines: f.state.lines.filter(l => l.saleId === id) };
+}
+
+test("a DELIVERED sale cannot be cancelled (409 INVALID_TRANSITION); only CONFIRMED sales are", async () => {
+  const f = fixture(); const itemId = f.item(5);
+  const { id, sale } = await delivered(f, [{ itemId, quantity: 2 }]);
+  await assert.rejects(f.service.cancel(owner, id, { ...keys(), expectedVersion: sale.version, reason: "Intento tras entrega" }), /INVALID_TRANSITION/);
+  assert.equal(f.state.sales.find(s => s.id === id)!.status, "DELIVERED"); assert.equal(f.state.items[0].stock, 3);
+  assert.equal(f.state.movements.length, 1, "no compensation movement was written");
+  const confirmed = f.draft([{ itemId, quantity: 1 }]); const c: any = await f.service.confirm(owner, confirmed, confirmInput());
+  assert.equal(((await f.service.cancel(owner, confirmed, { ...keys(), expectedVersion: c.version, reason: "Cliente desistió" })) as any).status, "CANCELLED");
+});
+
+test("same operationId + same content + new requestId replays the receipt; other content conflicts (every operation)", async () => {
+  const f = fixture(); const itemId = f.item(10);
+  const sale = f.draft([{ itemId, quantity: 2 }]);
+  const confirm = confirmInput(); const first: any = await f.service.confirm(owner, sale, confirm);
+  const again: any = await f.service.confirm(owner, sale, { ...confirm, requestId: randomUUID() });
+  assert.equal(again.version, first.version); assert.equal(f.state.movements.length, 1); assert.equal(f.state.operations.length, 2 - 1);
+  await assert.rejects(f.service.confirm(owner, sale, { ...confirm, requestId: randomUUID(), deliverImmediately: true }), /IDEMPOTENCY_CONFLICT/);
+  const deliver = { ...keys(), expectedVersion: first.version }; const d: any = await f.service.transition(owner, sale, deliver);
+  assert.equal(((await f.service.transition(owner, sale, { ...deliver, requestId: randomUUID() })) as any).version, d.version);
+  const line = f.state.lines.find(l => l.saleId === sale)!;
+  const ret = { ...keys(), expectedVersion: d.version, reason: "Devolución parcial", lines: [{ saleLineId: line.id, receivedQuantity: 1, resellableQuantity: 1, damagedQuantity: 0 }] };
+  await f.service.returnSale(owner, sale, ret); await f.service.returnSale(owner, sale, { ...ret, requestId: randomUUID() });
+  assert.equal(f.state.returns.length, 1); assert.equal(f.state.items[0].stock, 9);
+  await assert.rejects(f.service.returnSale(owner, sale, { ...ret, requestId: randomUUID(), reason: "Otro motivo" }), /IDEMPOTENCY_CONFLICT/);
+  const other = f.draft([{ itemId, quantity: 1 }]); const oc: any = await f.service.confirm(owner, other, confirmInput());
+  const cancel = { ...keys(), expectedVersion: oc.version, reason: "Error de captura" };
+  await f.service.cancel(owner, other, cancel); await f.service.cancel(owner, other, { ...cancel, requestId: randomUUID() });
+  assert.equal(f.state.movements.filter(m => m.saleMovementRole === "SALE_CANCELLATION").length, 1);
+});
+
+test("partial returns in several steps: DELIVERED until everything is returned, then RETURNED", async () => {
+  const f = fixture(); const a = f.item(10), b = f.item(10);
+  const { id, sale, lines } = await delivered(f, [{ itemId: a, quantity: 3 }, { itemId: b, quantity: 1 }]);
+  const la = lines.find(l => l.inventoryItemId === a)!, lb = lines.find(l => l.inventoryItemId === b)!;
+  const first: any = await f.service.returnSale(owner, id, { ...keys(), expectedVersion: sale.version, reason: "Primera devolución", lines: [{ saleLineId: la.id, receivedQuantity: 1, resellableQuantity: 1, damagedQuantity: 0 }] });
+  assert.equal(first.status, "DELIVERED"); assert.equal(first.returnedAt, null); assert.equal(first.returns.length, 1);
+  assert.equal(first.lines.length, 2, "the response includes the sale lines");
+  const second: any = await f.service.returnSale(owner, id, { ...keys(), expectedVersion: first.version, reason: "Segunda devolución", lines: [
+    { saleLineId: la.id, receivedQuantity: 2, resellableQuantity: 1, damagedQuantity: 1 },
+    { saleLineId: lb.id, receivedQuantity: 1, resellableQuantity: 0, damagedQuantity: 1 },
+  ] });
+  assert.equal(second.status, "RETURNED"); assert.ok(second.returnedAt); assert.equal(second.returns.length, 2);
+  assert.deepEqual(second.returns.map((r: Row) => r.reason), ["Primera devolución", "Segunda devolución"]);
+  assert.equal(f.state.items.find(i => i.id === a)!.stock, 7 + 1 + 1); assert.equal(f.state.items.find(i => i.id === b)!.stock, 9);
+  const keysOfReturns = new Set(f.state.movements.filter(m => m.saleMovementRole === "SALE_RETURN_RESELLABLE").map(m => m.key));
+  assert.equal(keysOfReturns.size, 2, "each return writes its own movements under its own operation");
+  await assert.rejects(f.service.returnSale(owner, id, { ...keys(), expectedVersion: second.version, reason: "Tercera", lines: [{ saleLineId: la.id, receivedQuantity: 1, resellableQuantity: 1, damagedQuantity: 0 }] }), /INVALID_TRANSITION/);
+});
+
+test("a return can never exceed what was sold, per line and cumulatively; failures write nothing", async () => {
+  const f = fixture(); const a = f.item(10);
+  const { id, sale, lines: [line] } = await delivered(f, [{ itemId: a, quantity: 2 }]);
+  const one = (q: number) => ({ saleLineId: line.id, receivedQuantity: q, resellableQuantity: q, damagedQuantity: 0 });
+  await assert.rejects(f.service.returnSale(owner, id, { ...keys(), expectedVersion: sale.version, reason: "De más", lines: [one(3)] }), /RETURN_EXCEEDS_SOLD/);
+  const first: any = await f.service.returnSale(owner, id, { ...keys(), expectedVersion: sale.version, reason: "Una", lines: [one(1)] });
+  await assert.rejects(f.service.returnSale(owner, id, { ...keys(), expectedVersion: first.version, reason: "De más acumulado", lines: [one(2)] }), /RETURN_EXCEEDS_SOLD/);
+  await assert.rejects(f.service.returnSale(owner, id, { ...keys(), expectedVersion: first.version, reason: "Duplicada", lines: [one(1), one(1)] }), /RETURN_LINE_DUPLICATE/);
+  await assert.rejects(f.service.returnSale(owner, id, { ...keys(), expectedVersion: first.version, reason: "Ajena", lines: [{ ...one(1), saleLineId: randomUUID() }] }), /RETURN_LINE_NOT_FOUND/);
+  assert.equal(f.state.returns.length, 1); assert.equal(f.state.returnLines.length, 1); assert.equal(f.state.items[0].stock, 9);
+  assert.equal(f.state.operations.filter(op => op.type === "RETURN").length, 1, "rejected returns leave no receipt");
+});
+
+test("two concurrent returns of the remaining units: the sale lock lets only one through", { timeout: 5000 }, async () => {
+  const f = fixture(); const a = f.item(10);
+  const { id, sale, lines: [line] } = await delivered(f, [{ itemId: a, quantity: 2 }]);
+  const body = () => ({ ...keys(), expectedVersion: sale.version, reason: "Concurrente", lines: [{ saleLineId: line.id, receivedQuantity: 2, resellableQuantity: 2, damagedQuantity: 0 }] });
+  const results = await Promise.allSettled([f.service.returnSale(owner, id, body()), f.service.returnSale(owner, id, body())]);
+  assert.equal(results.filter(r => r.status === "fulfilled").length, 1);
+  assert.match(String((results.find(r => r.status === "rejected") as PromiseRejectedResult).reason?.message), /INVALID_TRANSITION/);
+  assert.equal(f.state.items[0].stock, 10); assert.equal(f.state.returnLines.length, 1);
+});
+
+test("confirm, deliver, cancel and return responses (and their replays) include the sale lines", async () => {
+  const f = fixture(); const a = f.item(10);
+  const s = f.draft([{ itemId: a, quantity: 1 }]); const input = confirmInput();
+  const c: any = await f.service.confirm(owner, s, input); const replay: any = await f.service.confirm(owner, s, { ...input, requestId: randomUUID() });
+  for (const body of [c, replay]) { assert.equal(body.lines.length, 1); assert.ok(Array.isArray(body.returns)); }
+  assert.equal(replay.lines[0].unitPrice, "100", "receipt amounts are decimal strings");
+  const d: any = await f.service.transition(owner, s, { ...keys(), expectedVersion: c.version }); assert.equal(d.lines.length, 1);
+  const s2 = f.draft([{ itemId: a, quantity: 1 }]); const c2: any = await f.service.confirm(owner, s2, confirmInput());
+  const x: any = await f.service.cancel(owner, s2, { ...keys(), expectedVersion: c2.version, reason: "Prueba" }); assert.equal(x.lines.length, 1);
 });

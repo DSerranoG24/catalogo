@@ -11,32 +11,38 @@ function setup(options: Setup = {}) {
   const item = options.inventory === false ? null : { id: ids.item, name: "Producto", sku: "SKU", stock: state.stock, commercialTerms: { unitSalePrice: BigInt(options.currentPrice ?? options.orderPrice ?? 100), referenceUnitCost: 20n, version: 1 } };
   state.order.items = [{ id: randomUUID(), productId: options.inventory === false ? null : ids.product, product: options.owner === false ? null : { id: ids.product, catalogId: "catalog", inventoryItem: item }, productName: "Nombre pedido", quantity: 2, unitPrice: options.orderPrice ?? 100, subtotal: 200 }];
   state.customer = { id: ids.customer, ownerId: "owner", fullName: "Ficha interna", phone: "3110000000", email: "internal@example.invalid", archivedAt: null };
+  const locks: string[] = [];
   const tx: any = {
-    $queryRaw: async () => [{ id: "owner" }],
+    $queryRaw: async (first: any) => { locks.push(Array.isArray(first) ? first.join("?") : first.sql); return [{ id: "owner" }]; },
     customer: { findFirst: async (args: Prisma.CustomerFindFirstArgs) => {
       assert.equal(args.where?.ownerId, "owner");
       return state.customer.id === args.where?.id && state.customer.ownerId === args.where?.ownerId ? state.customer : null;
     } },
     order: { findFirst: async () => options.owner === false ? null : state.order },
     saleOperation: {
-      findFirst: async ({ where }: any) => { const op = state.operations.find((candidate: any) => candidate.userId === where.userId && (candidate.id === where.OR[0].id || candidate.requestId === where.OR[1].requestId)); return op ? { ...op, sale: state.sales.find((sale: any) => sale.id === op.saleId) } : null; },
+      findFirst: async ({ where }: any) => { assert.equal(where.OR, undefined, "receipts are looked up by operationId only"); const op = state.operations.find((candidate: any) => candidate.userId === where.userId && candidate.id === where.id); return op ? { ...op, sale: state.sales.find((sale: any) => sale.id === op.saleId) } : null; },
       create: async ({ data }: any) => { const op = { ...data }; state.operations.push(op); return op; },
       update: async ({ where, data }: any) => { const op = state.operations.find((x: any) => x.id === where.id); Object.assign(op, data); return op; },
     },
     sale: {
+      findFirst: async ({ where }: any) => { assert.equal(where.userId, "owner"); return state.sales.find((sale: any) => sale.sourceOrderId === where.sourceOrderId && sale.userId === where.userId) ?? null; },
       create: async ({ data }: any) => { const sale = { id: ids.sale, version: 1, lines: [], customerId: null, customerNameSnapshot: null, customerPhoneSnapshot: null, customerEmailSnapshot: null, ...data }; state.sales.push(sale); return sale; },
       update: async ({ where, data }: any) => { const sale = state.sales.find((x: any) => x.id === where.id); Object.assign(sale, data, { version: (sale.version ?? 1) + (data.version?.increment ?? 0) }); return sale; },
-      findUniqueOrThrow: async ({ where }: any) => ({ ...state.sales.find((sale: any) => sale.id === where.id), lines: state.lines.filter((line: any) => line.saleId === where.id) }),
+      findUniqueOrThrow: async ({ where }: any) => ({ ...state.sales.find((sale: any) => sale.id === where.id), lines: state.lines.filter((line: any) => line.saleId === where.id), returns: [] }),
     },
     saleLine: {
       create: async ({ data }: any) => { const line = { id: ids.line, ...data }; state.lines.push(line); return line; },
       findUniqueOrThrow: async () => state.lines[0],
     },
-    inventoryItem: { update: async ({ data }: any) => { state.stock += Number(data.stock.decrement ? -data.stock.decrement : data.stock.increment); return item; } },
+    inventoryItem: {
+      // Confirmed/delivered conversions read the item again after locking it, with the live stock.
+      findMany: async ({ where }: any) => { assert.equal(where.userId, "owner"); locks.push(`items:${where.id.in.join(",")}`); return item && where.id.in.includes(item.id) ? [{ ...item, stock: state.stock }] : []; },
+      update: async ({ data }: any) => { state.stock += Number(data.stock.decrement ? -data.stock.decrement : data.stock.increment); return item; },
+    },
     inventoryMovement: { create: async ({ data }: any) => { state.movements.push(data); return data; } },
   };
   const database = { $transaction: async (fn: (client: any) => unknown) => { const before = structuredClone(state); try { return await fn(tx); } catch (error) { Object.keys(state).forEach(key => { state[key] = before[key]; }); throw error; } } } as any;
-  return { ids, state, service: makeSaleService(database), input: { operationId: randomUUID(), requestId: randomUUID(), mode: "DRAFT", acceptPriceDifference: false } as any };
+  return { ids, state, locks, service: makeSaleService(database), input: { operationId: randomUUID(), requestId: randomUUID(), mode: "DRAFT", acceptPriceDifference: false } as any };
 }
 
 test("order conversion creates draft snapshots at the frozen order price without stock movement", async () => { const f = setup(); const result = await f.service.convertOrderToSale("owner", f.ids.order, f.input); assert.equal(result.sale.status, "DRAFT"); assert.equal(result.sale.customerId, null); assert.equal(result.sale.customerNameSnapshot, "Cliente"); assert.equal(result.sale.customerPhoneSnapshot, "300"); assert.equal(result.sale.customerEmailSnapshot, "buyer@example.invalid"); assert.equal(result.sale.customerName, "Cliente"); assert.equal(result.sale.subtotal, 200n); assert.equal(result.sale.total, 200n); assert.equal(f.state.lines[0].unitPrice, 100n); assert.equal(f.state.lines[0].lineTotal, 200n); assert.equal(f.state.stock, 5); assert.equal(f.state.movements.length, 0); assert.equal(f.state.lines[0].itemName, "Producto"); assert.equal(f.state.order.items[0].productName, "Nombre pedido"); });
@@ -135,4 +141,27 @@ test("formatted phones and the full 24-character public limit are preserved exac
     assert.equal(result.sale.customerPhoneSnapshot, phone); assert.equal(result.sale.customerPhone, phone);
     assert.equal(result.sale.total, 200n); assert.equal(f.state.stock, 3); assert.equal(f.state.order.customerPhone, phone);
   }
+});
+
+test("confirmed conversion locks the order, then the items by id, and reads stock after the lock", async () => {
+  const f = setup({ stock: 5 });
+  f.state.order.items[0].product.inventoryItem.stock = 99; // stale value read with the order
+  await f.service.convertOrderToSale("owner", f.ids.order, { ...f.input, mode: "CONFIRMED" });
+  const orderLock = f.locks.findIndex(sql => /FROM orders .*FOR UPDATE/s.test(sql));
+  const itemLock = f.locks.findIndex(sql => /FROM inventory_items .*ORDER BY id FOR UPDATE/s.test(sql));
+  const itemRead = f.locks.findIndex(entry => entry.startsWith("items:"));
+  assert.ok(orderLock >= 0 && orderLock < itemLock && itemLock < itemRead, `lock order: ${f.locks.join(" | ")}`);
+  assert.equal(f.state.movements[0].previousStock, 5, "the movement uses the balance read under the lock");
+  assert.equal(f.state.stock, 3);
+  const draft = setup(); await draft.service.convertOrderToSale("owner", draft.ids.order, draft.input);
+  assert.equal(draft.locks.some(sql => /inventory_items/.test(sql)), false, "a draft conversion does not lock items");
+});
+
+test("conversion: new requestId replays; a second key for a converted order is ORDER_ALREADY_CONVERTED", async () => {
+  const f = setup(); const input = { ...f.input, mode: "CONFIRMED" };
+  const first = await f.service.convertOrderToSale("owner", f.ids.order, input);
+  const retry = await f.service.convertOrderToSale("owner", f.ids.order, { ...input, requestId: randomUUID() });
+  assert.equal(retry.idempotent, true); assert.equal(retry.sale.id, first.sale.id); assert.equal(f.state.movements.length, 1);
+  await assert.rejects(f.service.convertOrderToSale("owner", f.ids.order, { ...input, operationId: randomUUID(), requestId: randomUUID() }), /ORDER_ALREADY_CONVERTED/);
+  assert.equal(f.state.sales.length, 1); assert.equal(f.state.stock, 3);
 });

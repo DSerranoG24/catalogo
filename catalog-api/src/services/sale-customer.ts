@@ -1,16 +1,15 @@
-import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../config/prisma";
 import { lockInventoryOwner } from "../repositories/inventory.repository";
 import { createSaleSchema, updateDraftSaleSchema } from "../schemas/sales.schema";
+import { isSameSaleCommand, saleCommandHash } from "./sale-operation-hash";
 
 export const saleCustomerInclude = (userId: string) => ({
   lines: true,
   customer: { where: { ownerId: userId }, select: { id: true, fullName: true, phone: true, email: true, archivedAt: true } },
 } satisfies Prisma.SaleInclude);
 
-const requestHash = (input: unknown) => createHash("sha256").update(JSON.stringify(input)).digest("hex");
 const emptySnapshot = { customerId: null, customerNameSnapshot: null, customerPhoneSnapshot: null, customerEmailSnapshot: null };
 
 export async function findActiveSaleCustomer(tx: Prisma.TransactionClient, userId: string, customerId: string) {
@@ -44,9 +43,10 @@ export async function createInternalSale(userId: string, raw: z.infer<typeof cre
     await lockInventoryOwner(tx, userId);
     // Serialize retries before inserting the Sale, including an absent operation key.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('sale-create-v1'), hashtext(${userId}))`;
-    const previous = await tx.saleOperation.findFirst({ where: { userId, OR: [{ id: input.operationId }, { requestId: input.requestId }] } });
+    // Same operationId + same content (any requestId) replays; same operationId + other content conflicts.
+    const previous = await tx.saleOperation.findFirst({ where: { userId, id: input.operationId } });
     if (previous) {
-      if (previous.type !== "CREATE" || previous.requestHash !== requestHash(input)) throw new Error("IDEMPOTENCY_CONFLICT");
+      if (previous.type !== "CREATE" || !isSameSaleCommand(previous.requestHash, input)) throw new Error("IDEMPOTENCY_CONFLICT");
       const sale = await tx.sale.findFirst({ where: { id: previous.saleId, userId }, include: saleCustomerInclude(userId) });
       if (!sale) throw new Error("NOT_FOUND");
       return sale;
@@ -56,7 +56,7 @@ export async function createInternalSale(userId: string, raw: z.infer<typeof cre
     };
     const sale = await tx.sale.create({ data: { userId, ...customer }, include: saleCustomerInclude(userId) });
     await tx.saleOperation.create({ data: { id: input.operationId, requestId: input.requestId, saleId: sale.id, userId,
-      type: "CREATE", requestHash: requestHash(input), status: "SUCCEEDED", completedAt: new Date() } });
+      type: "CREATE", requestHash: saleCommandHash(input), status: "SUCCEEDED", completedAt: new Date() } });
     return sale;
   });
 }
@@ -70,7 +70,7 @@ export async function updateInternalSaleDraft(userId: string, saleId: string, ra
     if (!sale) throw new Error("NOT_FOUND");
     const previous = await tx.saleOperation.findFirst({ where: { saleId, userId, id: input.operationId } });
     if (previous) {
-      if (previous.type !== "UPDATE_DRAFT" || previous.requestHash !== requestHash(input)) throw new Error("IDEMPOTENCY_CONFLICT");
+      if (previous.type !== "UPDATE_DRAFT" || !isSameSaleCommand(previous.requestHash, input)) throw new Error("IDEMPOTENCY_CONFLICT");
       return sale;
     }
     if (sale.status !== "DRAFT") throw new Error("INVALID_TRANSITION");
@@ -99,7 +99,7 @@ export async function updateInternalSaleDraft(userId: string, saleId: string, ra
     }
     const updated = await tx.sale.update({ where: { id: saleId, userId }, data: { ...customer, subtotal, discountTotal, total: subtotal - discountTotal, version: { increment: 1 } }, include: saleCustomerInclude(userId) });
     await tx.saleOperation.create({ data: { id: input.operationId, requestId: input.operationId, saleId, userId, type: "UPDATE_DRAFT",
-      expectedSaleVersion: input.expectedVersion, requestHash: requestHash(input), status: "SUCCEEDED", completedAt: new Date() } });
+      expectedSaleVersion: input.expectedVersion, requestHash: saleCommandHash(input), status: "SUCCEEDED", completedAt: new Date() } });
     return updated;
   });
 }
