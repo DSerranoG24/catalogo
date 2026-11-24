@@ -20,7 +20,11 @@ Ambas migraciones se ensayaron el 24/11/2026 sobre la cadena completa de 38 migr
 ## 0. Preparación (sin tocar producción)
 
 1. Reserva una ventana de poca actividad, de unos 30 minutos.
-2. Comprueba que tienes acceso a Supabase (SQL Editor y Backups), Render y Vercel, y la cadena de conexión de producción en un gestor seguro. No la pegues en archivos, chats ni terminales con historial compartido.
+2. Comprueba que tienes:
+   - acceso a Supabase (SQL Editor y *Connect*), Render y Vercel;
+   - la cadena de conexión de producción en un gestor seguro. No la pegues en archivos, chats ni terminales con historial compartido;
+   - el cliente de PostgreSQL instalado (`pg_dump.exe` y `pg_restore.exe`; en este equipo, `C:\Program Files\PostgreSQL\17\bin`);
+   - espacio en disco fuera del repositorio para el volcado.
 3. En tu copia local, desde la raíz del repositorio:
 
    ```powershell
@@ -59,20 +63,134 @@ El editor de Supabase muestra únicamente el resultado de la **última** sentenc
 
 Guarda una captura o nota de los resultados, sin datos personales.
 
-## 2. Respaldo
+## 2. Respaldo: volcado manual obligatorio
 
-Sigue [Respaldo previo](migrations.md#respaldo-previo):
+El proyecto está en **Supabase Free**, que no tiene respaldos automáticos. Antes de migrar hay que crear un volcado manual y verificarlo. **Sin un volcado verificado, no sigas.** Las migraciones son aditivas y transaccionales, pero el volcado cubre errores de operación.
 
-1. Supabase → Database → Backups: confirma que existe un respaldo utilizable y anota su fecha y hora.
-2. Si tu plan no ofrece un respaldo reciente, crea uno lógico con la CLI de Supabase, tal como está documentado ahí. Guárdalo fuera del repositorio.
-3. No sigas sin un respaldo identificado. Las migraciones son aditivas y transaccionales, pero el respaldo cubre errores de operación.
+Alcance del volcado:
+- Incluye el esquema `public`: todas las tablas de la aplicación y `_prisma_migrations`.
+- **No incluye los objetos de Storage** (imágenes de productos, logos y banners) ni los esquemas que gestiona Supabase (`auth`, `storage`…), que la aplicación no usa para sus datos.
+- Contiene datos personales (clientes, pedidos, ventas). Trátalo como confidencial: no lo subas a la nube ni lo compartas, y bórralo cuando ya no haga falta.
+
+### 2.1 Comprobar versiones
+
+1. En el SQL Editor de producción ejecuta `SELECT version();` y anota la versión mayor del servidor (por ejemplo, `PostgreSQL 17.6` → 17).
+2. En una PowerShell, comprueba la de tu cliente:
+
+   ```powershell
+   & 'C:\Program Files\PostgreSQL\17\bin\pg_dump.exe' --version
+   ```
+
+3. Si la versión mayor de `pg_dump` es **igual o mayor** que la del servidor, sigue con 2.2. Si es menor, `pg_dump` se negará a volcar: usa la alternativa de 2.5 con la CLI de Supabase, o instala tú el cliente de PostgreSQL de esa versión y vuelve a este paso.
+
+### 2.2 Abrir la PowerShell dedicada y leer la URL sin eco
+
+Abre una PowerShell **nueva**, dedicada a este despliegue; la usarás también en el paso 3. Ve a `catalog-api` dentro del repositorio y pega el bloque. Pide la URL sin mostrarla y comprueba que corresponde al proyecto de producción antes de ejecutar nada, igual que en [migrations.md](migrations.md#opción-a-proyecto-supabase-de-prueba-plan-free):
+
+```powershell
+$expectedRef = Read-Host 'Project ref del proyecto DE PRODUCCIÓN'
+$secureUrl = Read-Host 'URI de conexión de PRODUCCIÓN (directa o Session pooler)' -AsSecureString
+$databaseUrl = [System.Net.NetworkCredential]::new('', $secureUrl).Password
+$uri = [uri]$databaseUrl
+$user = [uri]::UnescapeDataString(($uri.UserInfo -split ':', 2)[0])
+if (-not (($uri.Host -eq "db.$expectedRef.supabase.co") -or ($user -eq "postgres.$expectedRef"))) {
+  $databaseUrl = $null; throw 'La URI no corresponde al Project ref indicado. No se ejecutó nada.'
+}
+if ($uri.Port -eq 6543) {
+  $databaseUrl = $null; throw 'Es el Transaction pooler (6543). Usa la conexión directa o el Session pooler.'
+}
+$env:DATABASE_URL = $databaseUrl                                    # para Prisma, en el paso 3
+$dumpUrl = $uri.GetLeftPart([UriPartial]::Path) + '?sslmode=require' # pg_dump no admite ?schema=
+$databaseUrl = $null; $secureUrl = $null; $uri = $null; $user = $null; $expectedRef = $null
+```
+
+Comprueba el Project ref en el panel de Supabase antes de escribirlo. `$dumpUrl` es la misma conexión sin los parámetros de Prisma (como `?schema=public`), que `libpq` rechaza. No imprimas ninguna de las dos variables.
+
+### 2.3 Crear el volcado fuera del repositorio
+
+En la misma PowerShell:
+
+```powershell
+$pgBin = 'C:\Program Files\PostgreSQL\17\bin'          # la versión comprobada en 2.1
+$backupDir = Join-Path $env:USERPROFILE 'Respaldos\catalogo'
+$repoRoot = (git rev-parse --show-toplevel) -replace '/', '\'
+if ($backupDir.StartsWith($repoRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'La carpeta de respaldo está dentro del repositorio.' }
+New-Item -ItemType Directory -Force $backupDir | Out-Null
+$backupPath = Join-Path $backupDir ('catalogo-prod-{0}.dump' -f (Get-Date -Format 'yyyyMMdd-HHmm'))
+& "$pgBin\pg_dump.exe" --format=custom --schema=public --no-owner --no-privileges --file=$backupPath --dbname=$dumpUrl
+if ($LASTEXITCODE -ne 0) { throw 'pg_dump falló. No continúes con la migración.' }
+```
+
+`--format=custom` (`-Fc`) produce un archivo comprimido que `pg_restore` puede inspeccionar y restaurar de forma selectiva. Si `pg_dump` falla, sus mensajes pueden mostrar el host, nunca la contraseña. Mientras se ejecuta, la URL es visible en la lista de procesos del equipo: hazlo en tu equipo personal, sin otras sesiones de usuario abiertas.
+
+### 2.4 Verificar y registrar el volcado
+
+```powershell
+& "$pgBin\pg_restore.exe" --list $backupPath > "$backupPath.list"
+if ($LASTEXITCODE -ne 0) { throw 'El archivo no es un volcado legible. No continúes.' }
+$tables = Select-String -Path "$backupPath.list" -Pattern 'TABLE DATA public (_prisma_migrations|"Sale"|"SaleLine"|inventory_movements|inventory_items|orders|users) '
+"Tablas clave con datos en el volcado: $($tables.Count) de 7"
+$file = Get-Item $backupPath
+[pscustomobject]@{
+  fecha   = $file.LastWriteTime.ToString('yyyy-MM-dd HH:mm')
+  bytes   = $file.Length
+  ruta    = $file.FullName
+  sha256  = (Get-FileHash $backupPath -Algorithm SHA256).Hash
+  pg_dump = (& "$pgBin\pg_dump.exe" --version)
+}
+```
+
+Esperado: `pg_restore --list` termina sin error y aparecen las 7 tablas clave. Si faltan tablas o el tamaño es anormalmente pequeño, detente.
+
+Anota en tus notas del despliegue la fecha, el tamaño, la ruta, el SHA-256 y la versión de `pg_dump`. **No anotes la URL.** El archivo `.list` contiene solo nombres de objetos y puede quedarse junto al volcado.
+
+### 2.5 Alternativa: CLI de Supabase
+
+Solo si el `pg_dump` local es de una versión menor que el servidor. Requiere la CLI de Supabase y Docker, que no se instalan durante este runbook. En la misma PowerShell:
+
+```powershell
+supabase db dump --db-url $dumpUrl -f "$backupDir\catalogo-prod-schema.sql"
+supabase db dump --db-url $dumpUrl -f "$backupDir\catalogo-prod-data.sql" --use-copy --data-only
+if ($LASTEXITCODE -ne 0) { throw 'supabase db dump falló. No continúes.' }
+Select-String -Path "$backupDir\catalogo-prod-schema.sql" -Pattern '_prisma_migrations' -List
+Select-String -Path "$backupDir\catalogo-prod-data.sql" -Pattern 'COPY "public"\."Sale"' -List
+```
+
+Produce SQL plano en lugar del formato `-Fc`. Se verifica comprobando que ambos archivos existen, no están vacíos y contienen esas tablas. Registra los mismos datos que en 2.4 para cada archivo.
+
+### 2.6 Cómo restaurar desde el volcado (solo si hiciera falta)
+
+Primero, siempre que sea posible, **restaura en otra base** para inspeccionar o recuperar datos concretos sin tocar producción: un proyecto Supabase de prueba o un PostgreSQL local vacío.
+
+```powershell
+# $destUrl: URL de una base VACÍA de prueba, leída sin eco con el mismo patrón de 2.2.
+& "$pgBin\pg_restore.exe" --no-owner --no-privileges --single-transaction --dbname=$destUrl $backupPath
+```
+
+Restaurar **sobre producción** es el último recurso y requiere una decisión explícita:
+- se pierden todas las escrituras posteriores al volcado (pedidos, ventas, movimientos, clientes);
+- Storage no cambia, así que puede haber imágenes subidas después que queden huérfanas, o referencias a imágenes borradas después.
+
+Si se decide:
+1. Detén las escrituras: en Render, suspende el servicio de la API.
+2. Haz un volcado nuevo del estado actual (2.3 y 2.4, con otro nombre), para poder conciliar después lo que se perderá.
+3. Restaura sobre `public` en una sola transacción. Si algo falla, se revierte todo y producción queda como estaba:
+
+   ```powershell
+   & "$pgBin\pg_restore.exe" --clean --if-exists --single-transaction --no-owner --no-privileges --schema=public --dbname=$dumpUrl $backupPath
+   if ($LASTEXITCODE -ne 0) { throw 'La restauración falló y se revirtió. Producción no cambió.' }
+   ```
+
+4. Comprueba `npm.cmd exec prisma -- migrate status`. Con el volcado previo a este despliegue, las dos migraciones vuelven a figurar como pendientes, coherentes con el esquema restaurado.
+5. Reanuda el servicio en Render. Su código es compatible con el esquema anterior (ver «Compatibilidad»).
+6. Repite la consulta previa (paso 1) y una prueba de humo.
 
 ## 3. Aplicar las migraciones
 
-En una PowerShell **nueva y dedicada**, dentro de `catalog-api`, con la rama `f0b-sale-integrity` activa:
+Continúa en la **misma PowerShell dedicada** del paso 2, dentro de `catalog-api` y con la rama `f0b-sale-integrity` activa:
 
-1. Proporciona `DATABASE_URL` solo a este proceso, desde tu gestor seguro (por ejemplo, pegándola en `$env:DATABASE_URL = Read-Host`). No edites `.env` ni la imprimas. Usa la misma conexión que en migraciones anteriores: directa o *Session pooler*. **No** uses el *Transaction pooler* (puerto 6543), que no es apto para `migrate`.
-2. Confirma en el panel de Supabase que el host corresponde al proyecto de producción.
+1. `$env:DATABASE_URL` ya contiene la conexión de producción, leída sin eco y validada contra el Project ref en 2.2: directa o *Session pooler*, nunca el *Transaction pooler* (puerto 6543), que no es apto para `migrate`. Si cerraste la ventana, repite 2.2. No edites `.env` ni la imprimas.
+2. Confirma que el volcado del paso 2 está verificado y registrado.
 3. Ejecuta uno por uno y comprueba `$LASTEXITCODE` tras cada comando:
 
    ```powershell
@@ -88,7 +206,7 @@ En una PowerShell **nueva y dedicada**, dentro de `catalog-api`, con la rama `f0
 
    Esperado: `All migrations have been successfully applied` y después `Database schema is up to date!`.
 4. En el SQL Editor, repite la consulta de **restricciones actuales**: ambas deben incluir `'SALE'`. Repite también la de **migraciones de este bloque**: dos filas con `finished_at` y sin `rolled_back_at`.
-5. Cierra esa PowerShell para que la cadena de conexión no quede en la sesión.
+5. Retira las variables y cierra esa PowerShell para que la cadena de conexión no quede en la sesión: `Remove-Item Env:DATABASE_URL; $dumpUrl = $null`.
 
 No uses `migrate dev`, `db push`, `migrate reset` ni `migrate resolve --applied` contra producción.
 
@@ -135,12 +253,36 @@ git push origin main
 
 Compara ambos SHA con los anotados en el paso 0.
 
-## 7. Prueba de humo
+## 7. Prueba de humo en una cuenta de prueba
 
-Deja registros **permanentes**: las ventas no se borran y los movimientos de inventario son inmutables. Usa un artículo con nombre inequívoco y cancela la venta al final para devolver el stock.
+Hazla en una **cuenta de prueba creada para eso en producción, nunca en la cuenta real del negocio**. La prueba deja registros permanentes (las ventas no se borran y los movimientos de inventario son inmutables). En una cuenta aparte no ensucian el inventario, las ventas ni los totales del negocio.
 
-1. En `/dashboard/inventario`, crea el artículo **«PRUEBA HUMO VENTAS 2026-11»** con SKU `HUMO-2611`, regístrale una entrada de 3 unidades y una ficha comercial con precio 1000.
-2. En la misma pestaña del panel ya autenticado, abre la consola del navegador (F12) y pega:
+### 7.0 Crear e identificar la cuenta de prueba
+
+Solo la primera vez; después se reutiliza.
+
+1. Abre una **ventana privada** del navegador para que la sesión de prueba no se mezcle con la de la cuenta real.
+2. En la web de producción, entra en `/login` y crea una cuenta nueva con correo y contraseña:
+   - **Correo:** una dirección tuya dedicada a pruebas, por ejemplo con alias `tu-usuario+humo-ventas@…` si tu proveedor admite `+`. No uses el correo de la cuenta del negocio ni entres con Google, que se vincula a tu identidad real.
+   - **Nombre:** `PRUEBA HUMO — no es un cliente`.
+   - **Contraseña:** una única, guardada en tu gestor junto a una nota «cuenta de prueba de producción».
+3. No hace falta verificar el correo: una cuenta sin verificar puede usar el panel ([cuentas](accounts.md)). Si lo verificas, confirmas además que el alias recibe correo.
+4. Para identificarla, ejecuta en la consola (F12) de la ventana privada:
+
+   ```js
+   await fetch("/api/backend/me").then(r => r.json())
+   ```
+
+   Anota en tus notas de despliegue el `user.id` y el correo de la cuenta de prueba.
+5. No crees catálogos ni publiques productos con esta cuenta: así nada de ella llega al catálogo público ni recibe pedidos. Contará como un usuario más en las métricas de administración.
+6. No la cierres al terminar: se reutiliza en próximas pruebas de humo. Si algún día se cierra desde `/dashboard/cuenta`, sus datos se conservan, pero ya no se podrá usar.
+
+### 7.1 Recorrido
+
+Antes de cada paso, comprueba que la ventana privada sigue en la cuenta de prueba (el `GET /api/backend/me` del 7.0 debe devolver su `user.id`).
+
+1. En `/dashboard/inventario` de la cuenta de prueba, crea el artículo **«PRUEBA HUMO VENTAS 2026-11»** con SKU `HUMO-2611`. Regístrale una entrada de 3 unidades y una ficha comercial con precio 1000. En pruebas posteriores, reutiliza el artículo y ajusta las cifras esperadas a su stock actual.
+2. En la misma ventana privada, abre la consola del navegador (F12) y pega:
 
    ```js
    const api = async (path, method = "GET", body) => {
@@ -176,17 +318,19 @@ Deja registros **permanentes**: las ventas no se borran y los movimientos de inv
    1. Crea otra venta con `deliverImmediately: true` (repite el paso 2 con ese valor). Deja 2 unidades.
    2. En `/dashboard/ventas`, abre la venta y registra una «Devolución total» con 1 revendible y 0 dañadas.
    3. Esperado: venta `RETURNED` y stock 3 de nuevo.
-7. Repite la consulta de orígenes (paso 1): ahora aparece `SALE` con sus referencias.
+7. Repite la consulta de orígenes (paso 1): ahora aparece `SALE` con sus referencias, procedentes de la cuenta de prueba.
+8. Cierra la ventana privada. La cuenta real del negocio no se tocó en ningún paso.
 
 Si un paso falla, anota el código HTTP y `error` (no hay datos personales en esta prueba) y **no reviertas el esquema**: con las migraciones aplicadas, una corrección es hacia adelante.
 
 ## 8. Cierre
 
-- Anota en [estado](estado.md) la fecha de aplicación, los SHA publicados y el resultado de la prueba de humo.
-- El artículo, las ventas y los movimientos de prueba quedan como datos de humo identificados por el nombre y el SKU.
+- Anota en [estado](estado.md) la fecha de aplicación, los SHA publicados, el registro del volcado (fecha, tamaño, ruta, SHA-256; nunca la URL) y el resultado de la prueba de humo.
+- El artículo, las ventas y los movimientos de prueba quedan en la cuenta de prueba, identificados por su `user.id`, el nombre `PRUEBA HUMO` y el SKU `HUMO-2611`.
+- Conserva el volcado hasta confirmar que producción funciona con normalidad y luego aplica tu política de borrado: contiene datos personales.
 
 ## Recuperación de aplicación
 
 - Volver al código anterior es compatible con el esquema nuevo: no necesita revertir las migraciones. Ten en cuenta que el código anterior confirma ventas sin bloquear artículos.
 - No elimines las restricciones por SQL para «volver atrás»: quitar la segunda volvería a bloquear las ventas. Cualquier cambio de esquema posterior se hace con una migración nueva revisada.
-- Restaurar el respaldo sobre producción pierde las escrituras posteriores; es el último recurso y requiere una decisión explícita.
+- Restaurar el volcado sobre producción pierde las escrituras posteriores y no recupera Storage; es el último recurso y requiere una decisión explícita ([procedimiento en 2.6](#26-cómo-restaurar-desde-el-volcado-solo-si-hiciera-falta)).

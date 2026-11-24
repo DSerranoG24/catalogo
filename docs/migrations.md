@@ -53,6 +53,13 @@ La versión instalada de express-rate-limit registra los errores de validación 
 
 ## Respaldo previo
 
+> **Proyecto en Supabase Free: volcado manual obligatorio.** El plan Free no tiene respaldos automáticos. Antes de **cualquier** migración en producción:
+> - crea un volcado manual con `pg_dump --format=custom` (conexión directa o *Session pooler*, URL leída sin eco en una PowerShell dedicada);
+> - guárdalo **fuera del repositorio** y verifícalo con `pg_restore --list`;
+> - registra su fecha, tamaño, ruta y SHA-256, nunca la URL.
+>
+> Si el `pg_dump` local es de una versión menor que el servidor (`SELECT version();`), usa `supabase db dump`. El volcado no incluye los objetos de Storage. Sin un volcado verificado no se migra. Procedimiento completo, incluida la restauración: [runbook de noviembre de 2026, paso 2](despliegue-2026-11-ventas.md#2-respaldo-volcado-manual-obligatorio).
+
 Antes de una migración de producción:
 
 1. En Supabase Dashboard, abre **Database → Backups** y confirma que hay un respaldo utilizable y cuál es su fecha. La disponibilidad y el tipo (lógico, físico o PITR) dependen del proyecto/plan; no des por hecho que hay uno.
