@@ -18,6 +18,8 @@ const base = `http://localhost:${uiPort}`;
 let stage = "SETUP", app, ui, api, chrome, socket;
 const items = [], movements = [], posts = [], browserErrors = [];
 let loseReply = false, failList = false, expired = false;
+let detailMode = "NORMAL", holdSave = false, releaseSave;
+const edits = [];
 const passed = [];
 function pass(name) { passed.push(name); console.log(`PASS ${name}`); }
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -47,7 +49,7 @@ async function click(label) {
 async function fill(label, value) {
   assert.ok(await evaluate(`(()=>{const node=[...document.querySelectorAll('label')].find(e=>e.firstChild?.textContent===${JSON.stringify(label)})?.querySelector('input,select');if(!node)return false;const prototype=node.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(prototype,'value').set.call(node,${JSON.stringify(value)});node.dispatchEvent(new Event(node.tagName==='SELECT'?'change':'input',{bubbles:true}));return true})()`));
 }
-function fixtureItem(name, sku) { const item = { id: randomUUID(), name, sku, stock: 0, minimumStock: 2 }; items.push(item); return item; }
+function fixtureItem(name, sku) { const item = { id: randomUUID(), name, sku, stock: 0, minimumStock: 2, dataVersion: 1, stockVersion: 1, commercialTerms: null }; items.push(item); return item; }
 
 try {
   // Test a source copy without reading .env files or changing the project's tool configuration.
@@ -66,8 +68,16 @@ try {
     if (req.headers.authorization !== "Bearer inventory-browser-fixture") return reply({ message: "Session required" }, 401);
     const url = new URL(req.url, `http://127.0.0.1:${apiPort}`);
     if (url.pathname === "/api/me") return reply({ user: { email: "fixture@example.invalid", emailVerifiedAt: "2026-11-17T00:00:00Z", hasLocalPassword: false } });
+    if (url.pathname === "/api/catalogs") return reply({ catalogs: [] });
+    if (url.pathname === "/api/inventory/publications") return reply({ result: [] });
     if (!url.pathname.startsWith("/api/inventory/items")) return reply({}, 404);
     if (req.method === "GET") {
+      if (url.pathname.endsWith("/images")) return reply({ result: [] });
+      if (url.pathname.endsWith("/commercial-terms")) {
+        if (detailMode === "ERROR") return reply({ message: "Ficha temporalmente no disponible" }, 503);
+        if (detailMode === "INVALID") return reply({ result: { items: [] } });
+        return reply({ result: items.find(item => item.id === url.pathname.split("/")[4]) });
+      }
       const page = Number(url.searchParams.get("page") || 1);
       if (url.pathname.endsWith("/movements")) {
         const rows = movements.filter(row => row.itemId === url.pathname.split("/")[4]).toReversed();
@@ -84,7 +94,22 @@ try {
       const existing = items.find(item => item.id === body.id);
       if (existing) return reply({ result: existing });
       if (items.some(item => item.sku === body.sku)) return reply({ message: "SKU ya utilizado" }, 409);
-      const item = { ...body, stock: 0 }; items.unshift(item); return reply({ result: item });
+      const item = { ...body, stock: 0, dataVersion: 1, stockVersion: 1, commercialTerms: null }; items.unshift(item); return reply({ result: item });
+    }
+    if (req.method === "PATCH" || req.method === "PUT") {
+      const item = items.find(item => item.id === url.pathname.split("/")[4]);
+      if (!item) return reply({}, 404);
+      edits.push({ method: req.method, body: structuredClone(body), itemId: item.id });
+      if (req.method === "PATCH") {
+        if (item.dataVersion !== body.expectedVersion) return reply({ message: "Los datos cambiaron" }, 409);
+        Object.assign(item, { name: body.name.trim(), sku: body.sku.trim().toUpperCase(), minimumStock: body.minimumStock, dataVersion: item.dataVersion + 1 });
+      } else {
+        if ((item.commercialTerms?.version ?? null) !== body.expectedVersion) return reply({ message: "La ficha cambió" }, 409);
+        item.commercialTerms = { currency: "COP", unitSalePrice: body.unitSalePrice, referenceUnitCost: body.referenceUnitCost, version: (item.commercialTerms?.version ?? 0) + 1 };
+      }
+      const result = structuredClone(item);
+      if (holdSave) await new Promise(resolve => { releaseSave = resolve; });
+      return reply({ result });
     }
     posts.push(body);
     const itemId = url.pathname.split("/")[4], item = items.find(row => row.id === itemId);
@@ -94,7 +119,7 @@ try {
     const stock = body.type === "ADJUSTMENT" ? body.quantity : item.stock + (body.type === "IN" ? body.quantity : -body.quantity);
     if (stock < 0) return reply({ message: "El movimiento excede las existencias" }, 409);
     const movement = { ...body, itemId, id: randomUUID(), previousStock: item.stock, resultingStock: stock, createdAt: new Date().toISOString() };
-    movements.push(movement); item.stock = stock;
+    movements.push(movement); item.stock = stock; item.stockVersion++;
     if (loseReply) { loseReply = false; return reply({ message: "Respuesta perdida simulada. Reintenta con los mismos datos." }, 503); }
     return reply({ result: movement });
   });
@@ -106,7 +131,7 @@ try {
   const executable = ["C:/Program Files/Google/Chrome/Application/chrome.exe", "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"].find(existsSync);
   assert.ok(executable, "CHROME_OR_EDGE_REQUIRED");
   const profile = path.join(folder, "browser-profile");
-  chrome = spawn(executable, ["--headless=new", "--disable-gpu", "--disable-background-networking", "--disable-component-update", "--disable-sync", "--no-first-run", "--no-default-browser-check", "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { windowsHide: true, stdio: "ignore" });
+  chrome = spawn(executable, [...(process.env.INVENTORY_BROWSER_NO_SANDBOX === "1" ? ["--no-sandbox"] : []), "--headless=new", "--disable-gpu", "--disable-background-networking", "--disable-component-update", "--disable-sync", "--no-first-run", "--no-default-browser-check", "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { windowsHide: true, stdio: "ignore" });
   await poll(() => existsSync(path.join(profile, "DevToolsActivePort")));
   const port = (await fs.readFile(path.join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0];
   const tabs = await (await fetch(`http://127.0.0.1:${port}/json`, { signal: AbortSignal.timeout(5000) })).json();
@@ -134,7 +159,7 @@ try {
   await fill("Cantidad", "5"); await fill("Motivo", "Entrada de prueba"); loseReply = true;
   await click("Registrar movimiento"); await poll(async () => (await text()).includes("Respuesta perdida simulada"));
   await click("Movimientos de Producto de prueba B");
-  assert.ok(await evaluate("(()=>{const fields=document.querySelectorAll('section[aria-labelledby=movements] input');return fields[0].value==='1'&&fields[1].value==='';})()"), "draft must not leak to another product");
+  assert.ok(await evaluate("(()=>{const fields=document.querySelectorAll('form[aria-label=\"Registrar movimiento\"] input');return fields[0].value==='1'&&fields[1].value==='';})()"), "draft must not leak to another product");
   await click("Movimientos de Producto de prueba A");
   await click("Registrar movimiento");
   await poll(async () => (await text()).includes("Movimiento registrado."));
@@ -149,9 +174,53 @@ try {
   stage = "DOUBLE_SUBMISSION";
   await fill("Tipo", "IN"); await fill("Cantidad", "2"); await fill("Motivo", "Doble envío de prueba");
   const beforeDouble = posts.length;
-  await evaluate("(()=>{const form=document.querySelector('section[aria-labelledby=movements] form');form.requestSubmit();form.requestSubmit()})()");
+  await evaluate("(()=>{const form=document.querySelector('form[aria-label=\"Registrar movimiento\"]');form.requestSubmit();form.requestSubmit()})()");
   await poll(async () => (await text()).includes("Existencias al consultar: 2"));
   assert.equal(posts.length, beforeDouble + 1); pass(stage);
+  stage = "DETAIL_LOAD_ERROR_INVALID_REPLY_AND_RETRY";
+  detailMode = "INVALID"; await click("Movimientos de Producto de prueba B");
+  await poll(async () => (await text()).includes("No se pudo validar la ficha de inventario"));
+  assert.equal(await evaluate(`document.querySelector('section[aria-label="Datos y ficha comercial"] fieldset').disabled`), true);
+  detailMode = "ERROR"; await click("Recargar ficha");
+  await poll(async () => (await text()).includes("Ficha temporalmente no disponible"));
+  detailMode = "NORMAL"; await click("Recargar ficha");
+  await poll(() => evaluate(`!document.querySelector('section[aria-label="Datos y ficha comercial"] fieldset').disabled`));
+  assert.ok(!(await text()).includes("Ficha temporalmente no disponible")); pass(stage);
+  stage = "DETAIL_CANONICAL_VALUES_EXACT_MONEY_AND_DOUBLE_SUBMISSION";
+  const beforeEdits = edits.length, beforeMovements = movements.length;
+  await fill("Precio de venta COP", "1234");
+  await fill("Editar SKU", " item-b-new ");
+  await evaluate(`(()=>{const form=document.querySelector('section[aria-label="Datos y ficha comercial"] form');form.requestSubmit();form.requestSubmit()})()`);
+  await poll(async () => (await text()).includes("Ficha actualizada."));
+  assert.equal(edits.length, beforeEdits + 1);
+  assert.equal(await evaluate(`document.querySelector('section[aria-label="Datos y ficha comercial"] form input:nth-of-type(1)')?.value`), "Producto de prueba B");
+  assert.equal(await evaluate(`[...document.querySelectorAll('label')].find(l=>l.textContent==='Editar SKU').querySelector('input').value`), "ITEM-B-NEW");
+  assert.equal(await evaluate(`[...document.querySelectorAll('label')].find(l=>l.textContent==='Precio de venta COP').querySelector('input').value`), "1234", "Saving metadata must preserve an unsaved commercial draft");
+  await fill("Precio de venta COP", "9007199254740993"); await fill("Costo de referencia COP (opcional)", "4000");
+  await click("Guardar ficha comercial"); await poll(() => edits.length === beforeEdits + 2);
+  await poll(() => evaluate(`!document.querySelector('section[aria-label="Datos y ficha comercial"] fieldset').disabled`));
+  assert.equal(items.find(item => item.sku === "ITEM-B-NEW").commercialTerms.unitSalePrice, "9007199254740993");
+  assert.equal(edits.at(-1).body.expectedVersion, null);
+  assert.equal(movements.length, beforeMovements, "Metadata and prices must never change stock or append movements");
+  pass(stage);
+  stage = "LATE_DETAIL_SAVE_MUST_NOT_RESELECT_OLD_ITEM";
+  holdSave = true; await fill("Editar nombre", "Producto B actualizado"); await click("Guardar datos del producto");
+  await poll(() => Boolean(releaseSave));
+  await click("Movimientos de Producto de prueba A");
+  await poll(() => evaluate(`document.getElementById('movements').textContent==='Movimientos: Producto de prueba A'`));
+  releaseSave(); holdSave = false;
+  await poll(async () => (await text()).includes("Producto B actualizado"));
+  assert.equal(await evaluate(`document.getElementById('movements').textContent`), "Movimientos: Producto de prueba A");
+  pass(stage);
+  stage = "COUNTED_ADJUSTMENTS_DISPLAY_SIGNED_DELTAS";
+  await fill("Tipo", "ADJUSTMENT"); await fill("Existencia final contada", "8"); await fill("Motivo", "Saldo contado inicial"); await click("Registrar movimiento");
+  await poll(async () => (await text()).includes("Existencias al consultar: 8"));
+  await fill("Existencia final contada", "12"); await fill("Motivo", "Conteo al alza"); await click("Registrar movimiento");
+  await poll(async () => (await text()).includes("Variación +4"));
+  await fill("Existencia final contada", "7"); await fill("Motivo", "Conteo a la baja"); await click("Registrar movimiento");
+  await poll(async () => (await text()).includes("Variación -5"));
+  assert.equal(movements.at(-1).quantity, 7); assert.equal(movements.at(-1).previousStock, 12);
+  pass(stage);
   stage = "SEARCH_PAGINATION_AND_RECOVERY";
   for (let index = 0; index < 25; index++) fixtureItem(`Paginado ${index}`, `PAGE-${index}`);
   await fill("Buscar por nombre o SKU", "paginado"); await click("Buscar"); await poll(async () => (await text()).includes("25 productos"));

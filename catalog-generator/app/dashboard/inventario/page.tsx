@@ -123,13 +123,13 @@ export default function InventoryPage() {
       </>}
     </section>
     {selected && <section aria-labelledby="movements" className="space-y-4 rounded-2xl border border-[#dce4dc] bg-white p-5">
-      <InventoryDetails key={selected.id} id={selected.id} onSaved={item => { setSelected(item); setRevision(value => value + 1); }} />
+      <InventoryDetails key={selected.id} id={selected.id} onSaved={item => { setSelected(current => current?.id === item.id ? item : current); setRevision(value => value + 1); }} />
       <InventoryPublicationPanel item={selected} />
       <h2 id="movements" ref={movementHeading} tabIndex={-1} className="break-words text-xl font-semibold focus-visible:outline-2 focus-visible:outline-offset-4">Movimientos: {selected.name}</h2>
       <p>Existencias al consultar: {selected.stock}. El servidor valida el saldo actual al guardar.</p>
       {error && errorKind === "movement" && <p role="alert" className="text-red-800">{error}</p>}
       <p className="text-sm">Si falla la conexión, reintenta con los mismos datos. Antes de repetir una operación después de recargar la página, revisa el historial.</p>
-      <form onSubmit={event => { event.preventDefault(); void save("movement"); }} className="grid gap-4 sm:grid-cols-3">
+      <form aria-label="Registrar movimiento" onSubmit={event => { event.preventDefault(); void save("movement"); }} className="grid gap-4 sm:grid-cols-3">
         <fieldset disabled={busy} className="contents">
           <label className={field}>Tipo<select className="min-h-11 rounded border p-2" value={type} onChange={event => updateMovementDraft({ type: event.target.value })}>{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label className={field}>{type === "ADJUSTMENT" ? "Existencia final contada" : "Cantidad"}<Input required type="number" min={type === "ADJUSTMENT" ? 0 : 1} max="2147483647" step="1" value={quantity} onChange={event => updateMovementDraft({ quantity: event.target.value })} /></label>
@@ -143,7 +143,7 @@ export default function InventoryPage() {
       {historyError && <p role="alert">{historyError} <Button variant="secondary" onClick={() => setRevision(value => value + 1)}>Reintentar historial</Button></p>}
       {history && <>
         {!history.movements.length && <p>Aún no hay movimientos.</p>}
-        <ul className="divide-y">{history.movements.map(movement => <li key={movement.id} className="py-3"><p>{labels[movement.type]} · {movement.quantity} unidades · {movement.previousStock} → {movement.resultingStock}</p><p className="break-words text-sm">{movement.reason}</p><time className="text-sm" dateTime={movement.createdAt}>{new Date(movement.createdAt).toLocaleString("es-CO", { timeZone: "America/Bogota" })}</time></li>)}</ul>
+        <ul className="divide-y">{history.movements.map(movement => <li key={movement.id} className="py-3"><p>{labels[movement.type]} · {movement.type === "ADJUSTMENT" ? `Variación ${movement.resultingStock - movement.previousStock >= 0 ? "+" : ""}${movement.resultingStock - movement.previousStock} · Conteo final ${movement.quantity}` : `${movement.quantity} unidades`} · {movement.previousStock} → {movement.resultingStock}</p><p className="break-words text-sm">{movement.reason}</p><time className="text-sm" dateTime={movement.createdAt}>{new Date(movement.createdAt).toLocaleString("es-CO", { timeZone: "America/Bogota" })}</time></li>)}</ul>
         <div className="flex flex-wrap items-center gap-3"><Button variant="secondary" className="shrink-0" disabled={historyPage === 1} onClick={() => setHistoryPage(value => value - 1)}>Anteriores</Button><span className="shrink-0 whitespace-nowrap">Página {historyPage}</span><Button variant="secondary" className="shrink-0" disabled={historyPage * 24 >= history.total} onClick={() => setHistoryPage(value => value + 1)}>Más movimientos</Button></div>
       </>}
     </section>}
