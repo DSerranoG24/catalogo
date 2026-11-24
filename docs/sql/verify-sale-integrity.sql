@@ -1,5 +1,6 @@
--- SOLO LECTURA. Comprueba si los datos actuales de Ventas cumplen las reglas de la
--- migración 20261124100000_sale_integrity_checks ANTES de aplicarla.
+-- SOLO LECTURA. Comprueba si los datos actuales cumplen las reglas de las migraciones
+-- 20261124100000_sale_integrity_checks y 20261124200000_inventory_movements_allow_sale_origin
+-- ANTES de aplicarlas.
 --
 -- Uso: ejecutar completo en el editor SQL de la base que se va a migrar. No modifica
 -- nada: la transacción es READ ONLY y termina en ROLLBACK. Solo devuelve IDs, nunca
@@ -59,6 +60,26 @@ WITH rules AS (
     FROM "SaleReturnLine" r
    WHERE r."resellableQuantity"::numeric + r."damagedQuantity"::numeric <> r."receivedQuantity"::numeric
 
+  -- inventory_movements (reglas de 20261124200000_inventory_movements_allow_sale_origin)
+  UNION ALL
+  SELECT 'CHECK', 'inventory_movements_origin_check', m.id
+    FROM inventory_movements m WHERE m.origin NOT IN ('MANUAL', 'INVENTORY_BATCH', 'SALE')
+  UNION ALL
+  SELECT 'CHECK', 'inventory_movements_batch_check', m.id
+    FROM inventory_movements m
+   WHERE NOT coalesce(
+         (m.origin = 'MANUAL'
+           AND m."batchId" IS NULL AND m."batchRowId" IS NULL AND m."batchOperationId" IS NULL
+           AND m."saleId" IS NULL AND m."saleLineId" IS NULL AND m."saleMovementRole" IS NULL)
+      OR (m.origin = 'INVENTORY_BATCH'
+           AND m."batchId" IS NOT NULL AND m."batchRowId" IS NOT NULL AND m."batchOperationId" IS NOT NULL
+           AND m."actorUserId" IS NOT NULL
+           AND m."saleId" IS NULL AND m."saleLineId" IS NULL AND m."saleMovementRole" IS NULL)
+      OR (m.origin = 'SALE'
+           AND m."saleId" IS NOT NULL AND m."saleLineId" IS NOT NULL AND m."saleMovementRole" IS NOT NULL
+           AND m."actorUserId" IS NOT NULL
+           AND m."batchId" IS NULL AND m."batchRowId" IS NULL AND m."batchOperationId" IS NULL), false)
+
   -- Diagnósticos entre tablas (no son CHECK; no bloquean la migración) -----
   UNION ALL
   SELECT 'DIAGNÓSTICO', 'Sale_subtotal_matches_lines', s.id
@@ -89,6 +110,7 @@ catalog AS (
     ('CHECK', 'SaleLine_discount_within_price_check'), ('CHECK', 'SaleLine_total_equation_check'),
     ('CHECK', 'SaleReturnLine_received_positive_check'), ('CHECK', 'SaleReturnLine_split_nonnegative_check'),
     ('CHECK', 'SaleReturnLine_split_equation_check'),
+    ('CHECK', 'inventory_movements_origin_check'), ('CHECK', 'inventory_movements_batch_check'),
     ('DIAGNÓSTICO', 'Sale_subtotal_matches_lines'), ('DIAGNÓSTICO', 'SaleReturnLine_received_equals_sold'),
     ('DIAGNÓSTICO', 'Returned_sale_covers_all_lines')
   ) AS c(kind, rule)
@@ -106,5 +128,29 @@ SELECT c.kind AS tipo,
 SELECT (SELECT count(*) FROM "Sale") AS ventas,
        (SELECT count(*) FROM "SaleLine") AS lineas,
        (SELECT count(*) FROM "SaleReturnLine") AS lineas_devueltas;
+
+-- Orígenes existentes en inventory_movements. Antes de la segunda migración solo
+-- deberían aparecer MANUAL e INVENTORY_BATCH, y ninguna fila con referencias de venta.
+SELECT origin,
+       count(*) AS movimientos,
+       count(*) FILTER (WHERE "saleId" IS NOT NULL OR "saleLineId" IS NOT NULL OR "saleMovementRole" IS NOT NULL) AS con_referencias_de_venta,
+       count(*) FILTER (WHERE "batchId" IS NOT NULL) AS con_referencias_de_lote
+  FROM inventory_movements
+ GROUP BY origin
+ ORDER BY origin;
+
+-- Restricciones que la segunda migración reemplaza por nombre. Deben aparecer las dos;
+-- si falta alguna o tiene otro nombre, la migración falla sin aplicar cambios.
+SELECT conname AS restriccion, pg_get_constraintdef(oid) AS definicion_actual
+  FROM pg_constraint
+ WHERE conrelid = 'inventory_movements'::regclass
+   AND conname IN ('inventory_movements_origin_check', 'inventory_movements_batch_check')
+ ORDER BY conname;
+
+-- Migraciones registradas por Prisma de este bloque (debe estar vacío antes de aplicar).
+SELECT migration_name, finished_at, rolled_back_at
+  FROM _prisma_migrations
+ WHERE migration_name IN ('20261124100000_sale_integrity_checks', '20261124200000_inventory_movements_allow_sale_origin')
+ ORDER BY started_at;
 
 ROLLBACK;

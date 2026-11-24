@@ -2,7 +2,7 @@
 
 ## Estado del repositorio
 
-El historial versionado contiene 37 migraciones (24/11/2026); el recuento de CHECK está en [estado](estado.md#migraciones). No es una consulta al ledger remoto. Prisma recibe DATABASE_URL del proceso y puede cargar el archivo local como respaldo: confirmar siempre el destino sin imprimir credenciales.
+El historial versionado contiene 38 migraciones (24/11/2026); el recuento de CHECK está en [estado](estado.md#migraciones). No es una consulta al ledger remoto. Prisma recibe DATABASE_URL del proceso y puede cargar el archivo local como respaldo: confirmar siempre el destino sin imprimir credenciales.
 
 Las comunicaciones de despliegue y comprobaciones anteriores están en el [historial](historial/README.md); no sustituyen una verificación nueva. No hay una segunda historia de migraciones Supabase versionada en este repositorio.
 
@@ -341,5 +341,17 @@ Añade 11 CHECK a `"Sale"`, `"SaleLine"` y `"SaleReturnLine"` ([contrato](sales-
 2. Si alguna regla `CHECK` da más de 0, no aplicar la migración. Revisar esas ventas con el responsable; no corregir importes por SQL sin una decisión explícita.
 3. Si se aplica con datos inválidos, la transacción completa se revierte: no quedan restricciones a medias. Prisma registra la migración como fallida y bloquea despliegues posteriores (`P3009`). Tras corregir la causa: `npm.cmd exec prisma -- migrate resolve --rolled-back 20261124100000_sale_integrity_checks` y volver a ejecutar `prisma:migrate:deploy`. Este ciclo se ensayó en PostgreSQL local el 24/11/2026.
 4. `ALTER TABLE … ADD CONSTRAINT … CHECK` toma un bloqueo exclusivo de cada tabla mientras revisa sus filas: las ventas quedan en espera durante esos segundos. Aplicar en un momento de poca actividad.
+
+### Origen de movimientos de venta (`20261124200000_inventory_movements_allow_sale_origin`)
+
+Reemplaza, con los mismos nombres, `inventory_movements_origin_check` (ahora admite `MANUAL`, `INVENTORY_BATCH` y `SALE`) e `inventory_movements_batch_check`:
+- `SALE` exige `saleId`, `saleLineId`, `saleMovementRole` y `actorUserId`, sin referencias de lote;
+- `MANUAL` e `INVENTORY_BATCH` conservan sus reglas y ya no admiten referencias de venta.
+
+Sin ella, toda venta que mueve stock falla en producción.
+
+- Las filas existentes se validan al añadir las restricciones. Como `inventory_movements` es inmutable (trigger `inventory_immutable_movement`), una fila que incumpla las reglas nuevas no se puede reparar. La migración fallaría sin cambios y habría que revisar su diseño.
+- La [consulta previa](sql/verify-sale-integrity.sql) incluye ambas reglas, el desglose de orígenes y la comprobación de que las dos restricciones existen con esos nombres.
+- Procedimiento completo para producción, junto con la migración anterior: [runbook de noviembre de 2026](despliegue-2026-11-ventas.md).
 
 Antes de un despliegue, confirmar en configuración del servicio la versión Node de Vercel y Render. El repositorio declara Node 24 mediante `.nvmrc` y `engines.node: 24.x`, pero `render.yaml` solo fija `runtime: node`, no una versión; no se inspeccionaron los ajustes de esos servicios.

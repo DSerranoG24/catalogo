@@ -221,6 +221,9 @@ model InventoryMovement {
   reason String
   delta Int @default(0)
   actorUserId String?
+  /// MANUAL | INVENTORY_BATCH | SALE. CHECK inventory_movements_origin_check/batch_check
+  /// (migration 20261124200000_inventory_movements_allow_sale_origin): SALE requires
+  /// saleId, saleLineId, saleMovementRole and actorUserId; other origins forbid sale references.
   origin String @default("MANUAL")
   batchId String?
   batchRowId String?

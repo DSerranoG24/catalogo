@@ -85,7 +85,7 @@ No se imponen en base de datos (siguen dependiendo del servicio): que `subtotal`
 | `"SaleOperation"` | `id` (= `operationId`), `requestId`, `saleId`, `userId`, `type` (texto: `CREATE`, `UPDATE_DRAFT`, `CONFIRM`, `DELIVER`, `CANCEL`, `RETURN`, `ORDER_CONVERSION`), `status`, `expectedSaleVersion`, `requestHash`, `responseSnapshot`, `completedAt`. `UNIQUE (userId, requestId)`. |
 | `"SaleReturn"` | `saleId`, `userId`, `operationId` único, `reason`. |
 | `"SaleReturnLine"` | `returnId`, `saleLineId`, `receivedQuantity`, `resellableQuantity`, `damagedQuantity`. |
-| `inventory_movements` | Los movimientos de venta usan `origin = 'SALE'`, `saleId`, `saleLineId`, `saleMovementRole` (`SALE_CONFIRMATION`, `SALE_CANCELLATION`, `SALE_RETURN_RESELLABLE`), `key = operationId` y `actorUserId`. `SALE_RETURN_DAMAGED` existe en el enum pero no se escribe: lo dañado no genera movimiento. |
+| `inventory_movements` | Los movimientos de venta usan `origin = 'SALE'`, `saleId`, `saleLineId`, `saleMovementRole` (`SALE_CONFIRMATION`, `SALE_CANCELLATION`, `SALE_RETURN_RESELLABLE`), `key = operationId` y `actorUserId`. `SALE_RETURN_DAMAGED` existe en el enum pero no se escribe: lo dañado no genera movimiento. Desde `20261124200000_inventory_movements_allow_sale_origin`, `origin = 'SALE'` exige `saleId`, `saleLineId`, `saleMovementRole` y `actorUserId`, sin referencias de lote. `MANUAL` e `INVENTORY_BATCH` no admiten referencias de venta, y cualquier otro origen se rechaza. |
 
 Todas las FKs de venta usan `RESTRICT`. No hay endpoint ni columna para borrar o archivar ventas.
 
@@ -162,7 +162,7 @@ Solo para ventas `DELIVERED`. Cada línea enviada debe existir en la venta y ten
 
 - [`sale-integrity.test.ts`](../catalog-api/src/services/sale-integrity.test.ts): doble con bloqueos de fila y deshacer por transacción. Cubre carreras de confirmación, orden de bloqueo, cancelación y devolución concurrentes, y reintentos.
 - `sale-customer.test.ts`, `sale-conversion.test.ts` y `customer-sales.test.ts`: clientes, instantáneas y conversión.
-- [`verify-sale-integrity-postgres.ts`](../catalog-api/src/scripts/verify-sale-integrity-postgres.ts): ensayo en PostgreSQL local (`catalogo_test`, esquema aleatorio). Cubre la consulta de verificación, el fallo atómico de la migración, los CHECK, las carreras reales y los reintentos. Ejecutar desde `catalog-api` tras `npm.cmd run build`: `'postgresql://<usuario>@127.0.0.1:<puerto>/catalogo_test' | npm.cmd run test:sales-postgres`.
+- [`verify-sale-integrity-postgres.ts`](../catalog-api/src/scripts/verify-sale-integrity-postgres.ts): ensayo en PostgreSQL local (`catalogo_test`, esquema aleatorio) con la cadena real de migraciones y sin cambios manuales. Cubre el bloqueo previo, la consulta de verificación, el fallo atómico y la recuperación de P3009, las reglas de origen y los CHECK. Recorre el flujo completo (confirmar, entregar, confirmar y entregar, cancelar, devolver revendible y dañado, convertir pedidos en borrador, confirmado y entregado), comprobando stock y movimiento en cada paso. Termina con la conciliación del registro, las carreras reales y los reintentos. Ejecutar desde `catalog-api` tras `npm.cmd run build`: `'postgresql://<usuario>@127.0.0.1:<puerto>/catalogo_test' | npm.cmd run test:sales-postgres`.
 
 ## 12. Diferencias con la versión 1.1
 
@@ -182,7 +182,10 @@ Solo para ventas `DELIVERED`. Cada línea enviada debe existir en la venta y ten
 
 ## 13. Limitaciones y riesgos conocidos
 
-- **Origen de movimiento rechazado por el esquema aplicado (bloqueante).** `inventory_movements_origin_check` y `inventory_movements_batch_check` (migración `20261119000000_inventory_batches`) solo admiten `MANUAL` e `INVENTORY_BATCH`. Los movimientos de venta usan `SALE`. En una base con la cadena completa aplicada, confirmar, convertir en `CONFIRMED`/`DELIVERED`, cancelar una venta confirmada y devolver unidades revendibles fallan con `500`. Lo detectó el ensayo PostgreSQL del 24 de noviembre de 2026. Corregirlo exige una migración nueva que amplíe esas dos restricciones, pendiente de aprobación.
+- **Origen de movimiento rechazado por el esquema aplicado (bloqueante hasta aplicar `20261124200000_inventory_movements_allow_sale_origin`).**
+  - `inventory_movements_origin_check` y `inventory_movements_batch_check` (migración `20261119000000_inventory_batches`) solo admiten `MANUAL` e `INVENTORY_BATCH`, y los movimientos de venta usan `SALE`.
+  - Mientras no se aplique la migración correctora, fallan con `500`: confirmar, convertir en `CONFIRMED`/`DELIVERED`, cancelar una venta confirmada y devolver unidades revendibles.
+  - La migración está preparada y ensayada, pero no aplicada. Procedimiento: [runbook](despliegue-2026-11-ventas.md).
 - La conversión de pedidos descuenta stock sin bloquear los artículos en orden; dos conversiones o una conversión y una venta simultáneas pueden dejar `previousStock` obsoletos en el historial. El saldo no baja de cero gracias al CHECK.
 - Una devolución no exige incluir todas las líneas de la venta; la venta pasa a `RETURNED` aunque falte alguna.
 - Cancelar una venta `DELIVERED` reingresa todo el stock sin registrar recepción física.
