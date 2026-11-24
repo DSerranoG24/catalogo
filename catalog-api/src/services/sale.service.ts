@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { createHash, randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma";
 import { lockInventoryOwner } from "../repositories/inventory.repository";
 import { z } from "zod";
@@ -8,12 +9,37 @@ import { createSaleSchema, updateDraftSaleSchema, confirmSaleSchema, transitionS
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const jsonSafe = (value: unknown) => JSON.parse(JSON.stringify(value, (_, v) => typeof v === "bigint" ? v.toString() : v));
+const compare = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
+const byItem = <T extends { inventoryItemId: string }>(lines: T[]) => [...lines].sort((a, b) => compare(a.inventoryItemId, b.inventoryItemId));
 export function makeSaleService(database = prisma) {
   async function own(tx: any, userId: string, id: string) { const sale = await tx.sale.findFirst({ where: { id, userId }, include: saleCustomerInclude(userId) }); if (!sale) throw new Error("NOT_FOUND"); return sale; }
   async function operation(tx: any, userId: string, saleId: string, input: { operationId: string; requestId?: string; expectedVersion?: number | null }, type: string, command: unknown) {
     const requestHash = hash(command); const previous = await tx.saleOperation.findFirst({ where: { saleId, userId, OR: [{ id: input.operationId }, { requestId: input.requestId }] } });
     if (previous) { if (previous.requestHash !== requestHash) throw new Error("IDEMPOTENCY_CONFLICT"); return previous; }
     return tx.saleOperation.create({ data: { id: input.operationId, saleId, userId, type, requestId: input.requestId ?? input.operationId, expectedSaleVersion: input.expectedVersion ?? null, requestHash, status: "PREPARED" } });
+  }
+  // Lock order shared by confirm/deliver/cancel/return: owner FOR SHARE -> Sale FOR UPDATE -> items ORDER BY id FOR UPDATE.
+  // A key that already succeeded returns its stored receipt before status/version checks, so a lost reply can be retried.
+  async function begin(tx: any, userId: string, saleId: string, input: { operationId: string; requestId?: string }, type: string) {
+    await lockInventoryOwner(tx, userId);
+    await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${saleId} AND "userId" = ${userId} FOR UPDATE`;
+    const sale = await own(tx, userId, saleId);
+    const previous = await tx.saleOperation.findFirst({ where: { userId, OR: [{ id: input.operationId }, { requestId: input.requestId ?? input.operationId }] } });
+    if (!previous) return { sale, replayed: undefined };
+    if (previous.saleId !== saleId || previous.type !== type || previous.requestHash !== hash(input)) throw new Error("IDEMPOTENCY_CONFLICT");
+    if (previous.status !== "SUCCEEDED") return { sale, replayed: undefined };
+    return { sale, replayed: previous.responseSnapshot ?? jsonSafe(sale) };
+  }
+  async function lockItems(tx: any, userId: string, ids: string[]) {
+    const unique = [...new Set(ids)].sort(compare);
+    if (!unique.length) return new Map();
+    await tx.$queryRaw(Prisma.sql`SELECT id FROM inventory_items WHERE "userId" = ${userId} AND id IN (${Prisma.join(unique)}) ORDER BY id FOR UPDATE`);
+    // Read balances only after the rows are locked, so a concurrent sale's committed stock is visible.
+    const items = await tx.inventoryItem.findMany({ where: { userId, id: { in: unique } }, include: { commercialTerms: true } });
+    return new Map(items.map((item: any) => [item.id, item]));
+  }
+  async function succeed(tx: any, op: { id: string }, updated: unknown) {
+    await tx.saleOperation.update({ where: { id: op.id }, data: { status: "SUCCEEDED", completedAt: new Date(), responseSnapshot: jsonSafe(updated) } });
   }
   return {
     async convertOrderToSale(userId: string, orderId: string, input: z.infer<typeof convertOrderToSaleSchema>) { input = convertOrderToSaleSchema.parse(input); return database.$transaction(async tx => {
@@ -40,9 +66,42 @@ export function makeSaleService(database = prisma) {
     async get(userId: string, saleId: string) { return database.$transaction(async tx => { await lockInventoryOwner(tx, userId); return own(tx, userId, saleId); }); },
     create: (userId: string, input: z.infer<typeof createSaleSchema>) => createInternalSale(userId, input, database),
     updateDraft: (userId: string, saleId: string, input: z.infer<typeof updateDraftSaleSchema>) => updateInternalSaleDraft(userId, saleId, input, database),
-    async confirm(userId: string, saleId: string, input: z.infer<typeof confirmSaleSchema>) { return database.$transaction(async tx => { await lockInventoryOwner(tx, userId); const sale = await own(tx, userId, saleId); if (sale.status !== "DRAFT" || sale.version !== input.expectedVersion) throw new Error("VERSION_CONFLICT"); const op = await operation(tx, userId, saleId, input, "CONFIRM", input); if (op.status === "SUCCEEDED") return sale; for (const line of sale.lines) { const item = await tx.inventoryItem.findFirst({ where: { id: line.inventoryItemId, userId }, include: { commercialTerms: true } }); if (!item || item.stock < line.quantity) throw new Error("STOCK_INSUFFICIENT"); if (!item.commercialTerms || item.commercialTerms.version !== line.commercialTermsVersion) throw new Error("PRICE_CHANGED"); await tx.inventoryItem.update({ where: { id: item.id }, data: { stock: { decrement: line.quantity }, stockVersion: { increment: 1 } } }); await tx.inventoryMovement.create({ data: { itemId: item.id, saleId, saleLineId: line.id, saleMovementRole: "SALE_CONFIRMATION", key: input.operationId, type: "OUT", quantity: line.quantity, previousStock: item.stock, resultingStock: item.stock - line.quantity, delta: -line.quantity, reason: "Confirmación de venta", actorUserId: userId, origin: "SALE" } }); } const status = input.deliverImmediately ? "DELIVERED" : "CONFIRMED"; const updated = await tx.sale.update({ where: { id: saleId }, data: { status, confirmedAt: new Date(), deliveredAt: input.deliverImmediately ? new Date() : null, version: { increment: 1 } } }); await tx.saleOperation.update({ where: { id: op.id }, data: { status: "SUCCEEDED", completedAt: new Date(), responseSnapshot: updated } }); return updated; }); },
-    async transition(userId: string, saleId: string, input: z.infer<typeof transitionSaleSchema>) { return database.$transaction(async tx => { await lockInventoryOwner(tx, userId); const sale = await own(tx, userId, saleId); if (sale.status !== "CONFIRMED" || sale.version !== input.expectedVersion) throw new Error("INVALID_TRANSITION"); const op = await operation(tx, userId, saleId, input, "DELIVER", input); const updated = await tx.sale.update({ where: { id: saleId }, data: { status: "DELIVERED", deliveredAt: new Date(), version: { increment: 1 } } }); await tx.saleOperation.update({ where: { id: op.id }, data: { status: "SUCCEEDED", completedAt: new Date(), responseSnapshot: updated } }); return updated; }); },
-    async cancel(userId: string, saleId: string, input: z.infer<typeof cancelSaleSchema>) { return database.$transaction(async tx => { await lockInventoryOwner(tx, userId); const sale = await own(tx, userId, saleId); if (!["CONFIRMED", "DELIVERED"].includes(sale.status) || sale.version !== input.expectedVersion) throw new Error("INVALID_TRANSITION"); const op = await operation(tx, userId, saleId, input, "CANCEL", input); for (const line of sale.lines) { const item = await tx.inventoryItem.findFirstOrThrow({ where: { id: line.inventoryItemId, userId } }); await tx.inventoryItem.update({ where: { id: item.id }, data: { stock: { increment: line.quantity }, stockVersion: { increment: 1 } } }); await tx.inventoryMovement.create({ data: { itemId: item.id, saleId, saleLineId: line.id, saleMovementRole: "SALE_CANCELLATION", key: input.operationId, type: "IN", quantity: line.quantity, previousStock: item.stock, resultingStock: item.stock + line.quantity, delta: line.quantity, reason: input.reason, actorUserId: userId, origin: "SALE" } }); } const updated = await tx.sale.update({ where: { id: saleId }, data: { status: "CANCELLED", cancelledAt: new Date(), version: { increment: 1 } } }); await tx.saleOperation.update({ where: { id: op.id }, data: { status: "SUCCEEDED", completedAt: new Date(), responseSnapshot: updated } }); return updated; }); },
-    async returnSale(userId: string, saleId: string, input: z.infer<typeof returnSaleSchema>) { return database.$transaction(async tx => { await lockInventoryOwner(tx, userId); const sale = await own(tx, userId, saleId); if (sale.status !== "DELIVERED" || sale.version !== input.expectedVersion) throw new Error("INVALID_TRANSITION"); const op = await operation(tx, userId, saleId, input, "RETURN", input); const ret = await tx.saleReturn.create({ data: { saleId, userId, operationId: input.operationId, reason: input.reason } }); for (const line of input.lines) { const saleLine = sale.lines.find(l => l.id === line.saleLineId); if (!saleLine || line.receivedQuantity !== saleLine.quantity) throw new Error("RETURN_MUST_BE_TOTAL"); await tx.saleReturnLine.create({ data: { returnId: ret.id, saleLineId: line.saleLineId, receivedQuantity: line.receivedQuantity, resellableQuantity: line.resellableQuantity, damagedQuantity: line.damagedQuantity } }); if (line.resellableQuantity) { const item = await tx.inventoryItem.findFirstOrThrow({ where: { id: saleLine.inventoryItemId, userId } }); await tx.inventoryItem.update({ where: { id: item.id }, data: { stock: { increment: line.resellableQuantity }, stockVersion: { increment: 1 } } }); await tx.inventoryMovement.create({ data: { itemId: item.id, saleId, saleLineId: saleLine.id, saleMovementRole: "SALE_RETURN_RESELLABLE", key: input.operationId, type: "IN", quantity: line.resellableQuantity, previousStock: item.stock, resultingStock: item.stock + line.resellableQuantity, delta: line.resellableQuantity, reason: input.reason, actorUserId: userId, origin: "SALE" } }); } } const updated = await tx.sale.update({ where: { id: saleId }, data: { status: "RETURNED", returnedAt: new Date(), version: { increment: 1 } } }); await tx.saleOperation.update({ where: { id: op.id }, data: { status: "SUCCEEDED", completedAt: new Date(), responseSnapshot: updated } }); return updated; }); },
+    async confirm(userId: string, saleId: string, input: z.infer<typeof confirmSaleSchema>) { return database.$transaction(async tx => {
+      const { sale, replayed } = await begin(tx, userId, saleId, input, "CONFIRM"); if (replayed !== undefined) return replayed;
+      if (sale.status !== "DRAFT" || sale.version !== input.expectedVersion) throw new Error("VERSION_CONFLICT");
+      const op = await operation(tx, userId, saleId, input, "CONFIRM", input);
+      const lines = byItem(sale.lines); const items = await lockItems(tx, userId, lines.map(line => line.inventoryItemId));
+      for (const line of lines) { const item = items.get(line.inventoryItemId); if (!item || item.stock < line.quantity) throw new Error("STOCK_INSUFFICIENT"); if (!item.commercialTerms || item.commercialTerms.version !== line.commercialTermsVersion) throw new Error("PRICE_CHANGED"); }
+      for (const line of lines) { const item = items.get(line.inventoryItemId); await tx.inventoryItem.update({ where: { id: item.id }, data: { stock: { decrement: line.quantity }, stockVersion: { increment: 1 } } }); await tx.inventoryMovement.create({ data: { itemId: item.id, saleId, saleLineId: line.id, saleMovementRole: "SALE_CONFIRMATION", key: input.operationId, type: "OUT", quantity: line.quantity, previousStock: item.stock, resultingStock: item.stock - line.quantity, delta: -line.quantity, reason: "Confirmación de venta", actorUserId: userId, origin: "SALE" } }); }
+      const status = input.deliverImmediately ? "DELIVERED" : "CONFIRMED"; const updated = await tx.sale.update({ where: { id: saleId }, data: { status, confirmedAt: new Date(), deliveredAt: input.deliverImmediately ? new Date() : null, version: { increment: 1 } } });
+      await succeed(tx, op, updated); return updated;
+    }); },
+    async transition(userId: string, saleId: string, input: z.infer<typeof transitionSaleSchema>) { return database.$transaction(async tx => {
+      const { sale, replayed } = await begin(tx, userId, saleId, input, "DELIVER"); if (replayed !== undefined) return replayed;
+      if (sale.status !== "CONFIRMED" || sale.version !== input.expectedVersion) throw new Error("INVALID_TRANSITION");
+      const op = await operation(tx, userId, saleId, input, "DELIVER", input);
+      const updated = await tx.sale.update({ where: { id: saleId }, data: { status: "DELIVERED", deliveredAt: new Date(), version: { increment: 1 } } });
+      await succeed(tx, op, updated); return updated;
+    }); },
+    async cancel(userId: string, saleId: string, input: z.infer<typeof cancelSaleSchema>) { return database.$transaction(async tx => {
+      const { sale, replayed } = await begin(tx, userId, saleId, input, "CANCEL"); if (replayed !== undefined) return replayed;
+      if (!["CONFIRMED", "DELIVERED"].includes(sale.status) || sale.version !== input.expectedVersion) throw new Error("INVALID_TRANSITION");
+      const op = await operation(tx, userId, saleId, input, "CANCEL", input);
+      const lines = byItem(sale.lines); const items = await lockItems(tx, userId, lines.map(line => line.inventoryItemId));
+      for (const line of lines) { const item = items.get(line.inventoryItemId); if (!item) throw new Error("ITEM_NOT_FOUND"); await tx.inventoryItem.update({ where: { id: item.id }, data: { stock: { increment: line.quantity }, stockVersion: { increment: 1 } } }); await tx.inventoryMovement.create({ data: { itemId: item.id, saleId, saleLineId: line.id, saleMovementRole: "SALE_CANCELLATION", key: input.operationId, type: "IN", quantity: line.quantity, previousStock: item.stock, resultingStock: item.stock + line.quantity, delta: line.quantity, reason: input.reason, actorUserId: userId, origin: "SALE" } }); }
+      const updated = await tx.sale.update({ where: { id: saleId }, data: { status: "CANCELLED", cancelledAt: new Date(), version: { increment: 1 } } });
+      await succeed(tx, op, updated); return updated;
+    }); },
+    async returnSale(userId: string, saleId: string, input: z.infer<typeof returnSaleSchema>) { return database.$transaction(async tx => {
+      const { sale, replayed } = await begin(tx, userId, saleId, input, "RETURN"); if (replayed !== undefined) return replayed;
+      if (sale.status !== "DELIVERED" || sale.version !== input.expectedVersion) throw new Error("INVALID_TRANSITION");
+      const op = await operation(tx, userId, saleId, input, "RETURN", input);
+      const rows = input.lines.map(line => { const saleLine = sale.lines.find(l => l.id === line.saleLineId); if (!saleLine || line.receivedQuantity !== saleLine.quantity) throw new Error("RETURN_MUST_BE_TOTAL"); return { line, saleLine }; }).sort((a, b) => compare(a.saleLine.inventoryItemId, b.saleLine.inventoryItemId));
+      const items = await lockItems(tx, userId, rows.filter(row => row.line.resellableQuantity).map(row => row.saleLine.inventoryItemId));
+      const ret = await tx.saleReturn.create({ data: { saleId, userId, operationId: input.operationId, reason: input.reason } });
+      for (const { line, saleLine } of rows) { await tx.saleReturnLine.create({ data: { returnId: ret.id, saleLineId: line.saleLineId, receivedQuantity: line.receivedQuantity, resellableQuantity: line.resellableQuantity, damagedQuantity: line.damagedQuantity } }); if (line.resellableQuantity) { const item = items.get(saleLine.inventoryItemId); if (!item) throw new Error("ITEM_NOT_FOUND"); await tx.inventoryItem.update({ where: { id: item.id }, data: { stock: { increment: line.resellableQuantity }, stockVersion: { increment: 1 } } }); await tx.inventoryMovement.create({ data: { itemId: item.id, saleId, saleLineId: saleLine.id, saleMovementRole: "SALE_RETURN_RESELLABLE", key: input.operationId, type: "IN", quantity: line.resellableQuantity, previousStock: item.stock, resultingStock: item.stock + line.resellableQuantity, delta: line.resellableQuantity, reason: input.reason, actorUserId: userId, origin: "SALE" } }); item.stock += line.resellableQuantity; } }
+      const updated = await tx.sale.update({ where: { id: saleId }, data: { status: "RETURNED", returnedAt: new Date(), version: { increment: 1 } } });
+      await succeed(tx, op, updated); return updated;
+    }); },
   };
 }

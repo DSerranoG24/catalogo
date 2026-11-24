@@ -278,9 +278,10 @@ model Sale {
   @@index([customerId, userId])
 }
 
-/// Migration SQL must add CHECK constraints: quantity > 0, unitPrice/unitCost/unitDiscount/lineTotal >= 0,
-/// unitDiscount <= unitPrice, subtotal/discountTotal/total >= 0, discountTotal <= subtotal,
-/// and subtotal - discountTotal = total.
+/// CHECK constraints (migration 20261124100000_sale_integrity_checks): quantity > 0,
+/// unitPrice/unitCost/unitDiscount/lineTotal >= 0, unitDiscount <= unitPrice and
+/// lineTotal = (unitPrice - unitDiscount) * quantity. On "Sale": currency = 'COP',
+/// subtotal/discountTotal/total >= 0, discountTotal <= subtotal, subtotal - discountTotal = total.
 model SaleLine {
   id String @id @default(uuid())
   saleId String
@@ -342,8 +343,8 @@ model SaleReturnLine {
   saleReturn SaleReturn @relation(fields: [returnId], references: [id], onDelete: Restrict)
   saleLine SaleLine @relation(fields: [saleLineId], references: [id], onDelete: Restrict)
   @@unique([returnId, saleLineId])
-  /// Migration SQL: CHECK (receivedQuantity > 0), CHECK (resellableQuantity >= 0),
-  /// CHECK (damagedQuantity >= 0), CHECK (resellableQuantity + damagedQuantity = receivedQuantity).
+  /// CHECK constraints (migration 20261124100000_sale_integrity_checks): receivedQuantity > 0,
+  /// resellableQuantity >= 0, damagedQuantity >= 0, resellableQuantity + damagedQuantity = receivedQuantity.
 }
 
 model ItemCommercialTerms {

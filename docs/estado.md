@@ -35,8 +35,9 @@ No existe ningún modelo, ruta ni pantalla de **gastos**, **pagos/cartera** ni *
 
 ## Migraciones
 
-- Hay **36 migraciones** versionadas en `catalog-api/prisma/migrations` (desde `20261001144330_init` hasta `20261124000000_private_item_compatibilities`). No es un conteo del ledger remoto.
-- Hay al menos 24 CHECK con nombre en SQL, además de triggers en `privacy_lifecycle`, `inventory_batches` y `private_item_compatibilities`.
+- Hay **37 migraciones** versionadas en `catalog-api/prisma/migrations` (desde `20261001144330_init` hasta `20261124100000_sale_integrity_checks`). No es un conteo del ledger remoto.
+- Hay al menos 35 CHECK con nombre en SQL, además de triggers en `privacy_lifecycle`, `inventory_batches` y `private_item_compatibilities`.
+- `20261124100000_sale_integrity_checks` (11 CHECK de Ventas) está **preparada, sin confirmar en Git y sin aplicar** en ningún entorno compartido. Antes de aplicarla hay que ejecutar [la consulta de solo lectura](sql/verify-sale-integrity.sql) y seguir [su procedimiento](migrations.md#check-de-ventas-20261124100000_sale_integrity_checks).
 - `20261124000000_private_item_compatibilities` está confirmada en Git. **En este corte no se ha verificado si ya se aplicó en algún entorno.**
 - Tres migraciones tienen nombres poco descriptivos generados con `prisma migrate dev`: `20261120194535_ultima` (crea ventas), `20261120204832_new` (imágenes y publicaciones de inventario) y `20261121004537_n` (`"Sale".sourceOrderId`). No deben renombrarse si ya están aplicadas.
 
@@ -53,11 +54,27 @@ Se ejecutaron en Windows con Node `v24.19.0` entre las 15:15 y las 15:17 (UTC−
 | Frontend | `npm.cmd run lint` | Correcto: 0 errores; 4 advertencias `no-img-element` que ya existían en componentes públicos |
 | Frontend | `npm.cmd run build` | Correcto, compilado con **Turbopack** (Next.js 16.3.8) |
 
+Repetición tras el bloque de integridad de Ventas (24/11/2026, 15:58–15:59 UTC−5):
+- API: `npm.cmd test` correcto, 352/352. `npm.cmd run build` y `prisma validate` correctos.
+- Frontend: `npm.cmd test` correcto, 35 grupos. `npm.cmd run lint` sin errores, con las mismas 4 advertencias. `npm.cmd run build` correcto con Turbopack.
+- Ensayo PostgreSQL `npm.cmd run test:sales-postgres`: 11/11 etapas sobre las 37 migraciones, en un clúster temporal local en el puerto 55491. El clúster se eliminó al terminar. El origen `SALE` se amplió solo en el esquema desechable para poder ejecutar las etapas de ventas.
+
 No existe un script `typecheck` independiente en ninguno de los dos paquetes; los builds hacen la comprobación de tipos. En este corte no se ejecutaron los scripts de navegador, E2E ni PostgreSQL. El 24 de noviembre, durante el cierre de compatibilidades, pasaron los navegadores de compatibilidades, inventario, ventas por cliente y clientes de pedidos. El de inventario solo pasa si se ejecuta desde una ruta con `C:\` en mayúscula; con `c:\` en minúscula, webpack duplica módulos de Next.
 
 ## Pendientes vigentes
 
-- **Integridad de ventas en la base de datos:** las migraciones de ventas no tienen los CHECK monetarios y de devolución que exigen el [contrato](sales-contract.md#integridad-e-índices) y los comentarios de `schema.prisma`, ni triggers de inmutabilidad. Hoy esas reglas solo las aplica el servicio.
+- **Bloqueante en Ventas: el esquema aplicado rechaza los movimientos de venta.** `inventory_movements_origin_check` e `inventory_movements_batch_check` solo admiten `MANUAL` e `INVENTORY_BATCH`, y ventas escribe `origin = 'SALE'`. Con la cadena de migraciones aplicada fallan con `500`:
+  - confirmar una venta;
+  - convertir un pedido en `CONFIRMED`/`DELIVERED`;
+  - cancelar una venta confirmada;
+  - devolver unidades revendibles.
+
+  Lo detectó el ensayo PostgreSQL local del 24/11/2026. Corregirlo requiere una migración nueva aprobada ([detalle](sales-contract.md#13-limitaciones-y-riesgos-conocidos)).
+- **Integridad de ventas:** los CHECK de importes y devoluciones están preparados en `20261124100000_sale_integrity_checks`, sin aplicar. Siguen sin respaldo en base de datos las reglas entre tablas (sumas de líneas, devolución completa) y la inmutabilidad.
+- **Ventas, otros riesgos:**
+  - La conversión de pedidos descuenta stock sin bloquear los artículos en orden fijo.
+  - Una devolución no exige incluir todas las líneas.
+  - Cancelar una venta `DELIVERED` reingresa todo el stock.
 - **Compatibilidades:** falta ensayar la migración en PostgreSQL aislado (constraints, triggers diferidos y concurrencia). Los incrementos 2 a 5 del diseño no están aprobados. La API todavía no devuelve el ID de la relación existente cuando detecta un duplicado.
 - **Ventas:** el listado devuelve como máximo 50 ventas, sin paginación ni filtros. No existe acción para descartar un borrador. Sigue sin retirarse la venta sintética `fb13793c` desplegada ([detalle](customer-sales-history.md)).
 - **Cierre de cuenta:** bloquea si hay pedidos sin resolver, pero no si hay ventas `CONFIRMED` sin entregar. Esa regla estaba propuesta en el contrato de ventas y no se ha decidido.

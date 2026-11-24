@@ -2,7 +2,7 @@
 
 ## Estado del repositorio
 
-El historial versionado contiene 13 migraciones y cinco CHECK SQL. No es una consulta al ledger remoto. Prisma recibe DATABASE_URL del proceso y puede cargar el archivo local como respaldo: confirmar siempre el destino sin imprimir credenciales.
+El historial versionado contiene 37 migraciones (24/11/2026); el recuento de CHECK está en [estado](estado.md#migraciones). No es una consulta al ledger remoto. Prisma recibe DATABASE_URL del proceso y puede cargar el archivo local como respaldo: confirmar siempre el destino sin imprimir credenciales.
 
 Las comunicaciones de despliegue y comprobaciones anteriores están en el [historial](historial/README.md); no sustituyen una verificación nueva. No hay una segunda historia de migraciones Supabase versionada en este repositorio.
 
@@ -332,5 +332,14 @@ SELECT migration_name, started_at, finished_at, rolled_back_at
 FROM public._prisma_migrations
 ORDER BY started_at;
 ```
+
+### CHECK de Ventas (`20261124100000_sale_integrity_checks`)
+
+Añade 11 CHECK a `"Sale"`, `"SaleLine"` y `"SaleReturnLine"` ([contrato](sales-contract.md#restricciones-en-base-de-datos)). No actualiza ni borra datos, pero valida todas las filas existentes al aplicarse:
+
+1. Ejecutar antes [`docs/sql/verify-sale-integrity.sql`](sql/verify-sale-integrity.sql) en el editor SQL del destino. Es de solo lectura (`READ ONLY` y `ROLLBACK`) y devuelve recuentos e IDs, sin datos personales. Todas las filas `CHECK` deben dar 0. Las filas `DIAGNÓSTICO` no bloquean la migración.
+2. Si alguna regla `CHECK` da más de 0, no aplicar la migración. Revisar esas ventas con el responsable; no corregir importes por SQL sin una decisión explícita.
+3. Si se aplica con datos inválidos, la transacción completa se revierte: no quedan restricciones a medias. Prisma registra la migración como fallida y bloquea despliegues posteriores (`P3009`). Tras corregir la causa: `npm.cmd exec prisma -- migrate resolve --rolled-back 20261124100000_sale_integrity_checks` y volver a ejecutar `prisma:migrate:deploy`. Este ciclo se ensayó en PostgreSQL local el 24/11/2026.
+4. `ALTER TABLE … ADD CONSTRAINT … CHECK` toma un bloqueo exclusivo de cada tabla mientras revisa sus filas: las ventas quedan en espera durante esos segundos. Aplicar en un momento de poca actividad.
 
 Antes de un despliegue, confirmar en configuración del servicio la versión Node de Vercel y Render. El repositorio declara Node 24 mediante `.nvmrc` y `engines.node: 24.x`, pero `render.yaml` solo fija `runtime: node`, no una versión; no se inspeccionaron los ajustes de esos servicios.
