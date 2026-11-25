@@ -74,7 +74,7 @@ export default function ExpensesPanel() {
   const categoryName = (id: string) => categories.find(c => c.id === id)?.name ?? "Categoría";
 
   return <main className="mx-auto max-w-6xl space-y-6 px-5 py-8 sm:px-8">
-    <Link href="/dashboard" className="inline-flex min-h-11 items-center underline">← Catálogos</Link>
+    <Link href="/dashboard/catalogos" className="inline-flex min-h-11 items-center underline">← Catálogos</Link>
     <div>
       <h1 className="text-3xl font-semibold">Gastos</h1>
       <p className="mt-2 text-sm text-[#52675b]">Gastos operativos de contado: arriendo, servicios, transporte, publicidad, nómina y similares. Un gasto confirmado se corrige anulándolo y registrando el correcto.</p>

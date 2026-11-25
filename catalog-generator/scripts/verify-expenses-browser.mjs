@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { randomUUID } from "node:crypto";
-import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { privatePanelFixture } from "./private-panel-browser-fixture.mjs";
 import { bogotaToday, monthRange, previousMonthRange } from "../lib/expenses-ui.mjs";
@@ -208,15 +208,19 @@ try {
       await command("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 768 });
       await new Promise(resolve => setTimeout(resolve, 300));
       const { data } = await command("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
-      writeFileSync(path.join(folder, `${name}-${width}.png`), Buffer.from(data, "base64"));
+      fs.writeFileSync(path.join(folder, `${name}-${width}.png`), Buffer.from(data, "base64"));
       await command("Emulation.clearDeviceMetricsOverride");
     };
 
     // Opening Gastos: the only write is the idempotent seed; suggested categories include «Nómina y honorarios».
     await command("Page.navigate", { url: "http://localhost:4338/dashboard/gastos" });
     await waitText("No hay gastos confirmados en este periodo."); await waitTotal("$ 0");
-    assert.equal(await evaluate(`document.querySelector('header a[href="/dashboard/gastos"]')?.getAttribute('aria-current')`), "page");
-    assert.equal(await evaluate(`document.querySelector('header a[href="/dashboard/ventas"]')?.getAttribute('aria-current')`), null);
+    // The menu comes from lib/panel-navigation.ts: the Gastos entry is shown (and current) only when enabled there.
+    const gastosEnabled = /id: "gastos"[^\n]*enabled: true/.test(fs.readFileSync(new URL("../lib/panel-navigation.ts", import.meta.url), "utf8"));
+    const gastosLink = `[...document.querySelectorAll('nav[aria-label="Principal"] a[href="/dashboard/gastos"]')].find(a=>a.getClientRects().length)`;
+    if (gastosEnabled) assert.equal(await evaluate(`${gastosLink}?.getAttribute('aria-current')`), "page");
+    else assert.equal(await evaluate(`Boolean(${gastosLink})`), false, "a disabled module is not offered in the menu");
+    assert.equal(await evaluate(`[...document.querySelectorAll('nav[aria-label="Principal"] a[href="/dashboard/ventas"]')].some(a=>a.getAttribute('aria-current'))`), false);
     assert.deepEqual(mutations.map(m => m.path), ["/api/expense-categories/seed"], "opening the panel only seeds categories");
     assert.ok(uuid.test(mutations[0].body.operationId) && uuid.test(mutations[0].body.requestId));
     assert.equal(categories.length, 11);

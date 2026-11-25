@@ -87,7 +87,7 @@ try {
     };
     const named = "Comprador válido", optional = "Comprador sin correo";
     stage = "dashboard-navigation";
-    await command("Page.navigate", { url: "http://localhost:4338/dashboard" });
+    await command("Page.navigate", { url: "http://localhost:4338/dashboard/catalogos" });
     await poll(() => evaluate(`Boolean(document.querySelector('a[href="/dashboard/catalogos/${catalogId}"]'))`));
     assert.equal(await evaluate(`document.querySelector('a[href="/dashboard/catalogos/${catalogId}"]').textContent.includes('Abrir panel')`), true);
     await evaluate(`document.querySelector('a[href="/dashboard/catalogos/${catalogId}"]').focus()`);

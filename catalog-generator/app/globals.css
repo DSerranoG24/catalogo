@@ -49,6 +49,22 @@
   --elevation-high: 0 20px 44px -20px rgb(11 46 39 / 24%);
   --duration-short: 120ms;
   --duration-medium: 200ms;
+
+  /* Vitrinaya login redesign (additive): only /login and BrandLogo use these for now. */
+  --vy-navy-900: #011C4F;
+  --vy-navy-700: #002971;
+  --vy-blue-600: #0450E5;
+  --vy-blue-700: #0341BD;
+  --vy-blue-500: #0760ED;
+  --vy-blue-400: #178DFF;
+  --vy-blue-100: #DCE6FF;
+  --vy-page: #E3EBFE;
+  --vy-surface-soft: #F1F4FA;
+  --vy-text: #0B1B3F;
+  --vy-text-muted: #4A5878;
+  --vy-text-subtle: #5A6785;
+  --vy-border: #CBD5E6;
+  --vy-field-border: #8592AD;
 }
 
 @theme inline {

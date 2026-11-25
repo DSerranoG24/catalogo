@@ -1,0 +1,25 @@
+export { formatCop } from "./sales-ui.mjs";
+export type DashboardDays = 7 | 30 | 90;
+export type RecentSale = { kind: "SALE"; id: string; status: "CONFIRMED" | "DELIVERED" | "CANCELLED" | "RETURNED"; total: string; at: string; customerName: string | null };
+export type DashboardSummary = {
+  success: true;
+  generatedAt: string;
+  today: { date: string; salesTotal: string; salesCount: number; yesterdaySalesTotal: string };
+  month: { salesTotal: string; costOfSales: string; salesWithoutCostCount: number; expensesTotal: string | null; estimatedProfit: string;
+    previousMonth: { salesTotal: string; expensesTotal: string | null; estimatedProfit: string } };
+  attention: { lowStockCount: number; outOfStockCount: number; pendingOrdersCount: number };
+  salesSeries: { date: string; total: string }[];
+  recent: RecentSale[];
+  setup: { hasInventoryItems: boolean; hasPublishedCatalog: boolean; hasSales: boolean };
+  modules: { expenses: boolean };
+};
+export function parseDashboardSummary(value: unknown, days: DashboardDays): DashboardSummary;
+export function formatCopCompact(value: string | bigint): string;
+export function formatAxis(value: string | bigint): string;
+export function compare(current: string, previous: string): { direction: "up" | "down" | "equal"; text: string } | null;
+export function isNegative(value: string): boolean;
+export function bogotaTime(iso: string): string;
+export function movementTime(iso: string, today: string): string;
+export function weekday(day: string): string;
+export function longDay(day: string): string;
+export function plural(n: number, one: string, many: string): string;

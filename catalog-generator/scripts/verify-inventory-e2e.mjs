@@ -63,7 +63,7 @@ async function signIn(account, register = false) {
   await poll(() => evaluate("(()=>{const input=document.querySelector('input[type=password]');return Boolean(input&&Object.keys(input).some(key=>key.startsWith('__reactProps$')));})()"), 60000);
   if (register) {
     await click("Crear cuenta", "button[type=button]");
-    await poll(() => evaluate("document.querySelector('h1')?.textContent==='Crea tu cuenta.'"));
+    await poll(() => evaluate("document.querySelector('h1')?.textContent==='Crea tu cuenta'"));
   }
   await fillSelector("input[type=email]", account.email);
   await fillSelector("input[type=password]", account.password);
@@ -72,6 +72,8 @@ async function signIn(account, register = false) {
   await inventory();
 }
 async function signOut() {
+  await evaluate(`document.querySelector('button[aria-label="Menú de cuenta"]').click()`);
+  await poll(() => evaluate(`Boolean(document.querySelector('#avatar-menu'))`));
   await click("Cerrar sesión");
   await poll(() => evaluate("location.pathname==='/login'"));
   await poll(async () => (await request("/inventory/items")).status === 401);

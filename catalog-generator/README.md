@@ -36,4 +36,4 @@ npm run lint
 npm run build
 ```
 
-Hay verificaciones automatizadas del lector, proxy, flujo y navegador del importador: `npm.cmd test`, `npm.cmd run test:import-flow` y `npm.cmd run test:import-browser`. No equivalen a una prueba E2E completa de compra. Consulta la [matriz de pruebas](../docs/testing.md).
+Hay verificaciones automatizadas del lector, proxy, flujo y navegador del importador: `npm.cmd test`, `npm.cmd run test:import-flow` y `npm.cmd run test:import-browser`. No equivalen a una prueba E2E completa de compra. La pantalla de acceso tiene `npm.cmd run test:login-browser` y el armazón del panel (menú, avatar, barra móvil) `npm.cmd run test:panel-browser`; sus tokens y el logo están en [docs/diseno](../docs/diseno/README.md). Consulta la [matriz de pruebas](../docs/testing.md).

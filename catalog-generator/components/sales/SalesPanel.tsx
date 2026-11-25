@@ -34,7 +34,7 @@ export default function SalesPanel() {
 
   const visible = (sales ?? []).filter(sale => filter === "all" || displayStatus(sale) === filter);
   return <main className="mx-auto max-w-6xl space-y-6 px-5 py-8 sm:px-8">
-    <Link href="/dashboard" className="inline-flex min-h-11 items-center underline">← Catálogos</Link>
+    <Link href="/dashboard/catalogos" className="inline-flex min-h-11 items-center underline">← Catálogos</Link>
     <div>
       <h1 className="text-3xl font-semibold">Ventas</h1>
       <p className="mt-2 text-sm text-[#52675b]">Ventas presenciales de tu bodega. Confirmar descuenta existencias; las correcciones se registran con cancelaciones y devoluciones.</p>

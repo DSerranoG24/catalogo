@@ -20,7 +20,8 @@ export default function BrandLogo({ variant, theme, className, iconSize = 40, na
     gap: `${gapSize}px`,
     fontFamily: "var(--font-app-sans)",
     fontSize: `${iconSize * nameRatio}px`,
-    fontWeight: 600,
+    fontWeight: 700,
+    letterSpacing: "-0.01em",
     lineHeight: 1,
   };
   return (
@@ -35,8 +36,8 @@ export default function BrandLogo({ variant, theme, className, iconSize = 40, na
         unoptimized
       />
       {variant === "horizontal" && (
-        <span aria-hidden="true" style={{ whiteSpace: "nowrap", color: theme === "oscuro" ? "#FFFFFF" : "var(--brand-forest)" }}>
-          vitrina<span style={{ color: "var(--brand-coral)" }}>ya</span>
+        <span aria-hidden="true" style={{ whiteSpace: "nowrap", color: theme === "oscuro" ? "#FFFFFF" : "var(--vy-text)" }}>
+          Vitrina<span style={{ color: theme === "oscuro" ? "var(--vy-blue-400)" : "var(--vy-blue-600)" }}>ya</span>
         </span>
       )}
     </span>
