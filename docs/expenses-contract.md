@@ -1,6 +1,6 @@
 # Contrato de Gastos — F1 operativos de contado
 
-Versión 1.1, 24 de noviembre de 2026.
+Versión 1.2, 24 de noviembre de 2026. Cambio respecto a la 1.1: la reclasificación también puede cambiar la nota del medio de pago (`paymentMethodNote`); ver la [sección 17](#17-decisiones-tomadas).
 
 **Estado:** aprobado para implementar **F1a** (categorías y gastos puntuales). Las decisiones del responsable están en la [sección 17](#17-decisiones-tomadas) y el plan de F1a en la [sección 18](#18-plan-de-implementación-de-f1a). F1b (recurrentes) se implementa después, con este mismo contrato. Este documento no autoriza push, despliegues ni operaciones en producción.
 
@@ -23,7 +23,7 @@ Base inspeccionada: [esquema](../catalog-api/prisma/schema.prisma), [ventas v2.1
 ## 2. Invariantes
 
 1. El propietario sale de la sesión validada. Toda lectura y escritura filtra por `ownerId`. Un recurso ajeno o inexistente responde `404` sin distinguir ambos casos.
-2. De un gasto **confirmado** solo se pueden reclasificar la categoría y la descripción, y cada cambio queda como evento en `expense_events`. Monto, fecha, medio de pago, nota y referencia de pago y proveedor no se editan: se anula con motivo y se registra otro, y ambos quedan en el historial.
+2. De un gasto **confirmado** solo se pueden reclasificar la categoría, la descripción y la nota del medio de pago (`paymentMethodNote`, que solo existe con `OTHER`). Cada cambio queda como evento `RECLASSIFIED` en `expense_events`, con los valores anterior y nuevo. Proveedor, referencia de pago, monto, fecha y medio de pago no se editan: se anula con motivo y se registra otro, y ambos quedan en el historial.
 3. Un gasto recurrente **nunca se confirma solo**. La plantilla genera ocurrencias *por confirmar*, y solo una acción explícita del dueño las confirma (con el monto real) u omite.
 4. Solo los gastos `CONFIRMED` cuentan en totales. Por confirmar, omitidos y anulados se muestran aparte.
 5. Todo gasto tiene categoría, medio de pago, fecha del gasto, monto entero positivo en COP y descripción. `OTHER` exige una nota.
@@ -44,7 +44,7 @@ stateDiagram-v2
     [*] --> PENDING_CONFIRMATION: plantilla recurrente alcanza su fecha
     PENDING_CONFIRMATION --> CONFIRMED: confirmar con monto real
     PENDING_CONFIRMATION --> SKIPPED: omitir
-    CONFIRMED --> CONFIRMED: reclasificar categoría o descripción
+    CONFIRMED --> CONFIRMED: reclasificar categoría, descripción o nota
     CONFIRMED --> VOIDED: anular con motivo (y opcionalmente registrar reemplazo)
     SKIPPED --> [*]
     VOIDED --> [*]
@@ -56,11 +56,11 @@ stateDiagram-v2
 | — | Generar ocurrencia (F1b) | `PENDING_CONFIRMATION` | Copia los datos sugeridos de la plantilla. No cuenta en totales. |
 | `PENDING_CONFIRMATION` | Confirmar (F1b) | `CONFIRMED` | El dueño envía monto real, fecha, categoría y medio de pago, que pueden diferir de lo sugerido. Se fijan `confirmedAt` y la instantánea de categoría. |
 | `PENDING_CONFIRMATION` | Omitir (F1b) | `SKIPPED` | Motivo opcional. Es también la forma de descartar una ocurrencia creada por error. La ocurrencia no se vuelve a generar ni se reabre. |
-| `CONFIRMED` | Reclasificar | `CONFIRMED` | Cambia `categoryId` (solo a una categoría activa) o `description`. Sube la versión y registra un evento `RECLASSIFIED` con antes y después. No cambia monto, fecha ni medio de pago. |
+| `CONFIRMED` | Reclasificar | `CONFIRMED` | Cambia `categoryId` (solo a una categoría activa), `description` o `paymentMethodNote` (solo si el medio es `OTHER`; no puede quedar vacía). Sube la versión y registra un evento `RECLASSIFIED` con los valores anterior y nuevo. No cambia proveedor, referencia, monto, fecha ni medio de pago. |
 | `CONFIRMED` | Anular | `VOIDED` | Motivo obligatorio (3–300). Sale de los totales; conserva todos sus datos. Si llega un reemplazo, se crea en la misma transacción como `CONFIRMED`, vinculado mediante `replacesExpenseId`. |
 
 No se permite:
-- editar monto, fecha, medio de pago, nota y referencia de pago o proveedor de un confirmado;
+- editar proveedor, referencia de pago, monto, fecha o medio de pago de un confirmado;
 - anular un pendiente u omitido;
 - reabrir un anulado o un omitido. Si una ocurrencia se omitió por error, se registra un gasto puntual;
 - borrar nada.
@@ -141,7 +141,7 @@ En `Expense`:
 - Triggers:
   - inmutabilidad de `expense_events` y `expense_operations` (sin UPDATE ni DELETE);
   - guardia en `expenses`: ningún gasto se borra. Un `CONFIRMED` solo puede:
-    - seguir `CONFIRMED`, cambiando únicamente `categoryId`, `categoryNameSnapshot`, `description`, `version` y `updatedAt` (reclasificar);
+    - seguir `CONFIRMED`, cambiando únicamente `categoryId`, `categoryNameSnapshot`, `description`, `paymentMethodNote`, `version` y `updatedAt` (reclasificar);
     - pasar a `VOIDED`, cambiando únicamente `status`, `voidedAt`, `voidReason`, `version` y `updatedAt`.
 
     Un `VOIDED` o `SKIPPED` no cambia.
@@ -206,7 +206,7 @@ Rutas privadas bajo `/api`, con la autenticación vigente (cookie HttpOnly y pro
 | F1a | `GET /expenses/summary?from&to&categoryId&paymentMethod` | Para el periodo y los filtros: `confirmedTotal`, `confirmedCount`, `byCategory[]`, `byPaymentMethod[]`, `voidedCount`, `pendingCount` y `pendingSuggestedTotal`. Este último es informativo y nunca forma parte del total; en F1a vale 0. |
 | F1a | `GET /expenses/:id` | Detalle con `paymentReference`, reemplazo o reemplazado vinculado y eventos paginados. |
 | F1a | `POST /expenses` | `{operationId, requestId, expenseDate, amount, categoryId, paymentMethod, paymentMethodNote?, paymentReference?, description, supplierName?}`. Crea un `CONFIRMED`. `201`. |
-| F1a | `PATCH /expenses/:id` | Reclasificar: `{operationId, requestId, expectedVersion, categoryId?, description?}`, con al menos uno. Solo `CONFIRMED` y categoría activa. Cualquier otro campo da `400 INVALID_EXPENSE_INPUT`. |
+| F1a | `PATCH /expenses/:id` | Reclasificar: `{operationId, requestId, expectedVersion, categoryId?, description?, paymentMethodNote?}`, con al menos uno. Solo `CONFIRMED` y categoría activa; `paymentMethodNote` solo si el medio es `OTHER` (3–80 caracteres). Cualquier otro campo da `400 INVALID_EXPENSE_INPUT`. |
 | F1a | `POST /expenses/:id/void` | `{operationId, requestId, expectedVersion, reason, replacement?}`. `replacement` usa el cuerpo de `POST /expenses` sin `operationId` ni `requestId`. Anulación y reemplazo son atómicos; el resultado incluye ambos. |
 | F1b | `GET /expenses/pending` | Ocurrencias por confirmar, de la más antigua a la más reciente, paginadas. |
 | F1b | `POST /expenses/pending/refresh` | Sin cuerpo. Materializa ocurrencias (sección 7) y devuelve `{generated, pendingCount}`. Es idempotente por la unicidad de las ocurrencias y tiene limitador propio. |
@@ -296,7 +296,7 @@ Nueva ruta privada `/dashboard/gastos`, enlazada en la cabecera del panel como �
 4. **Totales del periodo.** Usan los mismos filtros del listado y se rotulan «Total confirmado del periodo con los filtros aplicados». Muestran desglose por categoría y por medio de pago, y aparte el número de anulados y de pendientes con su monto sugerido, que no suma.
 5. **Detalle.**
    - Datos (incluida la referencia), fechas del gasto y de registro, historial de eventos y enlace al reemplazo o al anulado.
-   - «Reclasificar» permite cambiar categoría y descripción.
+   - «Reclasificar» permite cambiar categoría, descripción y, si el medio es «Otro», la nota.
    - «Anular» pide motivo y ofrece «Anular y registrar el correcto» con el formulario prellenado, que es la vía para corregir monto, fecha o medio de pago.
 6. **Categorías:** crear, renombrar, reordenar, archivar y reactivar. **Recurrentes (F1b):** crear, editar, pausar, reanudar y finalizar, mostrando la próxima fecha.
 7. **Estados de pantalla:** carga, vacío («No hay gastos confirmados en este periodo»), error con acción, sesión expirada y éxito, con `aria-live`, etiquetas, teclado, foco visible y ancho móvil (320, 390, 1024 y 1440 px).
@@ -313,7 +313,8 @@ Nueva ruta privada `/dashboard/gastos`, enlazada en la cabecera del panel como �
 | `OTHER` sin nota, o nota con otro medio | `400`. |
 | `paymentReference` de más de 100 caracteres | `400`. |
 | Categoría archivada en registro, reclasificación, confirmación o plantilla nueva | `400 EXPENSE_CATEGORY_ARCHIVED`; los históricos no cambian. |
-| Reclasificar enviando monto, fecha o medio de pago | `400 INVALID_EXPENSE_INPUT`; para esos campos hay que anular y reemplazar. |
+| Reclasificar enviando proveedor, referencia, monto, fecha o medio de pago | `400 INVALID_EXPENSE_INPUT`; para esos campos hay que anular y reemplazar. |
+| Reclasificar la nota de un gasto cuyo medio no es `OTHER` | `400 INVALID_EXPENSE_INPUT`; ese gasto no tiene nota. |
 | Reclasificar un anulado | `409 INVALID_EXPENSE_TRANSITION`. |
 | Categoría o gasto de otra cuenta | `404` uniforme, sin escrituras. |
 | Doble clic al registrar | Misma clave: un solo gasto, y el segundo recibe el recibo. |
@@ -403,7 +404,7 @@ Decididas por el responsable el **2026-11-24**.
 | 12 | Retención | Se conservan mientras exista la cuenta; la anonimización se revisa con la política general. |
 | 13 | Fotos de soportes | Fase F1c, fuera de F1a y F1b. |
 | 14 | IVA y retenciones | No se gestionan (`taxMode = NOT_MANAGED`). |
-| 15 | Reclasificar | Se pueden cambiar la categoría y la descripción de un gasto confirmado sin anularlo, con un evento en `expense_events`. Monto, fecha y medio de pago exigen anular y reemplazar. |
+| 15 | Reclasificar | Se pueden cambiar la categoría, la descripción y la nota (`paymentMethodNote`) de un gasto confirmado sin anularlo, con un evento `RECLASSIFIED` que guarda los valores anterior y nuevo. Proveedor, referencia, monto, fecha y medio de pago exigen anular y reemplazar. La nota se añadió en la v1.2 (2026-11-24). |
 | 16 | Ocurrencia creada por error | Se omite (`SKIPPED`); nunca se borra. |
 | 17 | Exportar | F5. |
 | 18 | Utilidad | Se define en el contrato de F5. |
@@ -412,7 +413,7 @@ Decididas por el responsable el **2026-11-24**.
 | 21 | Cierre de cuenta | Los gastos pendientes no lo bloquean. |
 
 Concreciones de este contrato que se derivan de esas decisiones:
-- **Decisión 15:** además de monto, fecha y medio de pago, también exigen anular y reemplazar la nota y la referencia de pago y el proveedor. Así la reclasificación solo toca lo que pide la decisión.
+- **Decisión 15:** «la nota» es `paymentMethodNote`, el único campo de nota del gasto, que solo existe con el medio `OTHER`. En los demás medios no hay nota que reclasificar.
 - **Decisión 10:** se mantiene el formato de respuesta `{ success, result }` del resto de módulos nuevos. La decisión se refiere a la idempotencia; la interfaz de Ventas lee `result` en ambos formatos.
 
 ## 18. Plan de implementación de F1a
@@ -463,7 +464,7 @@ Concreciones de este contrato que se derivan de esas decisiones:
   - cuota de 100 categorías;
   - conflicto de nombre con archivadas;
   - registro;
-  - reclasificar a una categoría archivada, a una ajena o de un anulado;
+  - reclasificar categoría, descripción y nota; a una categoría archivada, a una ajena, de un anulado y la nota de un medio que no es `OTHER`;
   - anular, y anular y reemplazar con fallo inyectado (rollback total);
   - replay con `requestId` nueva y conflicto con otro contenido;
   - totales que excluyen anulados.

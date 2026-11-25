@@ -98,6 +98,11 @@ model User {
   itemCompatibilities ItemCompatibility[]
   compatibilityOperations CompatibilityOperation[]
   compatibilityEvents CompatibilityEvent[]
+  expenseCategories ExpenseCategory[]
+  expenses Expense[]
+  recurringExpenseTemplates RecurringExpenseTemplate[]
+  expenseOperations ExpenseOperation[]
+  expenseEvents ExpenseEvent[]
 
   @@index([createdAt])
 
@@ -881,4 +886,169 @@ model CompatibilityEvent {
   @@index([ownerId, setId, occurredAt, id])
   @@map("compatibility_events")
   actor User @relation("CompatibilityEvent_actorId", fields: [actorId], references: [id], onDelete: Restrict)
+}
+
+// ---- Gastos (docs/expenses-contract.md v1.2) ----
+// CHECK constraints and triggers live in migration 20261125000000_operating_expenses (Prisma 6 does not represent them).
+
+enum ExpenseStatus {
+  PENDING_CONFIRMATION
+  CONFIRMED
+  SKIPPED
+  VOIDED
+}
+
+enum ExpenseSource {
+  MANUAL
+  RECURRING
+}
+
+enum ExpensePaymentMethod {
+  CASH
+  NEQUI
+  DAVIPLATA
+  BANK_TRANSFER
+  CARD
+  OTHER
+}
+
+enum RecurringExpenseStatus {
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum ExpenseFrequency {
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+model ExpenseCategory {
+  id            String                     @id @default(uuid())
+  ownerId       String
+  name          String                     @db.VarChar(60)
+  normalizedKey String                     @db.VarChar(240)
+  seedKey       String?                    @db.VarChar(40)
+  position      Int                        @default(0)
+  archivedAt    DateTime?
+  version       Int                        @default(1)
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
+  owner         User                       @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  expenses      Expense[]
+  templates     RecurringExpenseTemplate[]
+
+  @@unique([id, ownerId])
+  @@unique([ownerId, normalizedKey])
+  @@unique([ownerId, seedKey])
+  @@index([ownerId, position, id])
+  @@map("expense_categories")
+}
+
+/// F1b. Created in F1a so the expense FK exists; no endpoints or UI yet.
+model RecurringExpenseTemplate {
+  id                String                 @id @default(uuid())
+  ownerId           String
+  status            RecurringExpenseStatus @default(ACTIVE)
+  description       String                 @db.VarChar(300)
+  categoryId        String
+  paymentMethod     ExpensePaymentMethod
+  paymentMethodNote String?                @db.VarChar(80)
+  supplierName      String?                @db.VarChar(160)
+  estimatedAmount   BigInt?
+  frequency         ExpenseFrequency
+  interval          Int
+  anchorDate        DateTime               @db.Date
+  endDate           DateTime?              @db.Date
+  generatedThrough  DateTime?              @db.Date
+  version           Int                    @default(1)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  endedAt           DateTime?
+  owner             User                   @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  category          ExpenseCategory        @relation(fields: [categoryId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  expenses          Expense[]
+
+  @@unique([id, ownerId])
+  @@index([ownerId, status])
+  @@map("recurring_expense_templates")
+}
+
+model Expense {
+  id                   String                    @id @default(uuid())
+  ownerId              String
+  status               ExpenseStatus             @default(CONFIRMED)
+  source               ExpenseSource             @default(MANUAL)
+  templateId           String?
+  occurrenceDate       DateTime?                 @db.Date
+  expenseDate          DateTime                  @db.Date
+  amount               BigInt?
+  suggestedAmount      BigInt?
+  currency             String                    @default("COP") @db.VarChar(3)
+  taxMode              String                    @default("NOT_MANAGED") @db.VarChar(20)
+  categoryId           String
+  categoryNameSnapshot String?                   @db.VarChar(60)
+  paymentMethod        ExpensePaymentMethod
+  paymentMethodNote    String?                   @db.VarChar(80)
+  paymentReference     String?                   @db.VarChar(100)
+  description          String                    @db.VarChar(300)
+  supplierName         String?                   @db.VarChar(160)
+  replacesExpenseId    String?                   @unique
+  recordedAt           DateTime                  @default(now())
+  confirmedAt          DateTime?
+  skippedAt            DateTime?
+  skipReason           String?                   @db.VarChar(300)
+  voidedAt             DateTime?
+  voidReason           String?                   @db.VarChar(300)
+  version              Int                       @default(1)
+  updatedAt            DateTime                  @updatedAt
+  owner                User                      @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  category             ExpenseCategory           @relation(fields: [categoryId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  template             RecurringExpenseTemplate? @relation(fields: [templateId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  replaces             Expense?                  @relation("ExpenseReplacement", fields: [replacesExpenseId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  replacedBy           Expense[]                 @relation("ExpenseReplacement")
+
+  @@unique([id, ownerId])
+  @@unique([templateId, occurrenceDate])
+  @@index([ownerId, status, expenseDate, id])
+  @@index([ownerId, categoryId, expenseDate])
+  @@index([ownerId, paymentMethod, expenseDate])
+  @@index([ownerId, status, templateId])
+  @@map("expenses")
+}
+
+/// Terminal receipt of a successful mutation. requestHash excludes requestId (same rule as Ventas v2.1).
+model ExpenseOperation {
+  ownerId          String
+  operationId      String
+  requestId        String
+  kind             String         @db.VarChar(40)
+  resourceId       String
+  requestHash      String         @db.VarChar(64)
+  responseSnapshot Json
+  createdAt        DateTime       @default(now())
+  owner            User           @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  events           ExpenseEvent[]
+
+  @@id([ownerId, operationId])
+  @@unique([ownerId, requestId])
+  @@map("expense_operations")
+}
+
+model ExpenseEvent {
+  id          String            @id @default(uuid())
+  ownerId     String
+  operationId String?
+  entityKind  String            @db.VarChar(20)
+  entityId    String
+  eventType   String            @db.VarChar(40)
+  before      Json?
+  after       Json
+  occurredAt  DateTime          @default(now())
+  owner       User              @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  operation   ExpenseOperation? @relation(fields: [ownerId, operationId], references: [ownerId, operationId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([ownerId, entityKind, entityId, occurredAt, id])
+  @@map("expense_events")
 }
