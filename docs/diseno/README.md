@@ -39,3 +39,53 @@ Se **añadieron** a `catalog-generator/app/globals.css` sin sustituir ningún to
 - La API de `BrandLogo` no cambia (`variant`, `theme`, `iconSize`, `nameRatio`, `gapSize`, `className`), y sigue siendo un `role="img"` con `aria-label="Vitrinaya"`.
 - Consumidores afectados: `/login`, la cabecera del panel (`app/dashboard/layout.tsx`) y la cabecera y el pie de la página de inicio (`app/page.tsx`).
 - El favicon (`app/icon.svg`) no se cambió: quedó fuera de alcance.
+
+## Armazón del panel (menú lateral, cabecera y barra móvil)
+
+Referencia visual: `inicio-escritorio.png`, la maqueta de Inicio. Pendiente de copiar a esta carpeta. De ella solo se implementan el menú, la cabecera y el saludo; las cifras, las alertas y la gráfica llegan en otra fase.
+
+**Rutas del panel en `main` (25/11/2026):**
+
+| Ruta | Pantalla |
+| --- | --- |
+| `/dashboard` | Inicio (mínimo) |
+| `/dashboard/ventas` | Vender |
+| `/dashboard/inventario`, `/hoja`, `/lotes` | Inventario |
+| `/dashboard/catalogos` | Lista de catálogos (antes en `/dashboard`) |
+| `/dashboard/catalogos/nuevo`, `/dashboard/catalogos/[id]` | Crear catálogo y espacio de trabajo |
+| `/dashboard/cuenta` | Ajustes (la página de cuenta existente) |
+
+`/dashboard/gastos` solo existe en la rama `f1-expenses`.
+
+**Configuración:** `catalog-generator/lib/panel-navigation.ts`, `PANEL_NAVIGATION`. Cada entrada tiene `id`, `label`, `href`, `icon` (lucide), `group`, `enabled` y `mobileBar`.
+
+| Entrada | Grupo | Ruta | Habilitada | Barra móvil |
+| --- | --- | --- | --- | --- |
+| Inicio | — | `/dashboard` | Sí | Sí |
+| Vender | Día a día | `/dashboard/ventas` | Sí | Sí |
+| Inventario | Productos | `/dashboard/inventario` | Sí | Sí |
+| Catálogo | Productos | `/dashboard/catalogos` | Sí | No (va en «Más») |
+| Gastos | Dinero | `/dashboard/gastos` | **No**: se activa cuando la ruta llegue a `main` | No |
+| Ajustes | Análisis | `/dashboard/cuenta` | Sí | No (va en «Más») |
+
+- Servicio técnico, Cartera y Reportes no tienen ruta y no figuran en la configuración.
+- Los grupos sin entradas habilitadas no se muestran: hoy no aparece «Dinero».
+- Apagar un módulo es cambiar `enabled`, sin tocar el layout.
+- Inicio solo está activo en `/dashboard`; el resto también en sus subrutas.
+
+**Comportamiento:**
+- **Escritorio (≥ lg):** menú lateral fijo de 256 px con degradado `--vy-navy-900` → `--vy-navy-700`.
+  - La entrada activa va en `--vy-blue-600` con `aria-current="page"`.
+  - Al pie, una tarjeta decorativa sin enlaces.
+- **Cabecera:**
+  - Menú de avatar con la inicial del nombre o, si no hay nombre, del correo. Al abrirlo muestra nombre y correo, «Ajustes» y «Cerrar sesión». Escape lo cierra y devuelve el foco; también se cierra al hacer clic fuera.
+  - Botón «Nueva venta» que lleva a `/dashboard/ventas`. Se oculta en Vender y en Inicio, que ya tiene el suyo, y en móvil, donde Vender está en la barra.
+- **Móvil (< lg):** cabecera con el logo y el avatar, y barra inferior fija con Inicio, Vender, Inventario y «Más».
+  - «Más» abre una hoja (Radix Dialog, con foco atrapado y Escape) con el resto de entradas y «Cerrar sesión».
+  - La barra respeta `env(safe-area-inset-bottom)`, y el contenido lleva un relleno inferior para no quedar tapado.
+- **Accesibilidad:**
+  - `<nav aria-label="Principal">`: solo uno visible a la vez.
+  - «Saltar al contenido» como primera parada de Tab, hacia `#contenido`.
+  - Objetivos de al menos 44 px.
+  - Contraste: activo 6,39:1, inactivo 11,29:1 y títulos de grupo 7,89:1 sobre `--vy-navy-700`.
+- **Cerrar sesión:** el panel entero usa el cierre que espera al servidor y muestra un error en `role="alert"` si falla. Es el comportamiento que antes tenía solo la lista de catálogos.

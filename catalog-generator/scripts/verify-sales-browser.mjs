@@ -159,7 +159,7 @@ ${(await text()).slice(0, 1500)}`); } };
 
     await command("Page.navigate", { url: "http://localhost:4338/dashboard/ventas" });
     await waitText("Aún no hay ventas");
-    assert.equal(await evaluate(`document.querySelector('header a[href="/dashboard/ventas"]')?.getAttribute('aria-current')`), "page");
+    assert.equal(await evaluate(`document.querySelector('nav[aria-label="Principal"] a[href="/dashboard/ventas"]')?.getAttribute('aria-current')`), "page");
     assert.ok((await text()).includes("Los totales no indican pagos recibidos."));
     assert.deepEqual(mutations, [], "opening the panel writes nothing");
     await shot("01-listado-vacio");

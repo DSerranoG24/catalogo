@@ -90,7 +90,7 @@ export default function InventoryPage() {
 
   const field = "grid gap-2 text-sm font-medium";
   return <main className="mx-auto max-w-6xl space-y-6 px-5 py-8 sm:px-8">
-    <Link href="/dashboard" className="inline-flex min-h-11 items-center underline">← Catálogos</Link>
+    <Link href="/dashboard/catalogos" className="inline-flex min-h-11 items-center underline">← Catálogos</Link>
     <Link href="/dashboard/inventario/hoja" className="ml-4 inline-flex min-h-11 items-center rounded-xl border border-[#173d2a] bg-white px-4 font-semibold text-[#173d2a]">Editar en hoja de cálculo</Link>
     <div><h1 className="text-3xl font-semibold">Inventario</h1><p className="mt-2 text-sm text-[#52675b]">Una bodega para tu cuenta. Administra productos y movimientos independientemente de tus catálogos.</p></div>
     {listError && <div role="alert" className="rounded-xl border border-red-300 p-4"><p>{listError}</p><Button variant="secondary" onClick={() => setRevision(value => value + 1)}>Recargar datos</Button><Link href="/login" className="ml-4 underline">Iniciar sesión</Link></div>}

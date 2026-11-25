@@ -86,14 +86,14 @@ try {
   await command('Emulation.setScriptExecutionDisabled', { value: true });
   await navigate('/dashboard/cuenta');
   await poll(() => evaluate(`document.readyState==='complete'&&document.querySelectorAll('[data-account-back-link]').length===1`));
-  assert.equal(await evaluate(`document.querySelector('[data-account-back-link]').getAttribute('href')`), '/dashboard');
+  assert.equal(await evaluate(`document.querySelector('[data-account-back-link]').getAttribute('href')`), '/dashboard/catalogos');
   assert.equal(await evaluate(`document.querySelector('[data-account-back-link]').textContent.replace('←','').trim()`), 'Volver a catálogos');
   assert.equal(await evaluate(`document.querySelectorAll('form').length`), 0);
   assert.equal(await evaluate(`document.body.textContent.includes('fixture@example.invalid')`), false);
   await evaluate(`document.querySelector('[data-account-back-link]').focus()`);
   await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r', unmodifiedText: '\r' });
   await command('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-  await poll(() => evaluate(`location.pathname==='/dashboard'&&document.readyState==='complete'`));
+  await poll(() => evaluate(`location.pathname==='/dashboard/catalogos'&&document.readyState==='complete'`));
   assert.equal(await evaluate(`document.querySelectorAll('[data-account-back-link]').length`), 0);
   assert.equal(writes.length, 0);
   checks.push('Single static back link works by keyboard without JavaScript; no form, private identity or mutations before hydration');
