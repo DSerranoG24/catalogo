@@ -32,6 +32,7 @@ const testFiles = [
   "src/scripts/verify-catalog-theme-postgres.test.ts",
   "src/repositories/admin-metrics.test.ts",
   "src/routes/admin.routes.test.ts",
+  "src/services/dashboard-summary.test.ts",
   "src/services/account-mail.test.ts",
   "src/services/account-action.test.ts",
   "src/repositories/account-action.repository.test.ts",

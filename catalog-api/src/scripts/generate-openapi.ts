@@ -11,6 +11,7 @@ import { createCustomerSchema, updateCustomerSchema, customerListSchema } from "
 import { createSaleSchema, updateDraftSaleSchema, convertOrderToSaleSchema } from "../schemas/sales.schema";
 import { orderCustomerPreviewSchema, confirmOrderCustomerSchema, orderCustomerMatchesSchema } from "../schemas/order-customer.schema";
 import { customerSalesQuerySchema } from "../schemas/customer-sales.schema";
+import { dashboardQuerySchema } from "../services/dashboard-summary";
 import { createDeviceBrandSchema, createDeviceModelSchema, addBrandAliasSchema, addDeviceAliasSchema,
   addCompatibilitySchema, updateCompatibilitySchema, deviceListSchema, modelListSchema, compatibilityPageSchema } from "../schemas/compatibility.schema";
 
@@ -47,6 +48,7 @@ const schemas = {
   OrderCustomerPreview: orderCustomerPreviewSchema,
   ConfirmOrderCustomer: confirmOrderCustomerSchema,
   OrderCustomerMatches: orderCustomerMatchesSchema,
+  DashboardSummaryQuery: dashboardQuerySchema,
 } satisfies Record<string, z.ZodType>;
 
 const ref = (name: keyof typeof schemas) => ({ $ref: `#/components/schemas/${name}` });
@@ -145,6 +147,19 @@ const paths = {
     post: operation("Crear cliente; coincidencias de teléfono generan advertencia, no rechazo", {
       security: secured, requestBody: jsonBody("CreateCustomer"),
       responses: { "201": { description: "Cliente creado y warnings (CUSTOMER_PHONE_MATCH si hay coincidencia)" }, "400": { description: "Datos inválidos" }, "401": { description: "Sesión requerida" }, "500": { description: "Operación no disponible" } },
+    }),
+  },
+  "/api/dashboard/summary": {
+    get: operation("Cifras de Inicio calculadas en el servidor para el propietario autenticado", {
+      security: secured,
+      description: "Solo lectura; el propietario sale de la sesión. Días en America/Bogota. Importes BigInt como strings decimales (pueden ser negativos). Ventas: CONFIRMED, DELIVERED o RETURNED por día de confirmedAt con el total histórico; CANCELLED y DRAFT no cuentan; cada devolución resta (unitPrice − unitDiscount) × receivedQuantity el día en que se registra. costOfSales: unitCost × quantity de las líneas vendidas menos unitCost × resellableQuantity devuelto; las líneas sin costo no suman y su venta cuenta en salesWithoutCostCount. expensesTotal es null mientras el módulo de gastos no exista (modules.expenses=false). estimatedProfit = salesTotal − costOfSales − (expensesTotal ?? 0). Definiciones completas en docs/dashboard-summary.md. Cache-Control private,no-store.",
+      parameters: [{ name: "days", in: "query", required: false, schema: { type: "string", enum: ["7", "30", "90"], default: "7" }, description: "Puntos de salesSeries (un día por punto, incluidos días en cero)" }],
+      responses: {
+        "200": { description: "{success:true,generatedAt,today:{date,salesTotal,salesCount,yesterdaySalesTotal},month:{salesTotal,costOfSales,salesWithoutCostCount,expensesTotal|null,estimatedProfit,previousMonth:{salesTotal,expensesTotal|null,estimatedProfit}},attention:{lowStockCount,outOfStockCount,pendingOrdersCount},salesSeries:[{date,total}],recent:[{kind:'SALE',id,status,total,at,customerName|null}],setup:{hasInventoryItems,hasPublishedCatalog,hasSales},modules:{expenses}}" },
+        "400": { description: "INVALID_DASHBOARD_QUERY: days distinto de 7, 30 o 90, o parámetros desconocidos o repetidos" },
+        "401": { description: "Sesión requerida o expirada" },
+        "500": { description: "DASHBOARD_UNAVAILABLE: error genérico reintentable" },
+      },
     }),
   },
   "/api/customers/{id}/sales": {
