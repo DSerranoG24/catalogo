@@ -8,6 +8,7 @@ const testFiles = [
   "src/repositories/order-customer.test.ts",
   "src/services/sale-customer.test.ts",
   "src/services/sale-integrity.test.ts",
+  "src/services/expense.test.ts",
   "src/routes/customer.routes.test.ts",
   "src/services/cart-quote.test.ts",
   "src/schemas/inventory-workbook.test.ts",

@@ -8,6 +8,7 @@ import adminRoutes from "./routes/admin.routes";
 import inventoryRoutes from "./routes/inventory.routes";
 import { makeCustomerRouter } from "./routes/customer.routes";
 import { makeCompatibilityRouter } from "./routes/compatibility.routes";
+import { makeExpenseRouter } from "./routes/expense.routes";
 import { makeInventoryBatchRouter } from "./routes/inventory-batch.routes";
 import { makeInventoryPublicationRouter } from "./routes/inventory-publication.routes";
 import { makeInventoryWorkbookRouter } from "./routes/inventory-workbook.routes";
@@ -55,6 +56,7 @@ app.use(
 
 app.use("/api", apiLimiter);
 app.use("/api", makeCompatibilityRouter());
+app.use("/api", makeExpenseRouter());
 app.use("/api/inventory", makeInventoryWorkbookRouter());
 app.use("/api", makeSalesRouter());
 app.use("/api/inventory", makeInventoryBatchRouter());
