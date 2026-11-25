@@ -28,8 +28,9 @@ SELECT 'function', p.proname
  WHERE n.nspname = current_schema()
    AND p.proname IN ('expense_history_immutable', 'expense_row_guard', 'expense_transition_guard')
 UNION ALL
-SELECT 'trigger', tgname FROM pg_trigger
- WHERE tgname IN ('expense_operations_immutable', 'expense_events_immutable', 'expense_categories_guard',
+SELECT 'trigger', tg.tgname
+  FROM pg_trigger tg JOIN pg_class c ON c.oid = tg.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+ WHERE n.nspname = current_schema() AND tg.tgname IN ('expense_operations_immutable', 'expense_events_immutable', 'expense_categories_guard',
                   'recurring_expense_templates_guard', 'expenses_transition_guard');
 
 -- 2. Registro de Prisma de esta migración (debe estar vacío).
