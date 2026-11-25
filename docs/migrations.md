@@ -357,7 +357,7 @@ Añade:
 - el trigger `sale_return_line_guard`: lo devuelto en total por línea no supera lo vendido, y la línea es de la misma venta;
 - el trigger `sale_status_transition_guard`: transiciones permitidas; no se cancela una venta entregada.
 
-No modifica datos. El CHECK valida las filas existentes, y como el registro de movimientos es inmutable, una violación no se puede reparar: la migración fallaría sin cambios. Los triggers solo actúan sobre escrituras futuras, así que una venta histórica entregada y después cancelada no la rompe. La [consulta previa](sql/verify-sale-integrity.sql) cubre la regla, los diagnósticos de devoluciones y ventas canceladas tras entrega, y los nombres de objetos que crea. Procedimiento: [anexo F0d del runbook](despliegue-2026-11-ventas.md#anexo-f0d-reglas-de-ventas-20261124210000).
+No modifica datos. El CHECK valida las filas existentes, y como el registro de movimientos es inmutable, una violación no se puede reparar: la migración fallaría sin cambios. Los triggers solo actúan sobre escrituras futuras, así que una venta histórica entregada y después cancelada no la rompe. La [consulta previa](sql/verify-sale-integrity.sql) cubre la regla, los diagnósticos de devoluciones y ventas canceladas tras entrega, y los nombres de objetos que crea. Procedimiento: [anexo F0d del runbook](despliegue-2026-11-ventas.md#anexo-f0d-reglas-e-interfaz-de-ventas-20261124210000).
 
 ### Origen de movimientos de venta (`20261124200000_inventory_movements_allow_sale_origin`)
 

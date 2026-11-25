@@ -41,7 +41,7 @@ function fixture() {
         throw new Error(`Unexpected SQL: ${sql}`);
       },
       sale: {
-        async findFirst({ where }: any) { assert.ok(where.userId); await tick(); const sale = state.sales.find(s => s.id === where.id && s.userId === where.userId); return sale ? view(sale) : null; },
+        async findFirst({ where, include }: any) { assert.ok(where.userId); await tick(); const sale = state.sales.find(s => s.id === where.id && s.userId === where.userId); return sale ? (include?.returns ? result(sale) : view(sale)) : null; },
         async update({ where, data, include }: any) {
           const sale = state.sales.find(s => s.id === where.id); assert.ok(sale); const { version, ...rest } = data;
           // Mirrors sale_status_transition_guard.
@@ -267,6 +267,9 @@ test("partial returns in several steps: DELIVERED until everything is returned, 
   ] });
   assert.equal(second.status, "RETURNED"); assert.ok(second.returnedAt); assert.equal(second.returns.length, 2);
   assert.deepEqual(second.returns.map((r: Row) => r.reason), ["Primera devolución", "Segunda devolución"]);
+  const reloaded: any = await f.service.get(owner, id);
+  assert.equal(reloaded.returns.length, 2, "GET /sales/:id includes every return after a reload");
+  assert.deepEqual(reloaded.returns.flatMap((r: Row) => r.lines.map((l: Row) => l.receivedQuantity)).sort(), [1, 1, 2]);
   assert.equal(f.state.items.find(i => i.id === a)!.stock, 7 + 1 + 1); assert.equal(f.state.items.find(i => i.id === b)!.stock, 9);
   const keysOfReturns = new Set(f.state.movements.filter(m => m.saleMovementRole === "SALE_RETURN_RESELLABLE").map(m => m.key));
   assert.equal(keysOfReturns.size, 2, "each return writes its own movements under its own operation");

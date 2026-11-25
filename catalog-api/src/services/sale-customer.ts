@@ -5,8 +5,11 @@ import { lockInventoryOwner } from "../repositories/inventory.repository";
 import { createSaleSchema, updateDraftSaleSchema } from "../schemas/sales.schema";
 import { isSameSaleCommand, saleCommandHash } from "./sale-operation-hash";
 
+// Read responses (GET /sales, GET /sales/:id) carry every return so the panel can show what
+// is returned and pending per line, and the "partially returned" state, after a reload.
 export const saleCustomerInclude = (userId: string) => ({
   lines: true,
+  returns: { include: { lines: true }, orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }] },
   customer: { where: { ownerId: userId }, select: { id: true, fullName: true, phone: true, email: true, archivedAt: true } },
 } satisfies Prisma.SaleInclude);
 

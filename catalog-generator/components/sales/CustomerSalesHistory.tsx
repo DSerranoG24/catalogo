@@ -67,43 +67,43 @@ export default function CustomerSalesHistory() {
     } catch (e) { if (version === detailVersion.current) setDetailError(message(e)); }
     finally { if (version === detailVersion.current) setDetailLoading(false); }
   }
-  return <section aria-label="Ventas vinculadas a un cliente" className="space-y-3 rounded border p-4">
-    <h2 className="text-lg font-semibold">Ventas vinculadas a un cliente</h2>
+  return <section aria-label="Ventas vinculadas a un cliente" className="space-y-3 rounded-2xl border border-[#dce4dc] bg-white p-5">
+    <h2 className="text-xl font-semibold">Ventas vinculadas a un cliente</h2>
     <p>Solo aparecen ventas asociadas expresamente. Los totales registrados no indican pagos recibidos.</p>
     <form onSubmit={e => { e.preventDefault(); void findCustomers(1); }} className="flex flex-wrap gap-2">
-      <label>Nombre o teléfono del cliente<input className="block rounded border p-2" maxLength={160} value={q} onChange={e => {
+      <label>Nombre o teléfono del cliente<input className="block rounded-[var(--radius-medium)] border border-[#cfd8cf] bg-white p-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)]" maxLength={160} value={q} onChange={e => {
         setQ(e.target.value); searchVersion.current++; setSearching(false); setSearch(null); setSearchError(""); setCustomer(null); resetSales();
       }} /></label>
-      <button className="min-h-11 rounded border px-3" disabled={searching}>Buscar clientes</button>
+      <button className="min-h-11 rounded-[var(--radius-medium)] border border-[#cfd8cf] bg-white px-3 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)]" disabled={searching}>Buscar clientes</button>
     </form>
     <div aria-live="polite">{searching && <p>Buscando clientes…</p>}{search && !search.customers.length && <p>No se encontraron clientes en esta página.</p>}</div>
     {searchError && <div role="alert"><p>{searchError}</p><button onClick={() => void findCustomers(searchPage)}>Reintentar búsqueda</button></div>}
-    {search && <><label>Cliente<select className="block min-h-11 rounded border p-2" value={customer?.id ?? ""} onChange={e => { setCustomer(search.customers.find(c => c.id === e.target.value) ?? null); resetSales(); }}>
+    {search && <><label>Cliente<select className="block min-h-11 rounded-[var(--radius-medium)] border border-[#cfd8cf] bg-white p-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)]" value={customer?.id ?? ""} onChange={e => { setCustomer(search.customers.find(c => c.id === e.target.value) ?? null); resetSales(); }}>
       <option value="">Selecciona un cliente</option>{search.customers.map(c => <option key={c.id} value={c.id}>{c.fullName} · {c.archivedAt ? "Archivado" : "Activo"}</option>)}
     </select></label><div className="flex gap-3">
       {searchPage > 1 && <button onClick={() => void findCustomers(searchPage - 1)}>Clientes anteriores</button>}
       {search.hasMore && <button onClick={() => void findCustomers(searchPage + 1)}>Más clientes</button>}
     </div></>}
-    <label>Estado de venta<select className="ml-2 min-h-11 rounded border p-2" value={status} onChange={e => { setStatus(e.target.value); resetSales(); }}>
+    <label>Estado de venta<select className="ml-2 min-h-11 rounded-[var(--radius-medium)] border border-[#cfd8cf] bg-white p-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)]" value={status} onChange={e => { setStatus(e.target.value); resetSales(); }}>
       <option value="all">Todos los estados</option>{saleStatuses.map(s => <option key={s} value={s}>{labels[s]}</option>)}
     </select></label>
-    <button className="ml-2 min-h-11 rounded border px-3" disabled={!customer || loading} onClick={() => void loadSales(null)}>Consultar ventas</button>
+    <button className="ml-2 min-h-11 rounded-[var(--radius-medium)] border border-[#cfd8cf] bg-white px-3 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)]" disabled={!customer || loading} onClick={() => void loadSales(null)}>Consultar ventas</button>
     <div aria-live="polite">{loading && <p>Cargando ventas…</p>}</div>
     {error && <div role="alert"><p>{error}</p><button onClick={() => void loadSales(cursor)}>Reintentar ventas</button></div>}
     {page && <div className="space-y-3"><h3>{page.customer.fullName} · {page.customer.archivedAt ? "Archivado" : "Activo"}</h3>
       {!page.sales.length && <p>No hay ventas vinculadas en esta página.</p>}
-      <ul className="space-y-2">{page.sales.map(s => <li key={s.id} className="rounded border p-2">
+      <ul className="space-y-2">{page.sales.map(s => <li key={s.id} className="rounded-[var(--radius-medium)] border border-[#cfd8cf] bg-white p-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)]">
         <p>Venta {s.id} · {new Date(s.createdAt).toLocaleString("es-CO")} · {labels[s.status]}</p>
         <p>Comprador histórico: {s.customerNameSnapshot ?? s.customerName ?? "No registrado"}</p>
         <p>Total registrado: {formatHistoricalMoney(s.total, s.currency)}</p>
         <button className="min-h-11 underline" onClick={() => void openSale(s.id)}>Ver líneas de venta {s.id.slice(0, 8)}</button>
       </li>)}</ul>
-      {page.nextCursor && <button className="min-h-11 rounded border p-2" onClick={() => void loadSales(page.nextCursor)}>Siguiente página de ventas</button>}
-      {cursor && <button className="ml-2 min-h-11 rounded border p-2" onClick={() => void loadSales(null)}>Volver al inicio</button>}
+      {page.nextCursor && <button className="min-h-11 rounded-[var(--radius-medium)] border border-[#cfd8cf] bg-white p-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)]" onClick={() => void loadSales(page.nextCursor)}>Siguiente página de ventas</button>}
+      {cursor && <button className="ml-2 min-h-11 rounded-[var(--radius-medium)] border border-[#cfd8cf] bg-white p-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-emerald)]" onClick={() => void loadSales(null)}>Volver al inicio</button>}
     </div>}
     <div aria-live="polite">{detailLoading && <p>Cargando detalle…</p>}</div>
     {detailError && <div role="alert"><p>{detailError}</p><button onClick={() => { if (detailId) void openSale(detailId); }}>Reintentar detalle</button></div>}
-    {detail && <section aria-label="Detalle histórico de venta" className="space-y-2 rounded border p-3">
+    {detail && <section aria-label="Detalle histórico de venta" className="space-y-2 rounded-xl border border-[#e2e8e0] p-3">
       <h3 ref={detailHeading} tabIndex={-1} className="focus-visible:outline-2">Venta {detail.id} · {labels[detail.status]}</h3>
       <p>Comprador histórico: {saleBuyer(detail).name ?? "No registrado"}</p>
       <p>Teléfono histórico: {saleBuyer(detail).phone ?? "No registrado"} · Correo histórico: {saleBuyer(detail).email ?? "No registrado"}</p>

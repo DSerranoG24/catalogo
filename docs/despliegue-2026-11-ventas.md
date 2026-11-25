@@ -1,6 +1,6 @@
 # Runbook: migraciones de Ventas de noviembre de 2026
 
-> **Estado:** según el responsable, las dos migraciones de este runbook (F0b y F0c) se aplicaron en producción el 24/11/2026, y `main` se publicó en `648b1dc`. La migración siguiente, F0d, se aplica con el mismo procedimiento y las diferencias del [anexo F0d](#anexo-f0d-reglas-de-ventas-20261124210000).
+> **Estado:** según el responsable, las dos migraciones de este runbook (F0b y F0c) se aplicaron en producción el 24/11/2026, y `main` se publicó en `648b1dc`. La migración siguiente, F0d, se aplica con el mismo procedimiento y las diferencias del [anexo F0d](#anexo-f0d-reglas-e-interfaz-de-ventas-20261124210000).
 
 Preparado el 24 de noviembre de 2026 para que el responsable aplique en producción dos migraciones y publique el código que las acompaña. Lo ejecuta **una sola persona**, paso a paso, deteniéndose ante cualquier resultado distinto del esperado. Este documento no autoriza a ningún agente a ejecutarlo. Complementa [despliegue](despliegue.md) y [migraciones](migrations.md).
 
@@ -337,32 +337,40 @@ Si un paso falla, anota el código HTTP y `error` (no hay datos personales en es
 - No elimines las restricciones por SQL para «volver atrás»: quitar la segunda volvería a bloquear las ventas. Cualquier cambio de esquema posterior se hace con una migración nueva revisada.
 - Restaurar el volcado sobre producción pierde las escrituras posteriores y no recupera Storage; es el último recurso y requiere una decisión explícita ([procedimiento en 2.6](#26-cómo-restaurar-desde-el-volcado-solo-si-hiciera-falta)).
 
-## Anexo F0d: reglas de Ventas (`20261124210000`)
+## Anexo F0d: reglas e interfaz de Ventas (`20261124210000`)
 
-Migración `20261124210000_sale_partial_returns_and_movement_roles` y código de la rama `f0d-sale-rules` ([contrato v2.1](sales-contract.md#14-cambios-de-la-versión-21)). Se siguen los pasos 0 a 8 con estas diferencias. Ensayada el 24/11/2026 sobre la cadena completa de 39 migraciones (`npm.cmd run test:sales-postgres`, 24/24 etapas).
+Se despliegan juntos **F0d-1** (reglas de Ventas y migración `20261124210000_sale_partial_returns_and_movement_roles`, [contrato v2.1](sales-contract.md#14-cambios-de-la-versión-21)) y **F0d-2** (pantalla de Ventas en el panel), desde la rama `f0d-sales-ui`. Se siguen los pasos 0 a 8 con estas diferencias. La migración se ensayó el 24/11/2026 sobre la cadena completa de 39 migraciones (`npm.cmd run test:sales-postgres`, 24/24 etapas).
 
-**Qué cambia:**
+**Qué cambia en la API:**
 - solo se cancelan ventas `CONFIRMED`;
-- se admiten devoluciones parciales y acumulativas, nunca por encima de lo vendido;
+- devoluciones parciales y acumulativas, nunca por encima de lo vendido;
 - la conversión de pedidos bloquea artículos;
 - el hash de idempotencia ya no incluye `requestId`;
-- las respuestas incluyen líneas y devoluciones.
+- las respuestas de las acciones incluyen líneas y devoluciones, y `GET /sales` y `GET /sales/:id` ahora también incluyen `returns`.
 
 En la base de datos: un CHECK de rol frente a tipo en `inventory_movements`, un índice y dos triggers (devoluciones acumuladas y transiciones de estado). No modifica datos.
 
-**Compatibilidad**, para mantener el orden **migración → push**:
-- El código publicado (`648b1dc`) sigue funcionando con el esquema nuevo: sus movimientos cumplen la regla de rol frente a tipo, y sus devoluciones totales cumplen el trigger. Lo único que cambia es que, si alguien intentara cancelar una venta entregada en la ventana entre migración y push, la base de datos lo rechazaría (500). Es la regla buscada.
-- El código nuevo también funciona con el esquema actual, porque el servicio ya aplica todas las reglas.
+**Qué cambia en el panel:** enlace «Ventas» en la cabecera y la pantalla `/dashboard/ventas` completa:
+- listado con filtro por estado;
+- detalle con líneas, totales, fechas e historial de devoluciones;
+- editor de borrador con buscador de inventario;
+- confirmar, entregar, cancelar y registrar devoluciones parciales con confirmación de Radix;
+- reintento seguro con la misma `operationId`.
 
-**Paso 0:** la rama es `f0d-sale-rules`. `git log --oneline -1 f0d-sale-rules` debe mostrar el commit F0d sobre `648b1dc`.
+**Compatibilidad y orden.** Se mantiene **migración → push**, y ahora también **API antes que frontend**:
+- El código publicado hoy (`648b1dc`) funciona con el esquema nuevo: sus movimientos cumplen la regla de rol frente a tipo y sus devoluciones totales cumplen el trigger. Solo un intento de cancelar una venta entregada en la ventana entre migración y push daría 500, que es la regla buscada.
+- La API nueva funciona con el esquema actual, porque el servicio ya aplica todas las reglas.
+- **El frontend nuevo necesita la API nueva** para mostrar devoluciones. Con la API antigua, `GET /sales` no trae `returns`: el panel trataría cada venta como sin devoluciones (no mostraría «Devuelta parcialmente» ni lo pendiente), aunque el servidor seguiría rechazando devolver de más. Por eso, tras el push, comprueba primero que Render está *Live* y después Vercel.
 
-**Paso 1, consulta previa** ([`verify-sale-integrity.sql`](sql/verify-sale-integrity.sql), ahora ampliada):
+**Paso 0:** la rama es `f0d-sales-ui`. `git log --oneline -3 f0d-sales-ui` debe mostrar el commit F0d-2 (interfaz) sobre el commit F0d (`fcac86c`, reglas), sobre `648b1dc`.
+
+**Paso 1, consulta previa** ([`verify-sale-integrity.sql`](sql/verify-sale-integrity.sql)):
 
 | Consulta | Esperado antes de F0d | Si no se cumple |
 | --- | --- | --- |
 | Reglas (`WITH rules AS …`) | Todas las filas `CHECK` en 0, incluida `inventory_movements_sale_role_type_check`. | No migres. Una violación en movimientos no se puede reparar (registro inmutable): escala. |
 | Diagnóstico `Sale_cancelled_after_delivery` | **Al menos 1**: la venta de prueba `29b2435…`. No bloquea y no se corrige. Anota los IDs. | Si aparecen ventas reales, anótalas: la migración no las cambia. |
-| Otros diagnósticos | En 0. `SaleReturnLine_cumulative_within_sold` en 0 confirma que no hay devoluciones de más. | No bloquean la migración, pero revisa esas ventas antes de habilitar devoluciones parciales en la operación diaria. |
+| Otros diagnósticos | En 0. | No bloquean la migración; revisa esas ventas. |
 | Roles y tipos | Solo `SALE_CONFIRMATION/OUT`, `SALE_CANCELLATION/IN` y `SALE_RETURN_RESELLABLE/IN`; **ninguna** fila `SALE_RETURN_DAMAGED`. | La migración fallaría: no migres. |
 | Objetos de `20261124210000` | 0 filas. | Algún objeto ya existe: no migres y revisa. |
 | Migraciones de Ventas | Las dos primeras con `finished_at`; ninguna fila de la tercera. | Revisa el estado antes de seguir (paso 4). |
@@ -371,26 +379,31 @@ En la base de datos: un CHECK de rol frente a tipo en `inventory_movements`, un 
 
 **Paso 3:** `migrate status` debe mostrar **exactamente una** pendiente, `20261124210000_sale_partial_returns_and_movement_roles`. Tras `migrate deploy`, repite la consulta de objetos: ahora debe listar 6 (CHECK, índice, dos funciones y dos triggers).
 
-**Paso 4, si falla:** la migración es una sola transacción y no deja cambios parciales. La única causa esperable es una fila de movimientos que incumpla la regla de rol frente a tipo, o un objeto con el mismo nombre. Ninguna de las dos se corrige por SQL: `migrate resolve --rolled-back 20261124210000_sale_partial_returns_and_movement_roles` y escala. El código nuevo funciona igualmente con el esquema anterior.
+**Paso 4, si falla:** la migración es una sola transacción y no deja cambios parciales. La única causa esperable es una fila de movimientos que incumpla la regla de rol frente a tipo, o un objeto con el mismo nombre. Ninguna de las dos se corrige por SQL: `migrate resolve --rolled-back 20261124210000_sale_partial_returns_and_movement_roles` y escala. No publiques el código hasta resolverlo.
 
-**Paso 5:** `git switch main`, `git merge --ff-only f0d-sale-rules` y `git push origin main`.
+**Paso 5:** `git switch main`, `git merge --ff-only f0d-sales-ui` y `git push origin main`.
 
-**Paso 7, prueba de humo adicional** en la cuenta de prueba (ventana privada). Usa la función `api` y `ITEM` del paso 7.1, con al menos 2 unidades en stock:
+**Paso 6:** Render primero (*Live* para el SHA nuevo, logs sin errores) y **después** Vercel. Este bloque sí cambia el frontend: debe aparecer un deployment *Ready* para el mismo SHA, asignado al dominio de producción.
 
-```js
-const key = () => ({ operationId: crypto.randomUUID(), requestId: crypto.randomUUID() });
-const s = await api("/sales", "POST", key());
-const d = await api(`/sales/${s.id}`, "PATCH", { operationId: crypto.randomUUID(), expectedVersion: s.version, lines: [{ inventoryItemId: ITEM, quantity: 2, unitDiscount: "0" }] });
-const confirmCmd = { ...key(), expectedVersion: d.version, deliverImmediately: true };
-const delivered = await api(`/sales/${s.id}/confirm`, "POST", confirmCmd);            // 200, DELIVERED, incluye lines
-await api(`/sales/${s.id}/confirm`, "POST", { ...confirmCmd, requestId: crypto.randomUUID() }); // 200, mismo resultado, sin movimiento nuevo
-await api(`/sales/${s.id}/cancel`, "POST", { ...key(), expectedVersion: delivered.version, reason: "Prueba F0d" }).catch(e => e); // 409 INVALID_TRANSITION
-const line = delivered.lines[0].id;
-const part = await api(`/sales/${s.id}/returns`, "POST", { ...key(), expectedVersion: delivered.version, reason: "Humo parcial 1", lines: [{ saleLineId: line, receivedQuantity: 1, resellableQuantity: 1, damagedQuantity: 0 }] }); // 200, DELIVERED, 1 devolución
-await api(`/sales/${s.id}/returns`, "POST", { ...key(), expectedVersion: part.version, reason: "Humo de más", lines: [{ saleLineId: line, receivedQuantity: 2, resellableQuantity: 2, damagedQuantity: 0 }] }).catch(e => e); // 409 RETURN_EXCEEDS_SOLD
-const done = await api(`/sales/${s.id}/returns`, "POST", { ...key(), expectedVersion: part.version, reason: "Humo parcial 2", lines: [{ saleLineId: line, receivedQuantity: 1, resellableQuantity: 1, damagedQuantity: 0 }] }); // 200, RETURNED, 2 devoluciones
-```
+**Paso 7, prueba de humo por la interfaz**, en la cuenta de prueba (ventana privada, ver 7.0). Usa el artículo `HUMO-2611` con al menos 3 unidades y ficha comercial; si hace falta, regístrale una entrada en Inventario. Anota su stock inicial (S).
 
-Esperado en Inventario: el artículo baja 2 unidades al confirmar y recupera 1 con cada devolución, hasta volver al stock inicial. Hay un movimiento por cada paso con efecto y ninguno en los intentos rechazados.
+1. **Navegación.** En la cabecera aparece «Ventas», junto a Inventario y Cuenta. Al abrirla se ve el aviso «Los totales no indican pagos recibidos.» y el listado.
+2. **Borrador.** Pulsa «Crear borrador de venta», sin cliente. Se abre «Editar borrador».
+   - En «Buscar artículo del inventario» escribe `HUMO` y pulsa «Buscar artículos». Debe mostrar precio, stock y, si buscas un artículo sin ficha, el aviso «Sin ficha comercial».
+   - Pulsa «Añadir PRUEBA HUMO VENTAS 2026-11», pon cantidad 2 y pulsa «Guardar borrador».
+   - Esperado: «Borrador guardado» y los totales del servidor con formato `$ 2.000` (precio 1000).
+3. **Confirmar y entregar.** Pulsa «Confirmar y entregar» y acepta en el diálogo. Esperado: estado **Entregada**, fechas de confirmación y entrega, y stock S − 2 en Inventario.
+4. **Sin cancelación.** En la venta entregada no aparece «Cancelar venta».
+5. **Devolución parcial.** En «Registrar devolución» pon 1 en Revendibles y el motivo «Humo parcial 1», pulsa «Registrar devolución» y acepta.
+   - Esperado: estado **Devuelta parcialmente**, la línea muestra «Vendida 2 · Devuelta 1 · Pendiente 1», el historial tiene «Devolución 1» y el stock queda en S − 1.
+6. **Tope del formulario.** Escribe 2 en Revendibles y pulsa «Registrar devolución». Esperado: el aviso «como máximo 1 pendiente», sin diálogo ni envío.
+7. **Devolución del resto.** Pon 1 en Dañadas (0 en Revendibles) y el motivo «Humo parcial 2», y registra. Esperado: estado **Devuelta**, «Esta venta es de solo lectura», dos devoluciones en el historial y stock S − 1 (lo dañado no vuelve al inventario).
+8. **Cancelar una confirmada.** Crea otro borrador con 1 unidad, guárdalo, pulsa «Confirmar» y acepta: estado **Confirmada** y stock S − 2.
+   - Pulsa «Cancelar venta»: el botón «Sí, cancelar la venta» sigue deshabilitado hasta escribir un motivo.
+   - Escribe «Humo cancelación» y confirma. Esperado: **Cancelada**, solo lectura y stock S − 1.
+9. **Listado.** Filtra por «Devuelta» y por «Cancelada»: cada filtro muestra su venta con la etiqueta y el total en COP. Pulsar una venta abre su detalle.
+10. **Móvil.** Con el navegador en 390 px de ancho, o desde el teléfono, el listado y el detalle se leen sin desplazamiento horizontal.
 
-**Paso 8:** anota también los IDs que mostró `Sale_cancelled_after_delivery`.
+Hay un movimiento por cada paso con efecto (confirmación, devolución revendible y cancelación) y ninguno en los pasos rechazados. Al terminar, el stock del artículo es S − 1, por la unidad dañada. Si un paso falla, anota el mensaje que muestra el panel (no incluye datos personales) y **no reviertas el esquema**.
+
+**Paso 8:** anota también los IDs que mostró `Sale_cancelled_after_delivery` y el resultado de la prueba de humo por la interfaz.

@@ -42,7 +42,7 @@ No existe ningún modelo, ruta ni pantalla de **gastos**, **pagos/cartera** ni *
   - `20261124200000_inventory_movements_allow_sale_origin`: admite `origin = 'SALE'`.
 
   No se verificó desde esta sesión.
-- **Preparada en la rama local `f0d-sale-rules`, sin aplicar:** `20261124210000_sale_partial_returns_and_movement_roles`. Contiene el CHECK de rol frente a tipo, el índice y los triggers de devoluciones acumuladas y de transiciones. Procedimiento: [anexo F0d del runbook](despliegue-2026-11-ventas.md#anexo-f0d-reglas-de-ventas-20261124210000), empezando por [la consulta de solo lectura](sql/verify-sale-integrity.sql).
+- **Preparada en las ramas locales `f0d-sale-rules` y `f0d-sales-ui` (que la contiene), sin aplicar:** `20261124210000_sale_partial_returns_and_movement_roles`. Contiene el CHECK de rol frente a tipo, el índice y los triggers de devoluciones acumuladas y de transiciones. Procedimiento: [anexo F0d del runbook](despliegue-2026-11-ventas.md#anexo-f0d-reglas-e-interfaz-de-ventas-20261124210000), empezando por [la consulta de solo lectura](sql/verify-sale-integrity.sql).
 - `20261124000000_private_item_compatibilities` está confirmada en Git. **En este corte no se ha verificado si ya se aplicó en algún entorno.**
 - Tres migraciones tienen nombres poco descriptivos generados con `prisma migrate dev`: `20261120194535_ultima` (crea ventas), `20261120204832_new` (imágenes y publicaciones de inventario) y `20261121004537_n` (`"Sale".sourceOrderId`). No deben renombrarse si ya están aplicadas.
 
@@ -88,7 +88,7 @@ No existe un script `typecheck` independiente en ninguno de los dos paquetes; lo
 
   Hasta aplicar su migración y publicar el código, en producción sigue siendo posible cancelar una venta entregada y la conversión no bloquea artículos.
 - **Venta de prueba entregada y después cancelada (`29b2435…`)**, de la prueba en producción del 24/11/2026: no se corrige. La consulta previa la muestra como diagnóstico.
-- **Interfaz de Ventas:** registra solo devoluciones totales. Una venta devuelta en parte por API no muestra lo pendiente.
+- **Interfaz de Ventas (F0d-2, rama `f0d-sales-ui`, sin publicar):** pantalla completa en `/dashboard/ventas`, con listado, detalle, borrador, acciones y devoluciones parciales. Se publica junto con F0d-1 según el [anexo F0d](despliegue-2026-11-ventas.md#anexo-f0d-reglas-e-interfaz-de-ventas-20261124210000).
 - **Integridad de ventas:** siguen sin respaldo en base de datos las sumas de líneas frente a totales y la inmutabilidad de líneas confirmadas.
 - **Compatibilidades:** su migración se instala sin errores dentro de la cadena completa (ensayo de ventas del 24/11/2026), pero falta probar en PostgreSQL aislado sus restricciones, triggers diferidos y concurrencia. Los incrementos 2 a 5 del diseño no están aprobados. La API todavía no devuelve el ID de la relación existente cuando detecta un duplicado.
 - **Ventas:** el listado devuelve como máximo 50 ventas, sin paginación ni filtros. No existe acción para descartar un borrador. Sigue sin retirarse la venta sintética `fb13793c` desplegada ([detalle](customer-sales-history.md)).

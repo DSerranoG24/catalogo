@@ -67,8 +67,8 @@ export function DialogActions({ children }: { children: ReactNode }) {
   return <div className={styles.actions}>{children}</div>;
 }
 
-export function AlertDialogCancel({ disabled = false, onClick }: { disabled?: boolean; onClick?: () => void }) {
-  return <RadixAlertDialog.Cancel asChild><Button variant="secondary" disabled={disabled} onClick={onClick}>Cancelar</Button></RadixAlertDialog.Cancel>;
+export function AlertDialogCancel({ disabled = false, onClick, label = "Cancelar" }: { disabled?: boolean; onClick?: () => void; label?: string }) {
+  return <RadixAlertDialog.Cancel asChild><Button variant="secondary" disabled={disabled} onClick={onClick}>{label}</Button></RadixAlertDialog.Cancel>;
 }
 
 export function DestructiveConfirm({ open, onOpenChange, title, description, onConfirm }: Omit<DialogProps, "children" | "busy"> & { onConfirm: () => void }) {

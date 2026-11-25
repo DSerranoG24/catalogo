@@ -120,7 +120,7 @@ Errores:
 
 En la mayoría de los `409` el mensaje es el propio código.
 
-La interfaz actual (`/dashboard/ventas`) crea borradores, muestra el historial por cliente y registra devoluciones **totales** (envía todas las líneas completas). Las devoluciones parciales, confirmar, entregar y cancelar solo están disponibles por API.
+La interfaz (`/dashboard/ventas`, enlazada en la cabecera del panel) cubre el ciclo completo: listado con filtro por estado (incluida «Devuelta parcialmente», derivada de `returns`); detalle con líneas, totales del servidor, fechas e historial de devoluciones; editor de borrador con buscador de inventario y cliente; y confirmar, confirmar y entregar, entregar, cancelar y devoluciones parciales con un máximo de lo pendiente por línea. Las acciones importantes piden confirmación con el AlertDialog de Radix. Cada intención del usuario usa una `operationId`, que se conserva en doble clic y en «Reintentar», con una `requestId` nueva en cada envío. `GET /sales` y `GET /sales/:id` incluyen `returns` desde F0d-2.
 
 ## 7. Idempotencia: una clave por llamada
 
@@ -215,7 +215,7 @@ Otros flujos: `POST /sales` usa un advisory lock por propietario (`sale-create-v
 ## 13. Limitaciones y riesgos conocidos
 
 - **Venta de prueba entregada y después cancelada (`29b2435…`).** Existe en producción por la regla anterior. No se corrige: la consulta previa la muestra como `DIAGNÓSTICO` (`Sale_cancelled_after_delivery`) y los triggers nuevos no la tocan porque solo actúan sobre cambios futuros. Su cancelación reingresó todo el stock sin recepción física.
-- **Interfaz:** sigue enviando devoluciones totales. En una venta ya devuelta en parte por API, el formulario completo falla con `RETURN_EXCEEDS_SOLD`, porque la UI no muestra lo pendiente.
+- **Interfaz:** la conversión de pedidos sigue en el panel de pedidos del catálogo. El panel de Ventas no muestra el recibo original de una operación repetida, sino la venta actual tras recargar.
 - **Cierre de cuenta frente a conversión:** orden de bloqueo inverso (sección 8). Es anterior a este cambio; PostgreSQL resuelve el interbloqueo abortando una transacción, que falla con 500 y puede reintentarse.
 - **Recibos anteriores a la v2.1:** no incluyen líneas, y su hash incluía `requestId`. Un reintento de una operación antigua con una `requestId` distinta responde `IDEMPOTENCY_CONFLICT`.
 - **Sin respaldo en base de datos:** las sumas de líneas frente a totales de la venta y la inmutabilidad de líneas confirmadas.
