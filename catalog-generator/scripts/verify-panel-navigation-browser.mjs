@@ -18,6 +18,15 @@ async function api(req, res) {
   if (url.pathname === "/api/sales") return reply({ result: [] });
   if (url.pathname === "/api/inventory/items") return reply({ success: true, result: { items: [], total: 0, page: 1 } });
   if (url.pathname === "/api/customers") return reply({ success: true, customers: [], hasMore: false, page: 1, pageSize: 25 });
+  if (url.pathname === "/api/dashboard/summary") {
+    // Empty account: the shell is under test here; Inicio's figures are covered by test:dashboard-browser.
+    const days = Number(url.searchParams.get("days")), today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date());
+    const series = Array.from({ length: days }, (_, i) => { const d = new Date(`${today}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - (days - 1) + i); return { date: d.toISOString().slice(0, 10), total: "0" }; });
+    return reply({ success: true, generatedAt: now(), today: { date: today, salesTotal: "0", salesCount: 0, yesterdaySalesTotal: "0" },
+      month: { salesTotal: "0", costOfSales: "0", salesWithoutCostCount: 0, expensesTotal: null, estimatedProfit: "0", previousMonth: { salesTotal: "0", expensesTotal: null, estimatedProfit: "0" } },
+      attention: { lowStockCount: 0, outOfStockCount: 0, pendingOrdersCount: 0 }, salesSeries: series, recent: [],
+      setup: { hasInventoryItems: false, hasPublishedCatalog: false, hasSales: false }, modules: { expenses: false } });
+  }
   unknown.push(`${req.method} ${url.pathname}`); return reply({ message: "No disponible en la prueba." }, 404);
 }
 
@@ -74,9 +83,9 @@ try {
     assert.equal(await evaluate(`[...document.querySelectorAll('main a')].find(a=>a.textContent.includes('Nueva venta'))?.getAttribute('href')`), "/dashboard/ventas");
     const quick = await evaluate(`[...document.querySelectorAll('section[aria-labelledby="quick-actions"] a')].map(a=>[a.textContent.trim(),a.getAttribute('href')])`);
     assert.deepEqual(quick, [["Agregar producto", "/dashboard/inventario"]], "«Registrar gasto» only when Gastos exists");
-    assert.ok(!/\$\s?\d/.test(await evaluate(`document.querySelector('main').innerText`)), "Inicio shows no figures");
+    await waitText("Ventas hoy"); await waitText("Primeros pasos");
     await shot("panel-1440");
-    checks.push(`Inicio: «Hola, Daniel», «${expectedDate}», Nueva venta and quick actions without figures; menu Inicio/Vender/Inventario/Catálogo/Ajustes in three groups, no Gastos/Servicio técnico/Cartera/Reportes`);
+    checks.push(`Inicio: «Hola, Daniel», «${expectedDate}», Nueva venta, quick actions and the summary; menu Inicio/Vender/Inventario/Catálogo/Ajustes in three groups, no Gastos/Servicio técnico/Cartera/Reportes`);
 
     // Contrast on the navy menu.
     const contrast = await evaluate(`(()=>{

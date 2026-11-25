@@ -1,17 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { CircleDollarSign, Package, Plus } from "lucide-react";
-import { useStoredSession } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { CircleDollarSign, Package, Plus, RefreshCw } from "lucide-react";
+import { apiRequest, type Catalog, useStoredSession } from "@/lib/api";
 import { isEnabled } from "@/lib/panel-navigation";
+import { bogotaTime, parseDashboardSummary, type DashboardDays, type DashboardSummary } from "@/lib/dashboard-ui.mjs";
+import SummaryCards from "@/components/dashboard/SummaryCards";
+import AttentionCard from "@/components/dashboard/AttentionCard";
+import SalesChart from "@/components/dashboard/SalesChart";
+import { FirstSteps, HomeFooter, RecentSales } from "@/components/dashboard/HomeBlocks";
 
 /** Long date in Spanish for Bogotá, e.g. «Miércoles 25 de noviembre de 2026». */
 function longBogotaDate(now = new Date()) {
   const text = new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(now).replace(",", "");
   return text.charAt(0).toLocaleUpperCase("es-CO") + text.slice(1);
 }
+const REFRESH_ON_FOCUS_MS = 60_000;
+const message = (cause: unknown) => cause instanceof Error && cause.message ? cause.message : "No se pudo cargar el resumen.";
 
-/** Provisional Inicio: greeting, date and quick actions. Data cards arrive in a later phase. */
+/** Inicio: greeting, quick actions and the server-computed summary (GET /api/dashboard/summary). */
 export default function HomePage() {
   const session = useStoredSession();
   const firstName = session?.user.name?.trim().split(/\s+/)[0];
@@ -19,8 +27,47 @@ export default function HomePage() {
     ...(isEnabled("gastos") ? [{ href: "/dashboard/gastos", label: "Registrar gasto", Icon: CircleDollarSign }] : []),
     { href: "/dashboard/inventario", label: "Agregar producto", Icon: Package },
   ];
+
+  // A request is identified by range + revision; replies for an older key are ignored (late responses).
+  const [days, setDays] = useState<DashboardDays>(7);
+  const [revision, setRevision] = useState(0);
+  const key = `${days}:${revision}`;
+  const [reply, setReply] = useState<{ key: string; error: string | null } | null>(null);
+  const [data, setData] = useState<DashboardSummary | null>(null);
+  const lastRequest = useRef(0);
+  useEffect(() => {
+    let active = true;
+    lastRequest.current = Date.now();
+    apiRequest<unknown>(`/dashboard/summary?days=${days}`).then(value => parseDashboardSummary(value, days)).then(
+      summary => { if (active) { setData(summary); setReply({ key, error: null }); } },
+      cause => { if (active) setReply({ key, error: message(cause) }); });
+    return () => { active = false; };
+  }, [key, days]);
+  // Refresh when the tab regains focus, at most once a minute.
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === "visible" && Date.now() - lastRequest.current >= REFRESH_ON_FOCUS_MS) setRevision(v => v + 1); };
+    window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh);
+    return () => { window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+  }, []);
+  const settled = reply?.key === key ? reply : null;
+  const loading = !settled;
+  const error = settled?.error ?? null;
+  const retry = () => setRevision(v => v + 1);
+
+  // «Revisar» goes to the only catalog, or to the list when there are several (or before knowing).
+  const pending = (data?.attention.pendingOrdersCount ?? 0) > 0;
+  const [catalogs, setCatalogs] = useState<Catalog[] | null>(null);
+  useEffect(() => {
+    if (!pending) return;
+    let active = true;
+    apiRequest<{ catalogs: Catalog[] }>("/catalogs").then(result => { if (active && Array.isArray(result.catalogs)) setCatalogs(result.catalogs); }, () => undefined);
+    return () => { active = false; };
+  }, [pending]);
+  const ordersHref = catalogs?.length === 1 && catalogs[0] ? `/dashboard/catalogos/${catalogs[0].id}` : "/dashboard/catalogos";
+
+  const seriesForRange = data && data.salesSeries.length === days ? data.salesSeries : null;
   return (
-    <main className="mx-auto w-full max-w-6xl px-5 py-6 sm:px-8 lg:py-4">
+    <main className="mx-auto w-full max-w-6xl space-y-6 px-5 py-6 sm:px-8 lg:py-4">
       <div className="flex flex-wrap items-center justify-between gap-5">
         <div className="flex items-center gap-4">
           <span aria-hidden="true" className="text-4xl sm:text-5xl">👋</span>
@@ -33,7 +80,7 @@ export default function HomePage() {
           <Plus aria-hidden="true" className="size-5" />Nueva venta
         </Link>
       </div>
-      <section aria-labelledby="quick-actions" className="mt-8">
+      <section aria-labelledby="quick-actions">
         <h2 id="quick-actions" className="sr-only">Acciones rápidas</h2>
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {actions.map(({ href, label, Icon }) => (
@@ -45,6 +92,27 @@ export default function HomePage() {
           ))}
         </ul>
       </section>
+
+      <p role="status" className="sr-only">{data && !loading && !error ? `Resumen actualizado a las ${bogotaTime(data.generatedAt)}` : ""}</p>
+      {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#F4C7C2] bg-[#FEF3F2] px-5 py-4 text-[#B42318]">
+        <p><span className="font-semibold">No se pudo actualizar el resumen.</span> {data ? "Mostramos las últimas cifras cargadas." : error}</p>
+        <button type="button" onClick={retry} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#B42318] bg-white px-4 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B42318]"><RefreshCw aria-hidden="true" className="size-4" />Reintentar</button>
+      </div>}
+
+      {data ? <>
+        <FirstSteps setup={data.setup} />
+        <SummaryCards data={data} />
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] xl:items-start">
+          <AttentionCard attention={data.attention} ordersHref={ordersHref} />
+          <SalesChart series={seriesForRange} days={days} loading={loading} onDays={setDays} />
+        </div>
+        <RecentSales recent={data.recent} today={data.today.date} />
+      </> : !error && <div aria-busy="true" aria-label="Cargando el resumen" className="space-y-6">
+        <div className="grid gap-4 sm:grid-cols-2">{[0, 1].map(i => <div key={i} className="h-44 animate-pulse rounded-2xl bg-[#E6EEFF]" />)}</div>
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]"><div className="h-64 animate-pulse rounded-2xl bg-white" /><div className="h-80 animate-pulse rounded-2xl bg-white" /></div>
+        <div className="h-48 animate-pulse rounded-2xl bg-white" />
+      </div>}
+      <HomeFooter generatedAt={data?.generatedAt ?? null} connected={!error} />
     </main>
   );
 }

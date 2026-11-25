@@ -42,7 +42,7 @@ Se **añadieron** a `catalog-generator/app/globals.css` sin sustituir ningún to
 
 ## Armazón del panel (menú lateral, cabecera y barra móvil)
 
-Referencia visual: `inicio-escritorio.png`, la maqueta de Inicio. Pendiente de copiar a esta carpeta. De ella solo se implementan el menú, la cabecera y el saludo; las cifras, las alertas y la gráfica llegan en otra fase.
+Referencia visual: `inicio-escritorio.png`, la maqueta de Inicio. Pendiente de copiar a esta carpeta. De ella se implementan el menú, la cabecera y la pantalla de Inicio descrita en la sección siguiente.
 
 **Rutas del panel en `main` (25/11/2026):**
 
@@ -89,3 +89,36 @@ Referencia visual: `inicio-escritorio.png`, la maqueta de Inicio. Pendiente de c
   - Objetivos de al menos 44 px.
   - Contraste: activo 6,39:1, inactivo 11,29:1 y títulos de grupo 7,89:1 sobre `--vy-navy-700`.
 - **Cerrar sesión:** el panel entero usa el cierre que espera al servidor y muestra un error en `role="alert"` si falla. Es el comportamiento que antes tenía solo la lista de catálogos.
+
+## Pantalla de Inicio (`/dashboard`)
+
+Las cifras vienen de `GET /api/dashboard/summary` ([contrato y definiciones](../dashboard-summary.md)).
+- **Validación:** `parseDashboardSummary`, en `catalog-generator/lib/dashboard-ui.mjs`. Si la respuesta no cumple el contrato, se trata como error.
+- **Importes:** se formatean con BigInt, sin pasar por `Number`:
+  - en las tarjetas, completos hasta $ 999.999 y después «$ 3,2 M» (un decimal, redondeo al alejarse de cero);
+  - en las barras, «620K» o «3,2M».
+
+| Bloque | Se muestra cuando | Depende de |
+| --- | --- | --- |
+| Saludo, fecha larga (Bogotá) y «Nueva venta» | Siempre | Sesión. La cabecera oculta su propio «Nueva venta» en Inicio. |
+| Acciones rápidas | Siempre | «Agregar producto» → Inventario; «Registrar gasto» solo con la entrada Gastos habilitada. |
+| Primeros pasos | Si falta alguna tarea de `setup` | Inventario, catálogo publicado y primera venta, cada una con su enlace y su estado «Hecho» o «Pendiente». |
+| Ventas hoy (azul) | Siempre | `today`; comparación con ayer y minigráfica de `salesSeries`. |
+| Utilidad del mes (verde) | Siempre | `month.estimatedProfit` frente al mes anterior. Con `salesWithoutCostCount` > 0, enlace «n ventas sin costo» a Inventario. |
+| Gastos del mes (violeta) | `modules.expenses` **y** la entrada Gastos habilitada en `panel-navigation` | Hoy está oculta: F1a no está en `main`. |
+| Te deben | Nunca | Cartera no existe. |
+| Requiere tu atención | Siempre | Filas de stock bajo y agotados (→ Inventario) y de pedidos nuevos («Revisar»: al único catálogo, o a la lista si hay varios). Las filas en 0 se ocultan; si todas son 0, «Todo en orden». Fiados y equipos no existen. «Ver todos» no se implementa. |
+| Ventas de la semana | Siempre | `salesSeries`. Selector de 7/30/90 días que vuelve a pedir el resumen con `?days=`. Etiquetas por barra solo con 7 días; el valor de cada día aparece al pasar el cursor o con las flechas; hay una tabla oculta como alternativa. |
+| Últimos movimientos | Siempre | `recent` (hasta 5), con insignia de estado, cliente o «Sin cliente», hora o fecha y total. Las filas no son enlaces porque Ventas no tiene enlace directo a una venta; la cabecera lleva «Ver ventas». |
+| Pie | Siempre | «Conectado» o «Sin conexión» según la última petición, y «Última actualización» con la hora de `generatedAt` en Bogotá. |
+
+**Estados:**
+- **Carga:** esqueletos del tamaño final.
+- **Error sin datos previos:** mensaje y «Reintentar».
+- **Error con datos previos:** aviso con «Reintentar», manteniendo las últimas cifras.
+- **Pestaña que recupera el foco:** vuelve a pedir el resumen, como máximo una vez por minuto.
+- **Cambio de rango:** las respuestas tardías de un rango anterior se descartan.
+
+**Pruebas:**
+- `scripts/verify-dashboard-ui.mjs` (dentro de `npm test`): formateadores, comparaciones y validador.
+- `npm.cmd run test:dashboard-browser`: escenarios con el doble del endpoint.
