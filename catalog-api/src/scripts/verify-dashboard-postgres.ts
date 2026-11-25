@@ -154,21 +154,34 @@ async function main() {
   passed("Two accounts isolated (B never sees A and vice versa); new account all zeros with setup false");
 
   stage = "EXPENSES_PROVIDER";
-  // Stand-in with the F1a columns used by the query (the real table only exists in the f1-expenses branch).
-  await db.$executeRawUnsafe(`CREATE TABLE expenses ("ownerId" text NOT NULL, status text NOT NULL, amount bigint, "expenseDate" date NOT NULL)`);
-  await db.$executeRawUnsafe(`INSERT INTO expenses VALUES ('${a.id}', 'CONFIRMED', 500, '2026-03-01'), ('${a.id}', 'VOIDED', 999, '2026-03-01'), ('${a.id}', 'CONFIRMED', 200, '2026-02-28'),
-    ('${a.id}', 'CONFIRMED', 50, '2026-01-31'), ('${a.id}', 'PENDING_CONFIRMATION', 70, '2026-03-01'), ('${b.id}', 'CONFIRMED', 777, '2026-03-01')`);
+  // Real F1a rows (migration 20261125000000_operating_expenses, with its CHECKs and triggers).
+  const category = (ownerId: string) => db.expenseCategory.create({ data: { ownerId, name: "Servicios", normalizedKey: "servicios" }, select: { id: true } });
+  const [categoryA, categoryB] = [await category(a.id), await category(b.id)];
+  const spend = (ownerId: string, categoryId: string, amount: bigint, day: string, voided = false) => db.expense.create({ data: {
+    ownerId, categoryId, amount, expenseDate: new Date(`${day}T00:00:00.000Z`), paymentMethod: "CASH", description: "Gasto de prueba", categoryNameSnapshot: "Servicios",
+    confirmedAt: new Date("2026-03-01T15:00:00.000Z"), ...(voided ? { status: "VOIDED" as const, voidedAt: new Date("2026-03-01T15:30:00.000Z"), voidReason: "Registrado dos veces" } : {}) } });
+  await spend(a.id, categoryA.id, 500n, "2026-03-01");
+  await spend(a.id, categoryA.id, 999n, "2026-03-01", true);
+  await spend(a.id, categoryA.id, 200n, "2026-02-28");
+  await spend(a.id, categoryA.id, 50n, "2026-01-31");
+  await spend(b.id, categoryB.id, 777n, "2026-03-01");
   const withExpenses = await summaryAt(a.id, asOf, 7, true);
-  assert.equal(withExpenses.month.expensesTotal, "500"); assert.equal(withExpenses.month.previousMonth.expensesTotal, "200");
+  assert.equal(withExpenses.month.expensesTotal, "500", "the voided 999 is excluded"); assert.equal(withExpenses.month.previousMonth.expensesTotal, "200");
   assert.equal(withExpenses.month.estimatedProfit, (103000n - big - 60009n - 500n).toString());
+  assert.equal(withExpenses.month.previousMonth.estimatedProfit, (7000n + big - 900n - 1n - 200n).toString());
   assert.equal(withExpenses.modules.expenses, true);
+  const februaryEnd = await summaryAt(a.id, new Date("2026-03-01T04:59:59.999Z"), 7, true); // Feb 28 23:59:59.999 in Bogotá
+  assert.equal(februaryEnd.month.expensesTotal, "200", "February to date"); assert.equal(februaryEnd.month.previousMonth.expensesTotal, "50", "January (31 days)");
+  assert.equal((await summaryAt(b.id, asOf, 7, true)).month.expensesTotal, "777", "B only sees its own expenses");
   assert.equal((await summaryAt(c.id, asOf, 7, true)).month.expensesTotal, "0");
-  await db.$executeRawUnsafe(`DROP TABLE expenses`);
-  passed("Expenses module: only CONFIRMED of the owner by expenseDate (voided and pending excluded); profit subtracts them; zero for an account without expenses");
+  passed("Expenses module on real F1a rows: only CONFIRMED (voided excluded) of the owner by expenseDate, Bogotá month borders, profit subtracts them, isolated per owner, zero for an account without expenses");
 
   stage = "RUNTIME_PATH";
+  const bogotaToday = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date());
+  await spend(a.id, categoryA.id, 321n, bogotaToday);
   const live = await readDashboardSummary(a.id, 30, { database: db });
-  assert.equal(live.salesSeries.length, 30); assert.equal(live.modules.expenses, false);
+  assert.equal(live.salesSeries.length, 30); assert.equal(live.modules.expenses, true);
+  assert.equal(live.month.expensesTotal, "321", "runtime path (database clock) reads today's real F1a expense");
   passed("readDashboardSummary runs read-only in RepeatableRead against the real schema");
 
   stage = "EXPLAIN";

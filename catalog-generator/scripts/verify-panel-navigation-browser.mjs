@@ -73,19 +73,19 @@ try {
     await evaluate(`localStorage.setItem('catalogo-session',JSON.stringify({user:{id:'fixture',email:'fixture@example.invalid',name:'Daniel Serrano'}}));window.dispatchEvent(new Event('catalogo-session-change'))`);
     await poll(() => evaluate(`document.querySelector('h1')?.textContent==='Hola, Daniel'`));
     const labels = await evaluate(`[...${visibleNav}.querySelectorAll('a')].map(a=>a.textContent.trim())`);
-    assert.deepEqual(labels, ["Inicio", "Vender", "Inventario", "Catálogo", "Ajustes"]);
+    assert.deepEqual(labels, ["Inicio", "Vender", "Inventario", "Catálogo", "Gastos", "Ajustes"]);
     const sidebar = await evaluate(`${visibleNav}.closest('aside').innerText`);
-    for (const absent of ["Gastos", "Servicio técnico", "Cartera", "Reportes", "Dinero"]) assert.ok(!sidebar.includes(absent), `${absent} must not be shown`);
-    for (const group of ["Día a día", "Productos", "Análisis"]) assert.ok(sidebar.includes(group), group);
+    for (const absent of ["Servicio técnico", "Cartera", "Reportes"]) assert.ok(!sidebar.includes(absent), `${absent} must not be shown`);
+    for (const group of ["Día a día", "Productos", "Dinero", "Análisis"]) assert.ok(sidebar.includes(group), group);
     assert.ok(sidebar.includes("Hagamos crecer tu negocio") && sidebar.includes("Con Vitrinaya, es más fácil"));
-    assert.equal(await evaluate(`${visibleNav}.closest('aside').querySelectorAll('a,button,[tabindex]').length`), 6, "decorative card is not focusable (logo + 5 entries)");
+    assert.equal(await evaluate(`${visibleNav}.closest('aside').querySelectorAll('a,button,[tabindex]').length`), 7, "decorative card is not focusable (logo + 6 entries)");
     assert.equal(await evaluate(`[...document.querySelectorAll('header a')].filter(a=>a.textContent.includes('Nueva venta')&&a.getClientRects().length).length`), 0, "Inicio has its own «Nueva venta»");
     assert.equal(await evaluate(`[...document.querySelectorAll('main a')].find(a=>a.textContent.includes('Nueva venta'))?.getAttribute('href')`), "/dashboard/ventas");
     const quick = await evaluate(`[...document.querySelectorAll('section[aria-labelledby="quick-actions"] a')].map(a=>[a.textContent.trim(),a.getAttribute('href')])`);
-    assert.deepEqual(quick, [["Agregar producto", "/dashboard/inventario"]], "«Registrar gasto» only when Gastos exists");
+    assert.deepEqual(quick, [["Registrar gasto", "/dashboard/gastos"], ["Agregar producto", "/dashboard/inventario"]], "«Registrar gasto» with the Gastos module");
     await waitText("Ventas hoy"); await waitText("Primeros pasos");
     await shot("panel-1440");
-    checks.push(`Inicio: «Hola, Daniel», «${expectedDate}», Nueva venta, quick actions and the summary; menu Inicio/Vender/Inventario/Catálogo/Ajustes in three groups, no Gastos/Servicio técnico/Cartera/Reportes`);
+    checks.push(`Inicio: «Hola, Daniel», «${expectedDate}», Nueva venta, quick actions and the summary; menu Inicio/Vender/Inventario/Catálogo/Gastos/Ajustes in four groups, no Servicio técnico/Cartera/Reportes`);
 
     // Contrast on the navy menu.
     const contrast = await evaluate(`(()=>{
@@ -100,7 +100,7 @@ try {
     checks.push("Contrast: " + Object.entries(contrast).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(", "));
 
     // Every entry navigates and is the only aria-current="page".
-    for (const [label, href, marker] of [["Vender", "/dashboard/ventas", "Ventas"], ["Inventario", "/dashboard/inventario", "Inventario"], ["Catálogo", "/dashboard/catalogos", "Tus catálogos"], ["Ajustes", "/dashboard/cuenta", "Configuración de cuenta"], ["Inicio", "/dashboard", "Hola"]]) {
+    for (const [label, href, marker] of [["Vender", "/dashboard/ventas", "Ventas"], ["Inventario", "/dashboard/inventario", "Inventario"], ["Catálogo", "/dashboard/catalogos", "Tus catálogos"], ["Gastos", "/dashboard/gastos", "Gastos"], ["Ajustes", "/dashboard/cuenta", "Configuración de cuenta"], ["Inicio", "/dashboard", "Hola"]]) {
       await evaluate(`[...${visibleNav}.querySelectorAll('a')].find(a=>a.textContent.trim()===${JSON.stringify(label)}).click()`);
       await poll(async () => (await pathname()) === href);
       await waitText(marker);
@@ -155,7 +155,7 @@ try {
     await evaluate(`[...${visibleNav}.querySelectorAll('button')].find(b=>b.textContent.trim()==='Más').focus()`);
     await key("Enter", "Enter", 13);
     await poll(() => evaluate(`Boolean(document.querySelector('[role="dialog"]'))`));
-    assert.deepEqual(await evaluate(`[...document.querySelectorAll('[role="dialog"] li')].map(li=>li.textContent.trim())`), ["Catálogo", "Ajustes", "Cerrar sesión"]);
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('[role="dialog"] li')].map(li=>li.textContent.trim())`), ["Catálogo", "Gastos", "Ajustes", "Cerrar sesión"]);
     await shot("panel-375-mas");
     await key("Escape", "Escape", 27);
     await poll(() => evaluate(`!document.querySelector('[role="dialog"]')&&document.activeElement?.textContent.trim()==='Más'`));
@@ -164,12 +164,12 @@ try {
     await evaluate(`[...document.querySelectorAll('[role="dialog"] a')].find(a=>a.textContent.trim()==='Catálogo').click()`);
     await poll(async () => (await pathname()) === "/dashboard/catalogos");
     await poll(() => evaluate(`!document.querySelector('[role="dialog"]')`));
-    checks.push("Mobile: no side menu, fixed bottom bar Inicio/Vender/Inventario/Más with content padding; «Más» sheet with Catálogo, Ajustes and Cerrar sesión, Escape returns focus, links navigate and close");
+    checks.push("Mobile: no side menu, fixed bottom bar Inicio/Vender/Inventario/Más with content padding; «Más» sheet with Catálogo, Gastos, Ajustes and Cerrar sesión, Escape returns focus, links navigate and close");
 
     // Layout: no overflow and touch targets ≥ 44 px on every page and width.
     for (const width of [375, 768, 1024, 1440]) {
       await viewport(width);
-      for (const page of ["/dashboard", "/dashboard/catalogos", "/dashboard/ventas", "/dashboard/inventario", "/dashboard/cuenta"]) {
+      for (const page of ["/dashboard", "/dashboard/catalogos", "/dashboard/ventas", "/dashboard/inventario", "/dashboard/gastos", "/dashboard/cuenta"]) {
         await evaluate(`location.assign(${JSON.stringify(page)})`); await poll(async () => (await pathname()) === page);
         await poll(() => evaluate(`!document.body.innerText.includes('Verificando sesión')`));
         await new Promise(r => setTimeout(r, 250));
@@ -179,7 +179,7 @@ try {
         assert.deepEqual(small, [], `touch targets on ${page} at ${width}`);
       }
     }
-    checks.push("No horizontal overflow and shell targets ≥ 44 px on Inicio, Catálogo, Vender, Inventario and Ajustes at 375, 768, 1024 and 1440 px");
+    checks.push("No horizontal overflow and shell targets ≥ 44 px on Inicio, Catálogo, Vender, Inventario, Gastos and Ajustes at 375, 768, 1024 and 1440 px");
 
     // Logout from the avatar menu.
     await viewport(1440);

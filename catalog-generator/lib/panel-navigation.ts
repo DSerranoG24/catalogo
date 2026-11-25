@@ -21,8 +21,8 @@ export const PANEL_NAVIGATION: PanelEntry[] = [
   { id: "vender", label: "Vender", href: "/dashboard/ventas", icon: ShoppingCart, group: "Día a día", enabled: true, mobileBar: true },
   { id: "inventario", label: "Inventario", href: "/dashboard/inventario", icon: Package, group: "Productos", enabled: true, mobileBar: true },
   { id: "catalogo", label: "Catálogo", href: "/dashboard/catalogos", icon: Tag, group: "Productos", enabled: true, mobileBar: false },
-  // /dashboard/gastos is still only in the f1-expenses branch: enable it when that route reaches main.
-  { id: "gastos", label: "Gastos", href: "/dashboard/gastos", icon: CircleDollarSign, group: "Dinero", enabled: false, mobileBar: false },
+  // Gastos F1a (categories and one-off expenses).
+  { id: "gastos", label: "Gastos", href: "/dashboard/gastos", icon: CircleDollarSign, group: "Dinero", enabled: true, mobileBar: false },
   // Ajustes points to the existing account page for now.
   { id: "ajustes", label: "Ajustes", href: "/dashboard/cuenta", icon: SlidersHorizontal, group: "Análisis", enabled: true, mobileBar: false },
 ];

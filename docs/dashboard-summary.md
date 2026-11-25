@@ -61,7 +61,7 @@ Código:
   - Lo dañado mantiene su costo, que es una pérdida.
   - Las líneas sin `unitCost` no suman costo, y cada venta con al menos una de esas líneas cuenta una vez en `salesWithoutCostCount`. Ese contador solo se informa para el mes actual.
 - `expensesTotal`: gastos `CONFIRMED` (F1a) por `expenseDate`; los anulados y los pendientes no cuentan.
-  - Mientras el módulo no exista en `main`, vale `null` y `modules.expenses` es `false`. El interruptor es `DASHBOARD_MODULES.expenses` en `dashboard-summary.ts`.
+  - Activo desde la integración de F1a (`DASHBOARD_MODULES.expenses = true` en `dashboard-summary.ts`): lee la tabla `expenses` de la migración `20261125000000_operating_expenses`. Con el interruptor apagado vale `null` y `modules.expenses` es `false`.
 - `estimatedProfit` = `salesTotal − costOfSales − (expensesTotal ?? 0)`. Puede ser negativo.
 
 **Atención, recientes y configuración**
@@ -79,7 +79,7 @@ Número fijo de sentencias, todas en una transacción `READ ONLY` con aislamient
 2. `SET LOCAL statement_timeout = '3000ms'`
 3. `SELECT CURRENT_TIMESTAMP`, el reloj de la base, que también da `generatedAt`.
 4. El resumen: una sola consulta SQL con CTE que agrega en PostgreSQL y devuelve `jsonb`, con los importes como `numeric::text`.
-5. Solo con el módulo de gastos activo, una consulta más sobre `expenses`.
+5. Con el módulo de gastos activo (hoy lo está), una consulta más sobre `expenses`.
 
 No hay N+1. Todas las tablas propias se filtran por el dueño como parámetro (8 apariciones en el resumen y 1 en gastos).
 
@@ -94,7 +94,7 @@ No hay N+1. Todas las tablas propias se filtran por el dueño como parámetro (8
 - devoluciones en otro día y otro mes;
 - ventas sin costo e importes mayores que 2^53;
 - tres cuentas aisladas, una de ellas nueva y sin datos;
-- el módulo de gastos sobre una tabla de sustitución con las columnas de F1a;
+- el módulo de gastos sobre filas reales de F1a (confirmados y anulados), con bordes de mes de Bogotá y aislamiento por dueño;
 - EXPLAIN.
 
 **Resultado del 25/11/2026**, con 200 000 ventas, 20 000 de ellas del dueño:

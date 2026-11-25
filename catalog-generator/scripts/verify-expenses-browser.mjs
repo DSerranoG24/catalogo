@@ -217,7 +217,8 @@ try {
     await waitText("No hay gastos confirmados en este periodo."); await waitTotal("$ 0");
     // The menu comes from lib/panel-navigation.ts: the Gastos entry is shown (and current) only when enabled there.
     const gastosEnabled = /id: "gastos"[^\n]*enabled: true/.test(fs.readFileSync(new URL("../lib/panel-navigation.ts", import.meta.url), "utf8"));
-    const gastosLink = `[...document.querySelectorAll('nav[aria-label="Principal"] a[href="/dashboard/gastos"]')].find(a=>a.getClientRects().length)`;
+    // Side menu entry (present in the DOM at every width; on mobile Gastos lives in the «Más» sheet).
+    const gastosLink = `document.querySelector('aside nav[aria-label="Principal"] a[href="/dashboard/gastos"]')`;
     if (gastosEnabled) assert.equal(await evaluate(`${gastosLink}?.getAttribute('aria-current')`), "page");
     else assert.equal(await evaluate(`Boolean(${gastosLink})`), false, "a disabled module is not offered in the menu");
     assert.equal(await evaluate(`[...document.querySelectorAll('nav[aria-label="Principal"] a[href="/dashboard/ventas"]')].some(a=>a.getAttribute('aria-current'))`), false);

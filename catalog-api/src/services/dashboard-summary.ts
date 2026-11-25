@@ -14,7 +14,7 @@ import { z } from "zod";
  *   − Σ unitCost × resellableQuantity of the returns registered in the period (resellable units go back to
  *   stock; damaged units keep their cost as a loss). Lines without unitCost add no cost; each sale with at least
  *   one such line counts once in salesWithoutCostCount.
- * - expensesTotal: CONFIRMED expenses of the period (F1a), by expenseDate. null while the module is not in main.
+ * - expensesTotal: CONFIRMED expenses of the period (F1a), by expenseDate (a Bogotá calendar date); VOIDED never count.
  * - estimatedProfit = salesTotal − costOfSales − (expensesTotal ?? 0). It can be negative.
  * - Month = from the 1st of the current Bogotá month to today (inclusive); previous month = the whole previous
  *   calendar month.
@@ -24,8 +24,8 @@ import { z } from "zod";
  * Money is always a decimal string computed with BigInt; it is never converted to Number.
  */
 
-/** Modules present in main. Turn expenses on when the F1a expenses table and routes reach main. */
-export const DASHBOARD_MODULES: Readonly<{ expenses: boolean }> = { expenses: false };
+/** Modules available in this build. expenses: F1a (migration 20261125000000_operating_expenses and /api/expenses). */
+export const DASHBOARD_MODULES: Readonly<{ expenses: boolean }> = { expenses: true };
 
 export const DASHBOARD_DAYS = [7, 30, 90] as const;
 export type DashboardDays = (typeof DASHBOARD_DAYS)[number];

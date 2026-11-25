@@ -97,11 +97,15 @@ try {
     await poll(() => evaluate(`[...document.querySelectorAll('section[aria-labelledby="attention-title"] a')].at(-1)?.getAttribute('href')==='/dashboard/catalogos'`));
     checks.push("Several catalogs: «Revisar» links to /dashboard/catalogos");
 
-    // Expenses reported by the API but the Gastos route is not enabled in main: no card.
+    // Expenses module on (API and menu): the violet card appears and Inicio offers «Registrar gasto».
     scenario = days => summary(days, base => ({ ...base, modules: { expenses: true }, month: { ...base.month, expensesTotal: "980000", previousMonth: { ...base.month.previousMonth, expensesTotal: "980000" } } }));
     await open(); await waitText("Utilidad del mes");
-    assert.ok(!norm(await text()).includes("Gastos del mes"), "Gastos card needs both modules.expenses and the Gastos entry");
-    checks.push("modules.expenses=true but Gastos disabled in panel-navigation: the Gastos card stays hidden");
+    await waitText("Gastos del mes");
+    const withExpenses = norm(await text());
+    assert.ok(withExpenses.includes("$ 980.000") && withExpenses.includes("Igual que el mes anterior"));
+    assert.equal(await evaluate(`document.querySelectorAll('section[aria-labelledby="figures-title"] article').length`), 3);
+    assert.equal(await evaluate(`[...document.querySelectorAll('section[aria-labelledby="quick-actions"] a')].map(a=>a.getAttribute('href')).join()`), "/dashboard/gastos,/dashboard/inventario");
+    checks.push("modules.expenses=true with Gastos enabled: violet «Gastos del mes» card ($ 980.000, igual que el mes anterior), three figure cards, «Registrar gasto» quick action");
 
     // Zero attention rows, negative profit, no previous data.
     scenario = days => summary(days, base => ({ ...base, attention: { lowStockCount: 0, outOfStockCount: 0, pendingOrdersCount: 0 },

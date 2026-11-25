@@ -65,11 +65,11 @@ Referencia visual: `inicio-escritorio.png`, la maqueta de Inicio. Pendiente de c
 | Vender | Día a día | `/dashboard/ventas` | Sí | Sí |
 | Inventario | Productos | `/dashboard/inventario` | Sí | Sí |
 | Catálogo | Productos | `/dashboard/catalogos` | Sí | No (va en «Más») |
-| Gastos | Dinero | `/dashboard/gastos` | **No**: se activa cuando la ruta llegue a `main` | No |
+| Gastos | Dinero | `/dashboard/gastos` | Sí (F1a) | No (va en «Más») |
 | Ajustes | Análisis | `/dashboard/cuenta` | Sí | No (va en «Más») |
 
 - Servicio técnico, Cartera y Reportes no tienen ruta y no figuran en la configuración.
-- Los grupos sin entradas habilitadas no se muestran: hoy no aparece «Dinero».
+- Los grupos sin entradas habilitadas no se muestran.
 - Apagar un módulo es cambiar `enabled`, sin tocar el layout.
 - Inicio solo está activo en `/dashboard`; el resto también en sus subrutas.
 
@@ -105,7 +105,7 @@ Las cifras vienen de `GET /api/dashboard/summary` ([contrato y definiciones](../
 | Primeros pasos | Si falta alguna tarea de `setup` | Inventario, catálogo publicado y primera venta, cada una con su enlace y su estado «Hecho» o «Pendiente». |
 | Ventas hoy (azul) | Siempre | `today`; comparación con ayer y minigráfica de `salesSeries`. |
 | Utilidad del mes (verde) | Siempre | `month.estimatedProfit` frente al mes anterior. Con `salesWithoutCostCount` > 0, enlace «n ventas sin costo» a Inventario. |
-| Gastos del mes (violeta) | `modules.expenses` **y** la entrada Gastos habilitada en `panel-navigation` | Hoy está oculta: F1a no está en `main`. |
+| Gastos del mes (violeta) | `modules.expenses` **y** la entrada Gastos habilitada en `panel-navigation` | Visible con F1a: total de gastos confirmados del mes frente al mes anterior. La utilidad ya los resta. |
 | Te deben | Nunca | Cartera no existe. |
 | Requiere tu atención | Siempre | Filas de stock bajo y agotados (→ Inventario) y de pedidos nuevos («Revisar»: al único catálogo, o a la lista si hay varios). Las filas en 0 se ocultan; si todas son 0, «Todo en orden». Fiados y equipos no existen. «Ver todos» no se implementa. |
 | Ventas de la semana | Siempre | `salesSeries`. Selector de 7/30/90 días que vuelve a pedir el resumen con `?days=`. Etiquetas por barra solo con 7 días; el valor de cada día aparece al pasar el cursor o con las flechas; hay una tabla oculta como alternativa. |

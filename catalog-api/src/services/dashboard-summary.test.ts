@@ -21,8 +21,8 @@ test("query: days 7|30|90 (default 7); unknown, repeated, nested or other values
     assert.throws(() => parseDashboardQuery(query), DashboardQueryError, JSON.stringify(query));
 });
 
-test("new account: every figure in zero, setup false, expenses null while the module is not in main", () => {
-  assert.equal(DASHBOARD_MODULES.expenses, false, "main has no F1a expenses yet");
+test("new account: every figure in zero, setup false; expenses null only when no expenses data is read", () => {
+  assert.equal(DASHBOARD_MODULES.expenses, true, "F1a expenses are part of this build");
   const summary = presentSummary(zero, null, at, 7);
   assert.equal(summary.generatedAt, "2026-11-25T17:00:00.000Z");
   assert.deepEqual(summary.today, { date: "2026-11-25", salesTotal: "0", salesCount: 0, yesterdaySalesTotal: "0" });
