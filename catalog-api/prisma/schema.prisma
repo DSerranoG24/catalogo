@@ -101,6 +101,7 @@ model User {
   expenseCategories ExpenseCategory[]
   expenses Expense[]
   recurringExpenseTemplates RecurringExpenseTemplate[]
+  scheduledExpensePayments ScheduledExpensePayment[]
   expenseOperations ExpenseOperation[]
   expenseEvents ExpenseEvent[]
 
@@ -937,6 +938,7 @@ model ExpenseCategory {
   updatedAt     DateTime                   @updatedAt
   owner         User                       @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   expenses      Expense[]
+  scheduledPayments ScheduledExpensePayment[]
   templates     RecurringExpenseTemplate[]
 
   @@unique([id, ownerId])
@@ -969,6 +971,7 @@ model RecurringExpenseTemplate {
   owner             User                   @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   category          ExpenseCategory        @relation(fields: [categoryId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
   expenses          Expense[]
+  scheduledPayments ScheduledExpensePayment[]
 
   @@unique([id, ownerId])
   @@index([ownerId, status])
@@ -1008,6 +1011,10 @@ model Expense {
   template             RecurringExpenseTemplate? @relation(fields: [templateId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
   replaces             Expense?                  @relation("ExpenseReplacement", fields: [replacesExpenseId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
   replacedBy           Expense[]                 @relation("ExpenseReplacement")
+  /// F1b: set on insert when the expense pays a scheduled payment; immutable (expense_transition_guard).
+  scheduledPaymentId   String?
+  scheduledPayment     ScheduledExpensePayment?  @relation("ExpenseScheduledPayment", fields: [scheduledPaymentId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  paidScheduledPayments ScheduledExpensePayment[] @relation("ScheduledPaymentPaidExpense")
 
   @@unique([id, ownerId])
   @@unique([templateId, occurrenceDate])
@@ -1015,6 +1022,7 @@ model Expense {
   @@index([ownerId, categoryId, expenseDate])
   @@index([ownerId, paymentMethod, expenseDate])
   @@index([ownerId, status, templateId])
+  @@index([ownerId, scheduledPaymentId])
   @@map("expenses")
 }
 
@@ -1051,4 +1059,48 @@ model ExpenseEvent {
 
   @@index([ownerId, entityKind, entityId, occurredAt, id])
   @@map("expense_events")
+}
+
+/// F1b (docs/expenses-f1b-contract.md). CHECK constraints, the partial unique index on (templateId, occurrenceDate)
+/// and the transition/coherence triggers live in migration 20261126000000_scheduled_expense_payments.
+enum ScheduledExpenseStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+/// A payment to make: an occurrence of a fixed expense (templateId set) or a one-off (templateId null).
+/// Never counts in expense totals; paying it creates a CONFIRMED expense linked by expenses.scheduledPaymentId.
+model ScheduledExpensePayment {
+  id                  String                    @id @default(uuid())
+  ownerId             String
+  status              ScheduledExpenseStatus    @default(PENDING)
+  templateId          String?
+  occurrenceDate      DateTime?                 @db.Date
+  dueDate             DateTime                  @db.Date
+  plannedAmount       BigInt?
+  description         String                    @db.VarChar(300)
+  categoryId          String
+  categoryNameSnapshot String?                  @db.VarChar(60)
+  paymentMethod       ExpensePaymentMethod
+  paymentMethodNote   String?                   @db.VarChar(80)
+  supplierName        String?                   @db.VarChar(160)
+  customizedAt        DateTime?
+  paidExpenseId       String?
+  paidAt              DateTime?
+  cancelledAt         DateTime?
+  cancelReason        String?                   @db.VarChar(300)
+  version             Int                       @default(1)
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  owner               User                      @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  template            RecurringExpenseTemplate? @relation(fields: [templateId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  category            ExpenseCategory           @relation(fields: [categoryId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  paidExpense         Expense?                  @relation("ScheduledPaymentPaidExpense", fields: [paidExpenseId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  expenses            Expense[]                 @relation("ExpenseScheduledPayment")
+
+  @@unique([id, ownerId])
+  @@index([ownerId, status, dueDate])
+  @@index([ownerId, templateId, dueDate])
+  @@map("scheduled_expense_payments")
 }

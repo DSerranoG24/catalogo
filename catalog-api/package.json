@@ -17,6 +17,7 @@
     "test:inventory-workbook-http-postgres": "node dist/scripts/verify-inventory-workbook-http-postgres.js",
     "test:sales-postgres": "node dist/scripts/verify-sale-integrity-postgres.js",
     "test:expenses-postgres": "node dist/scripts/verify-expenses-postgres.js",
+    "test:scheduled-postgres": "node dist/scripts/verify-scheduled-postgres.js",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
