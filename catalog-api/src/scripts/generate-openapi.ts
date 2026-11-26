@@ -12,6 +12,7 @@ import { createSaleSchema, updateDraftSaleSchema, convertOrderToSaleSchema } fro
 import { orderCustomerPreviewSchema, confirmOrderCustomerSchema, orderCustomerMatchesSchema } from "../schemas/order-customer.schema";
 import { customerSalesQuerySchema } from "../schemas/customer-sales.schema";
 import { dashboardQuerySchema } from "../services/dashboard-summary";
+import { expenseOverviewSchema } from "../repositories/expense-overview.repository";
 import { createDeviceBrandSchema, createDeviceModelSchema, addBrandAliasSchema, addDeviceAliasSchema,
   addCompatibilitySchema, updateCompatibilitySchema, deviceListSchema, modelListSchema, compatibilityPageSchema } from "../schemas/compatibility.schema";
 
@@ -49,6 +50,7 @@ const schemas = {
   ConfirmOrderCustomer: confirmOrderCustomerSchema,
   OrderCustomerMatches: orderCustomerMatchesSchema,
   DashboardSummaryQuery: dashboardQuerySchema,
+  ExpenseOverviewQuery: expenseOverviewSchema,
 } satisfies Record<string, z.ZodType>;
 
 const ref = (name: keyof typeof schemas) => ({ $ref: `#/components/schemas/${name}` });
@@ -159,6 +161,19 @@ const paths = {
         "400": { description: "INVALID_DASHBOARD_QUERY: days distinto de 7, 30 o 90, o parámetros desconocidos o repetidos" },
         "401": { description: "Sesión requerida o expirada" },
         "500": { description: "DASHBOARD_UNAVAILABLE: error genérico reintentable" },
+      },
+    }),
+  },
+  "/api/expenses/overview": {
+    get: operation("Resumen mensual de gastos calculado en el servidor (página de Gastos)", {
+      security: secured,
+      description: "Solo lectura; el propietario sale de la sesión. Suma solo gastos CONFIRMED por expenseDate (fecha de Bogotá); los VOIDED se cuentan aparte y no suman. El mes actual llega hasta hoy; los pasados, completos; los futuros se rechazan. percent = round(total de la categoría × 100 / total del mes), mitad hacia arriba, con BigInt. Importes como strings decimales. Definiciones en docs/expenses-overview.md. Cache-Control private,no-store.",
+      parameters: [{ name: "month", in: "query", required: true, schema: { type: "string", pattern: "^\\d{4}-(0[1-9]|1[0-2])$" }, description: "Mes YYYY-MM entre 2000-01 y el mes actual de Bogotá" }],
+      responses: {
+        "200": { description: "{success:true,result:{month,from,to,generatedAt,total,count,voidedCount,previousMonth:{month,total},days:[{date,total}],byCategory:[{categoryId,name,archived,total,count,percent}]}}" },
+        "400": { description: "INVALID_EXPENSE_INPUT: month inválido, futuro o parámetros desconocidos o repetidos" },
+        "401": { description: "Sesión requerida o expirada" },
+        "503": { description: "EXPENSE_RETRY_SAME_OPERATION: error genérico reintentable" },
       },
     }),
   },

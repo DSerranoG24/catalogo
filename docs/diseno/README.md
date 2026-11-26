@@ -122,3 +122,33 @@ Las cifras vienen de `GET /api/dashboard/summary` ([contrato y definiciones](../
 **Pruebas:**
 - `scripts/verify-dashboard-ui.mjs` (dentro de `npm test`): formateadores, comparaciones y validador.
 - `npm.cmd run test:dashboard-browser`: escenarios con el doble del endpoint.
+
+## Página de Gastos (`/dashboard/gastos`)
+
+Referencia visual: [`gastos.png`](gastos.png). Se implementa con lo que F1a permite hoy ([contrato v1.2](../expenses-contract.md)). Las cifras vienen de `GET /api/expenses/overview` ([definiciones](../expenses-overview.md)) y la lista, de `GET /api/expenses`.
+
+| Bloque | Qué muestra | Depende de |
+| --- | --- | --- |
+| Cabecera | Icono violeta en mosaico, «Gastos», «Lo que cuesta mantener tu negocio», selector de mes ‹ Mes AAAA › (no deja avanzar a meses futuros), «Categorías» y «Registrar gasto» | F1a |
+| Gastos del mes (violeta) | Total vigente del mes, comparación con el mes anterior y minigráfica por día, con una tabla oculta como alternativa | `overview`: `total`, `previousMonth`, `days` |
+| Registros del mes | Número de gastos vigentes y de anulados (que no suman) | `overview`: `count`, `voidedCount` |
+| Filtros | Chips «Todos» y «Anulados», y buscador «Buscar gasto, categoría o nota» | La búsqueda filtra la lista del mes y carga sus páginas restantes (hasta 20 de 25) para que el resultado sea completo; si no alcanza, lo avisa |
+| Gastos de {mes} | Lista agrupada por día («HOY · MIÉRCOLES 25», «AYER · …», «LUNES 23»), con mosaico de categoría, descripción, categoría, pastilla del medio de pago y monto. Los anulados aparecen atenuados y tachados, con la pastilla «Anulado» y su motivo. «Más gastos» carga la página siguiente | F1a `GET /expenses` |
+| Detalle (diálogo) | Las acciones de F1a sin cambios: reclasificar (categoría, descripción y nota con «Otro»), anular con o sin reemplazo, e historial | F1a |
+| ¿En qué se va la plata? | Barras violeta por categoría con monto y porcentaje calculados en el servidor; las archivadas se marcan «(archivada)» | `overview`: `byCategory` |
+| Registrar gasto (diálogo) | El formulario de F1a con monto grande, fecha, categoría, medio de pago, nota con «Otro», descripción, proveedor y referencia. Validaciones y envío seguro sin cambios. Incluye los avisos de que las compras de mercancía no son gastos y de que el IVA no se gestiona | F1a |
+| Categorías (diálogo) | Crear, renombrar, ordenar, archivar y reactivar | F1a |
+| Pie | «Tu negocio está seguro con Vitrinaya», «Conectado» o «Sin conexión», y la hora de `generatedAt` en Bogotá | `overview` |
+
+**Ocultos hasta F1b o F1c:** «Fijos pagados», «Variables», «Próximos pagos», los chips «Fijos» y «Con soporte», la tarjeta «Gastos fijos» («Administrar», «Marcar pagado») y el clip de soporte. «Exportar» llega con Reportes. La campana no se muestra porque no existen notificaciones.
+
+**Diferencias con la maqueta:**
+- Hay 2 tarjetas de cifras en lugar de 4.
+- «Categorías» es un botón de la cabecera, para no quitar la gestión de categorías de F1a.
+- La cabecera del panel conserva «Nueva venta».
+- Categoría y medio de pago siguen siendo listas desplegables nativas del formulario de F1a, no fichas.
+- El detalle y el registro se abren en diálogos.
+
+**Móvil:** las cifras se apilan, la lista ocupa todo el ancho y «Registrar gasto» queda fijo sobre la barra inferior, respetando el área segura.
+
+**Pruebas:** `npm.cmd run test:expenses-browser` (flujo completo de F1a sobre la pantalla nueva) y `scripts/verify-expenses-ui.mjs` (helpers, validador de `overview` y contraste de las pastillas).

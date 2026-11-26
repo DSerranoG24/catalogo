@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { CATEGORY_STYLES, dayHeading, groupByDay, matchesSearch, monthLabel, monthName, parseExpenseOverview, PAYMENT_TONES, shiftMonth } from "../lib/expenses-ui.mjs";
 import { bogotaToday, describeExpenseFailure, EXPENSE_STATUS_LABELS, formatCop, formatExpenseDate, minExpenseDate, monthRange, parseCategories, parseExpenseDetail,
   parseExpensePage, parseSummary, PAYMENT_LABELS, PAYMENT_METHODS, possibleDuplicate, previousMonthRange, validateExpenseForm, validRange, yearRange } from "../lib/expenses-ui.mjs";
 
@@ -85,5 +86,26 @@ for (const code of ["VERSION_CONFLICT", "INVALID_EXPENSE_TRANSITION", "IDEMPOTEN
 assert.equal(describeExpenseFailure({ status: 409, code: "EXPENSE_CATEGORY_ARCHIVED" }).action, null);
 assert.match(describeExpenseFailure({ status: 409, code: "EXPENSE_CATEGORY_NAME_CONFLICT" }).detail, /reactivarla/);
 assert.equal(describeExpenseFailure({ status: 400, code: "WHATEVER" }).action, null);
+
+// Gastos page helpers: months, day headings, grouping, search, overview validation and pill contrast.
+assert.equal(monthLabel("2026-11"), "Noviembre 2026"); assert.equal(monthName("2026-01"), "enero");
+assert.equal(shiftMonth("2026-01", -1), "2025-12"); assert.equal(shiftMonth("2026-12", 1), "2027-01"); assert.equal(shiftMonth("2026-05", -13), "2025-04");
+assert.equal(dayHeading("2026-11-25", "2026-11-25"), "HOY · MIÉRCOLES 25"); assert.equal(dayHeading("2026-11-24", "2026-11-25"), "AYER · MARTES 24");
+assert.equal(dayHeading("2026-11-01", "2026-11-25"), "DOMINGO 1"); assert.equal(dayHeading("2026-02-28", "2026-03-01"), "AYER · SÁBADO 28", "month border");
+assert.deepEqual(groupByDay([expense({ id: id(1), expenseDate: "2026-11-25" }), expense({ id: id(2), expenseDate: "2026-11-25" }), expense({ id: id(3), expenseDate: "2026-11-23" })]).map(g => [g.date, g.items.length]),
+  [["2026-11-25", 2], ["2026-11-23", 1]]);
+const lamp = expense({ description: "Energía eléctrica", categoryName: "Servicios públicos", categoryNameSnapshot: "Servicios", paymentMethodNote: "Bancolombia App", supplierName: "Enel" });
+for (const q of ["energia", "ELÉCTRICA", "servicios", "bancolombia", "enel", "  ", ""]) assert.equal(matchesSearch(lamp, q), true, q);
+assert.equal(matchesSearch(lamp, "arriendo"), false);
+const overview = { success: true, result: { month: "2026-11", from: "2026-11-01", to: "2026-11-25", generatedAt: "2026-11-25T20:56:00.000Z", total: "380000", count: 3, voidedCount: 0,
+  previousMonth: { month: "2026-10", total: "0" }, days: [{ date: "2026-11-01", total: "0" }], byCategory: [{ categoryId: id(2), name: "Arriendo", archived: false, total: "150000", count: 1, percent: "39" }] } };
+assert.equal(parseExpenseOverview(overview, "2026-11").total, "380000");
+for (const broken of [{ ...overview, success: false }, { success: true, result: { ...overview.result, total: 380000 } }, { success: true, result: { ...overview.result, month: "2026-10" } },
+  { success: true, result: { ...overview.result, days: [{ date: "2026-10-31", total: "0" }] } }, { success: true, result: { ...overview.result, byCategory: [{ ...overview.result.byCategory[0], percent: 39 }] } }])
+  assert.throws(() => parseExpenseOverview(broken, "2026-11"), /no es válida/);
+const L = h => { const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; };
+const ratio = classes => { const [bg, fg] = [classes.match(/bg-\[(#[0-9A-Fa-f]{6})\]/)[1], classes.match(/text-\[(#[0-9A-Fa-f]{6})\]/)[1]]; const [a, b] = [L(bg), L(fg)]; return (Math.max(a, b) + .05) / (Math.min(a, b) + .05); };
+for (const [method, classes] of Object.entries(PAYMENT_TONES)) assert.ok(ratio(classes) >= 4.5, `${method} pill contrast ${ratio(classes).toFixed(2)}`);
+for (const [key, style] of Object.entries(CATEGORY_STYLES)) assert.ok(ratio(style.tone) >= 3, `${key} icon contrast`);
 
 console.log("verify-expenses-ui: ok");

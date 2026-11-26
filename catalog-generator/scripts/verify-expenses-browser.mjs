@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { privatePanelFixture } from "./private-panel-browser-fixture.mjs";
-import { bogotaToday, monthRange, previousMonthRange } from "../lib/expenses-ui.mjs";
+import { bogotaToday, monthLabel, monthName, previousMonthRange } from "../lib/expenses-ui.mjs";
 
 // Real Chromium, real Next proxy, simulated API with the rules of docs/expenses-contract.md v1.2 (F1a).
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -144,6 +144,29 @@ function read(url) {
       pendingCount: 0, pendingSuggestedTotal: "0", byCategory: group("categoryId").map(r => ({ ...r, name: category(r.categoryId).name, archived: Boolean(category(r.categoryId).archivedAt) })),
       byPaymentMethod: group("paymentMethod") } };
   }
+  if (p === "/api/expenses/overview") {
+    // Same semantics as GET /api/expenses/overview: CONFIRMED add, VOIDED apart, percent half up with BigInt.
+    for (const key of q.keys()) if (key !== "month") throw invalid();
+    const month = q.get("month") ?? "";
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || month > today.slice(0, 7)) throw invalid();
+    const lastDay = m => new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0)).toISOString().slice(0, 10);
+    const from = `${month}-01`, to = month === today.slice(0, 7) ? today : lastDay(month);
+    const prevMonth = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 2, 1)).toISOString().slice(0, 7);
+    const inRange = (e, a, b) => e.expenseDate >= a && e.expenseDate <= b;
+    const sum = rows => rows.reduce((t, e) => t + BigInt(e.amount), 0n);
+    const confirmed = expenses.filter(e => e.status === "CONFIRMED" && inRange(e, from, to)), total = sum(confirmed);
+    const days = [];
+    for (let d = new Date(`${from}T00:00:00Z`); d.toISOString().slice(0, 10) <= to; d.setUTCDate(d.getUTCDate() + 1)) {
+      const date = d.toISOString().slice(0, 10); days.push({ date, total: sum(confirmed.filter(e => e.expenseDate === date)).toString() });
+    }
+    const byCategory = [...new Set(confirmed.map(e => e.categoryId))].map(id => {
+      const rows = confirmed.filter(e => e.categoryId === id), t = sum(rows);
+      return { categoryId: id, name: category(id).name, archived: Boolean(category(id).archivedAt), total: t.toString(), count: rows.length, percent: total === 0n ? "0" : ((t * 200n + total) / (total * 2n)).toString() };
+    }).sort((a, b) => BigInt(b.total) > BigInt(a.total) ? 1 : BigInt(b.total) < BigInt(a.total) ? -1 : a.name.localeCompare(b.name, "es"));
+    return { success: true, result: { month, from, to, generatedAt: now(), total: total.toString(), count: confirmed.length,
+      voidedCount: expenses.filter(e => e.status === "VOIDED" && inRange(e, from, to)).length,
+      previousMonth: { month: prevMonth, total: sum(expenses.filter(e => e.status === "CONFIRMED" && inRange(e, `${prevMonth}-01`, lastDay(prevMonth)))).toString() }, days, byCategory } };
+  }
   const one = p.match(/^\/api\/expenses\/([^/]+)$/);
   if (one) {
     const e = expense(one[1]);
@@ -178,65 +201,85 @@ async function api(req, res) {
 try {
   await privatePanelFixture(api, async ({ command, evaluate, poll, fill }) => {
     const text = () => evaluate("document.body.innerText");
-    const waitText = async value => { try { await poll(async () => (await text()).includes(value)); } catch { throw new Error(`Texto no encontrado: ${value}\n--- pantalla ---\n${(await text()).slice(0, 2500)}`); } };
-    const button = label => `[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(label)})`;
+    const norm = value => value.replace(/\s+/g, " ");
+    const waitText = async value => { try { await poll(async () => norm(await text()).includes(value)); } catch { throw new Error(`Texto no encontrado: ${value}\n--- pantalla ---\n${(await text()).slice(0, 2500)}`); } };
+    // Visible button with that exact text (the header and the mobile button share «Registrar gasto»).
+    const button = label => `[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(label)}&&b.getClientRects().length)`;
     const click = async label => { try { await poll(() => evaluate(`(()=>{const b=${button(label)};return Boolean(b&&!b.disabled)})()`)); } catch { throw new Error(`Botón no disponible: ${label}\n${(await text()).slice(0, 2500)}`); } await evaluate(`${button(label)}.click()`); };
     const doubleClick = async label => { await poll(() => evaluate(`(()=>{const b=${button(label)};return Boolean(b&&!b.disabled)})()`)); await evaluate(`(()=>{const b=${button(label)};b.click();b.click()})()`); };
     const exists = label => evaluate(`Boolean(${button(label)})`);
     const choose = (selector, label) => evaluate(`(()=>{const s=document.querySelector(${JSON.stringify(selector)});const o=[...s.options].find(o=>o.textContent.trim()===${JSON.stringify(label)});if(!o)return false;s.value=o.value;s.dispatchEvent(new Event('change',{bubbles:true}));return true})()`);
     const options = selector => evaluate(`[...document.querySelectorAll(${JSON.stringify(selector + " option")})].map(o=>o.textContent.trim())`);
     const setSelect = (selector, value) => evaluate(`(()=>{const s=document.querySelector(${JSON.stringify(selector)});s.value=${JSON.stringify(value)};s.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+    const key = async (name, code, vk) => { for (const type of ["keyDown", "keyUp"]) await command("Input.dispatchKeyEvent", { type, key: name, code, windowsVirtualKeyCode: vk }); };
     const list = () => evaluate(`document.querySelector('ul[aria-label="Gastos"]')?.innerText ?? ""`);
+    const rows = () => evaluate(`document.querySelectorAll('ul[aria-label="Gastos"] button').length`);
     const total = () => evaluate(`document.querySelector('[data-expense-total]')?.textContent.replace(/\\s/g," ") ?? null`);
     const waitTotal = async value => { try { await poll(async () => (await total()) === value); } catch { throw new Error(`Total esperado ${value}, en pantalla ${await total()}`); } };
+    const share = () => evaluate(`document.querySelector('section[aria-labelledby="expense-categories-share"]')?.innerText.replace(/\\s+/g," ") ?? ""`);
     const count = (p, method = "POST") => mutations.filter(m => m.method === method && m.path === p).length;
     const synced = e => poll(() => evaluate(`document.querySelector('[data-expense-id="${e.id}"]')?.dataset.expenseVersion === "${e.version}"`));
-    const open = async description => { await poll(async () => (await list()).includes(description)); await evaluate(`[...document.querySelectorAll('ul[aria-label="Gastos"] button')].find(b=>b.innerText.includes(${JSON.stringify(description)})).click()`); };
+    const dialogs = () => evaluate(`document.querySelectorAll('[role="dialog"],[role="alertdialog"]').length`);
+    const closeDialogs = async () => { for (let i = 0; i < 4 && await dialogs(); i++) { await key("Escape", "Escape", 27); await poll(async () => true); await new Promise(r => setTimeout(r, 150)); } assert.equal(await dialogs(), 0, "dialogs closed"); };
+    // Opens a row; prefers the non-voided row when a voided one has the same description.
+    const open = async description => {
+      await closeDialogs();
+      await poll(async () => (await list()).includes(description));
+      await evaluate(`(()=>{const all=[...document.querySelectorAll('ul[aria-label="Gastos"] button')].filter(b=>b.innerText.includes(${JSON.stringify(description)}));(all.find(b=>!b.getAttribute('aria-label').includes('anulado'))??all[0]).click()})()`);
+    };
+    const openRegister = async () => { await closeDialogs(); await click("Registrar gasto"); await poll(() => evaluate(`Boolean(document.querySelector('#new-expense-amount'))`)); };
+    const registerOptions = async () => { await openRegister(); const values = await options("#new-expense-category"); await closeDialogs(); return values; };
     const byDescription = d => expenses.find(e => e.description === d && e.status === "CONFIRMED") ?? expenses.find(e => e.description === d);
     async function register({ amount, category: name, method = "CASH", note, description, reference }, submit = click) {
+      await openRegister();
       await fill("#new-expense-amount", amount);
       assert.equal(await choose("#new-expense-category", name), true, `category ${name}`);
       await setSelect("#new-expense-method", method);
       if (note) { await poll(() => evaluate(`Boolean(document.querySelector('#new-expense-note'))`)); await fill("#new-expense-note", note); }
       await fill("#new-expense-description", description);
       if (reference) await fill("#new-expense-reference", reference);
-      await submit("Registrar gasto");
+      await submit("Guardar gasto");
     }
+    const viewport = async width => { await command("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 768 }); await new Promise(r => setTimeout(r, 300)); };
     // Optional review screenshots: EXPENSES_SCREENSHOTS=<folder outside the repo>.
-    const shot = async (name, width = 1440) => {
+    const shot = async name => {
       const folder = process.env.EXPENSES_SCREENSHOTS; if (!folder) return;
-      await command("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 768 });
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const { data } = await command("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
-      fs.writeFileSync(path.join(folder, `${name}-${width}.png`), Buffer.from(data, "base64"));
-      await command("Emulation.clearDeviceMetricsOverride");
+      const { data } = await command("Page.captureScreenshot", { format: "png" });
+      fs.writeFileSync(path.join(folder, `${name}.png`), Buffer.from(data, "base64"));
     };
 
-    // Opening Gastos: the only write is the idempotent seed; suggested categories include «Nómina y honorarios».
+    // Opening Gastos: menu entry current, header of the design, only the idempotent seed is written, no F1b/F1c blocks.
+    await viewport(1440);
     await command("Page.navigate", { url: "http://localhost:4338/dashboard/gastos" });
-    await waitText("No hay gastos confirmados en este periodo."); await waitTotal("$ 0");
-    // The menu comes from lib/panel-navigation.ts: the Gastos entry is shown (and current) only when enabled there.
+    await waitText("No hay gastos registrados este mes."); await waitTotal("$ 0");
     const gastosEnabled = /id: "gastos"[^\n]*enabled: true/.test(fs.readFileSync(new URL("../lib/panel-navigation.ts", import.meta.url), "utf8"));
-    // Side menu entry (present in the DOM at every width; on mobile Gastos lives in the «Más» sheet).
     const gastosLink = `document.querySelector('aside nav[aria-label="Principal"] a[href="/dashboard/gastos"]')`;
     if (gastosEnabled) assert.equal(await evaluate(`${gastosLink}?.getAttribute('aria-current')`), "page");
     else assert.equal(await evaluate(`Boolean(${gastosLink})`), false, "a disabled module is not offered in the menu");
-    assert.equal(await evaluate(`[...document.querySelectorAll('nav[aria-label="Principal"] a[href="/dashboard/ventas"]')].some(a=>a.getAttribute('aria-current'))`), false);
-    assert.deepEqual(mutations.map(m => m.path), ["/api/expense-categories/seed"], "opening the panel only seeds categories");
+    const page = norm(await text());
+    for (const part of ["Gastos", "Lo que cuesta mantener tu negocio", monthLabel(today.slice(0, 7)), "Gastos del mes", "Registros del mes", "¿En qué se va la plata?", `Gastos de ${monthName(today.slice(0, 7))}`,
+      "Tu negocio está seguro con Vitrinaya", "Conectado", "Última actualización"]) assert.ok(page.includes(part), part);
+    for (const absent of ["Fijos pagados", "Próximos pagos", "Variables", "Con soporte", "Exportar", "Gastos fijos", "Marcar pagado"]) assert.ok(!page.includes(absent), `${absent} must not appear before F1b/F1c`);
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('[aria-label="Filtrar gastos"] button')].map(b=>b.textContent.trim())`), ["Todos", "Anulados"]);
+    assert.equal(await evaluate(`document.querySelector('#expense-search').placeholder`), "Buscar gasto, categoría o nota");
+    assert.equal(await evaluate(`[...document.querySelectorAll('[aria-label="Mes"] button')].find(b=>b.getAttribute('aria-label')==='Mes siguiente').disabled`), true, "no future months");
+    assert.deepEqual(mutations.map(m => m.path), ["/api/expense-categories/seed"], "opening the page only seeds categories");
     assert.ok(uuid.test(mutations[0].body.operationId) && uuid.test(mutations[0].body.requestId));
     assert.equal(categories.length, 11);
+    await openRegister();
     assert.ok((await options("#new-expense-category")).includes("Nómina y honorarios"));
-    for (const notice of ["Las compras de mercancía se registran como entrada de inventario", "IVA y retenciones no se gestionan", "No escribas números de documento"]) assert.ok((await text()).includes(notice), notice);
-    await shot("01-vacio"); await shot("01-vacio", 390);
-    checks.push("Header link Gastos (aria-current), seed as the only write on load, 11 categories with «Nómina y honorarios», inventory/tax/privacy notices");
+    const dialogText = norm(await evaluate(`document.querySelector('[role="dialog"]').innerText`));
+    for (const notice of ["Las compras de mercancía se registran como entrada de inventario", "IVA y retenciones no se gestionan", "No escribas números de documento"]) assert.ok(dialogText.includes(notice), notice);
+    await shot("gastos-registrar-1440");
+    checks.push("Gastos page: menu entry current, header (icon, title, subtitle, month, Registrar gasto), seed as the only write, 11 categories with «Nómina y honorarios», notices in the register form, no Fijos/Próximos/Variables/Con soporte/Exportar/Gastos fijos");
 
     // Client validation blocks the request.
-    await fill("#new-expense-amount", "1.5"); await click("Registrar gasto"); await waitText("Escribe un monto entre");
-    assert.ok((await text()).includes("Elige una categoría.") && (await text()).includes("Escribe una descripción"));
+    await fill("#new-expense-amount", "1.5"); await click("Guardar gasto"); await waitText("Escribe un monto entre");
+    assert.ok(norm(await text()).includes("Elige una categoría.") && norm(await text()).includes("Escribe una descripción"));
     assert.equal(count("/api/expenses"), 0);
     checks.push("Client validation of amount, category and description with no request");
 
-    // Register (double click → one POST); the amount "150.000" is sent as "150000"; the reference stays out of the list.
+    // Register (double click → one POST); "150.000" is sent as "150000"; the reference stays out of the list; the detail opens.
     await register({ amount: "150.000", category: "Arriendo", description: "Arriendo local noviembre", reference: "TX-991" }, doubleClick);
     await waitText("Gasto registrado.");
     assert.equal(count("/api/expenses"), 1, "double click registers once");
@@ -246,56 +289,58 @@ try {
     await waitText("TX-991"); await waitTotal("$ 150.000");
     assert.ok(!(await list()).includes("TX-991"), "the payment reference is only shown in the detail");
     assert.equal(await evaluate(`document.activeElement?.id`), `expense-${rent.id}`, "the new expense opens with focus on its heading");
-    checks.push("Register with double click once, thousands separators accepted, today in Bogotá, reference only in the detail, focus on the opened detail");
+    checks.push("Register with double click once, thousands separators, today in Bogotá, reference only in the detail, detail opens with focus on its heading");
 
     // Possible duplicate (same date and amount): warning first, second click registers. OTHER requires a note.
     await register({ amount: "150000", category: "Transporte y domicilios", method: "OTHER", note: "Bancolombia a la mano", description: "Mensajería clientes" });
     await waitText("Ya hay un gasto confirmado de este monto en esa fecha");
     assert.equal(count("/api/expenses"), 1, "the warning does not send");
-    await click("Registrar gasto"); await waitText("Gasto registrado.");
+    await click("Guardar gasto"); await waitText("Gasto registrado.");
     assert.equal(count("/api/expenses"), 2); await waitTotal("$ 300.000");
     checks.push("Possible duplicate warning that never blocks; OTHER with mandatory note");
 
-    // Reply lost after commit: Reintentar reuses the operationId with a new requestId; only one expense exists.
+    // Reply lost after commit: Reintentar reuses the operationId with a new requestId; one expense; the form keeps its data until success.
     dropNextAfterCommit = true;
     await register({ amount: "80000", category: "Publicidad y redes", method: "NEQUI", description: "Pauta Instagram" });
-    await waitText("El servidor no pudo completar la acción"); // the Next proxy turns the dropped socket into a 5xx
+    await waitText("El servidor no pudo completar la acción");
     assert.equal(expenses.length, 3, "the server committed before the reply was lost");
+    assert.equal(await evaluate(`document.querySelector('#new-expense-amount').value`), "80000", "the form keeps the data while the reply is unknown");
     await click("Reintentar"); await waitText("Gasto registrado.");
     const sends = mutations.filter(m => m.path === "/api/expenses").slice(-2);
     assert.equal(sends[0].body.operationId, sends[1].body.operationId, "retry keeps the operationId");
     assert.notEqual(sends[0].body.requestId, sends[1].body.requestId, "retry sends a new requestId");
     assert.equal(expenses.length, 3, "the retry did not duplicate the expense");
     await waitTotal("$ 380.000");
-    assert.equal(await evaluate(`document.querySelector('#new-expense-amount').value`), "", "the form resets only after the confirmed reply");
-    checks.push("Lost reply after commit: Reintentar with the same operationId and a new requestId, one expense, form reset after success");
+    checks.push("Lost reply after commit: Reintentar with the same operationId and a new requestId, one expense, form kept until success");
 
-    // Totals and breakdowns; payment-method filter.
-    await poll(async () => (await text()).includes("3 gastos confirmados · 0 anulados"));
-    const breakdown = await evaluate(`document.querySelector('[data-expense-total]').parentElement.innerText.replace(/\\s/g," ")`);
-    for (const part of ["Arriendo $ 150.000", "Transporte y domicilios $ 150.000", "Publicidad y redes $ 80.000", "Efectivo $ 150.000", "Otro $ 150.000", "Nequi $ 80.000"]) assert.ok(breakdown.includes(part), part);
-    await setSelect("#filter-method", "NEQUI"); await waitTotal("$ 80.000");
-    await poll(async () => (await list()).includes("Pauta Instagram") && !(await list()).includes("Arriendo local"));
-    await setSelect("#filter-method", ""); await waitTotal("$ 380.000");
-    assert.equal(await choose("#filter-category", "Arriendo"), true); await waitTotal("$ 150.000");
-    await setSelect("#filter-category", ""); await waitTotal("$ 380.000");
-    await shot("02-totales"); await shot("02-totales", 390);
-    checks.push("Confirmed total with category and payment-method breakdowns; method and category filters");
+    // Figures, grouping by day, payment pills, categories with server percent, search.
+    await closeDialogs();
+    await poll(async () => norm(await evaluate(`document.querySelector('[data-expense-count]').parentElement.innerText`)).includes("3 gastos vigentes · sin anulados"));
+    await poll(async () => (await share()).includes("Arriendo $ 150.000 · 39%"));
+    for (const part of ["Transporte y domicilios $ 150.000 · 39%", "Publicidad y redes $ 80.000 · 21%"]) assert.ok((await share()).includes(part), part);
+    const listed = norm(await list());
+    assert.ok(listed.startsWith("HOY · "), "grouped by day, today first");
+    for (const part of ["Efectivo", "Otro · Bancolombia a la mano", "Nequi"]) assert.ok(listed.includes(part), part);
+    await fill("#expense-search", "bancolombia"); await poll(async () => (await rows()) === 1 && (await list()).includes("Mensajería clientes"));
+    await fill("#expense-search", "publicidad"); await poll(async () => (await rows()) === 1 && (await list()).includes("Pauta Instagram"));
+    await fill("#expense-search", "energía"); await waitText("Ningún gasto coincide con «energía».");
+    await fill("#expense-search", " "); await poll(async () => (await rows()) === 3);
+    await shot("gastos-1440");
+    checks.push("Figures (total, records, voided), list grouped by day with payment pills, categories with server percent, search by description, category or note (accent-insensitive)");
 
-    // Late reply: the slow previous-month response must not overwrite the current month.
-    const october = newExpense({ expenseDate: previous.from, amount: "99000", categoryId: categories.find(c => c.seedKey === "utilities").id, paymentMethod: "BANK_TRANSFER", description: "Luz mes anterior" });
-    slow = url => url.pathname === "/api/expenses" && url.searchParams.get("from") === previous.from;
-    await click("Mes anterior"); await click("Este mes");
+    // Month navigation and late reply: the slow previous-month overview must not overwrite the current month.
+    newExpense({ expenseDate: previous.from, amount: "99000", categoryId: categories.find(c => c.seedKey === "utilities").id, paymentMethod: "BANK_TRANSFER", description: "Luz mes anterior" });
+    slow = url => url.pathname === "/api/expenses/overview" && url.searchParams.get("month") === previous.from.slice(0, 7);
+    await evaluate(`document.querySelector('[aria-label="Mes anterior"]').click()`); await evaluate(`document.querySelector('[aria-label="Mes siguiente"]').click()`);
     await new Promise(resolve => setTimeout(resolve, 2000));
     assert.equal(slow, null, "the slow reply was requested");
-    assert.equal(await total(), "$ 380.000"); assert.ok(!(await list()).includes("Luz mes anterior"), "a late reply for another filter is ignored");
-    await click("Mes anterior"); await waitTotal("$ 99.000"); await poll(async () => (await list()).includes("Luz mes anterior"));
-    assert.equal(await evaluate(`document.querySelector('#filter-from').value`), previous.from);
-    await click("Este año"); await poll(async () => (await list()).includes("Pauta Instagram"));
-    await click("Este mes"); await waitTotal("$ 380.000");
-    assert.deepEqual(monthRange(today).from, await evaluate(`document.querySelector('#filter-from').value`));
-    checks.push(`Period shortcuts (this month, previous month ${previous.from}, this year) and a late reply ignored`);
-    void october;
+    assert.equal(await total(), "$ 380.000"); assert.ok(!(await list()).includes("Luz mes anterior"), "a late reply for another month is ignored");
+    await evaluate(`document.querySelector('[aria-label="Mes anterior"]').click()`);
+    await waitTotal("$ 99.000"); await poll(async () => (await list()).includes("Luz mes anterior"));
+    await waitText(monthLabel(previous.from.slice(0, 7))); await waitText(`Gastos de ${monthName(previous.from.slice(0, 7))}`);
+    await evaluate(`document.querySelector('[aria-label="Mes siguiente"]').click()`); await waitTotal("$ 380.000");
+    await waitText(`vs ${monthName(previous.from.slice(0, 7))}`);
+    checks.push(`Month selector (‹ ${monthLabel(previous.from.slice(0, 7))} ›), comparison vs the previous month and a late reply ignored`);
 
     // Reclassify: category, description and the OTHER note; history shows before → after.
     const courier = byDescription("Mensajería clientes");
@@ -310,7 +355,7 @@ try {
     await waitText("Nota del medio de pago: «Bancolombia a la mano» → «Bancolombia app»");
     await waitText("Categoría: «Transporte y domicilios» → «Publicidad y redes»");
     await waitText("Descripción: «Mensajería clientes» → «Mensajería de pedidos»");
-    assert.ok((await text()).includes("Otro · Bancolombia app"));
+    assert.ok(norm(await text()).includes("Otro · Bancolombia app"));
     await waitTotal("$ 380.000");
     checks.push("Reclassify category, description and OTHER note in one PATCH; RECLASSIFIED history with before → after");
 
@@ -336,11 +381,10 @@ try {
     const replacement = expenses.find(e => e.replacesExpenseId === rent.id);
     assert.equal(replacement.amount, "1500000"); assert.equal(replacement.paymentReference, "TX-991");
     await synced(rent); await waitText("Este gasto es de solo lectura."); await waitText("Motivo: Monto equivocado");
-    await waitTotal("$ 1.730.000"); await poll(async () => (await text()).includes("3 gastos confirmados · 1 anulado (no suman)"));
+    await waitTotal("$ 1.730.000"); await waitText("1 anulado (no suman)");
     await click("Ver el gasto que lo reemplaza"); await synced(replacement);
     await waitText("Ver el gasto anulado que reemplaza");
-    await shot("03-reemplazo"); await shot("03-reemplazo", 390);
-    checks.push("Void and replace in one request (double click once), replacement prefilled, read-only voided expense, links both ways, totals updated");
+    checks.push("Void and replace in one request (double click once), replacement prefilled, read-only voided expense, links both ways, totals updated, voided row with pill and reason");
 
     // Plain void with a mandatory reason.
     const ads = byDescription("Pauta Instagram");
@@ -353,17 +397,19 @@ try {
     await waitTotal("$ 1.650.000");
     checks.push("Void without replacement: mandatory reason, double click once, leaves the totals");
 
-    // Status filter and pagination ("Más gastos").
-    await setSelect("#filter-status", "VOIDED");
+    // «Anulados» chip and pagination («Más gastos»).
+    await closeDialogs();
+    await click("Anulados");
     await poll(async () => { const l = await list(); return l.includes("Pauta Instagram") && l.includes("Arriendo local noviembre") && !l.includes("Mensajería"); });
-    assert.ok((await list()).includes("Anulado"));
-    await setSelect("#filter-status", "all");
-    await poll(async () => (await evaluate(`document.querySelectorAll('ul[aria-label="Gastos"] li').length`)) === PAGE);
+    await waitText(`Gastos anulados de ${monthName(today.slice(0, 7))}`);
+    assert.ok(norm(await list()).includes("Anulado · Monto equivocado") && norm(await list()).includes("Anulado · Cobro duplicado"), "voided rows: pill and reason");
+    assert.equal(await evaluate(`[...document.querySelectorAll('ul[aria-label="Gastos"] button')].every(b=>getComputedStyle(b.querySelector('span.line-through')).textDecorationLine.includes('line-through'))`), true, "voided rows are struck through");
+    await click("Todos");
+    await poll(async () => (await rows()) === PAGE);
     await click("Más gastos");
-    await poll(async () => (await evaluate(`document.querySelectorAll('ul[aria-label="Gastos"] li').length`)) === 4);
+    await poll(async () => (await rows()) === 4);
     assert.equal(await exists("Más gastos"), false);
-    await setSelect("#filter-status", "CONFIRMED");
-    checks.push("Status filter (voided, all) and cursor pagination with «Más gastos»");
+    checks.push("Chips Todos/Anulados and cursor pagination with «Más gastos»");
 
     // 409 INVALID_EXPENSE_TRANSITION: voided elsewhere while this screen showed it confirmed.
     await open("Mensajería de pedidos"); await synced(courier);
@@ -371,8 +417,8 @@ try {
     await click("Anular gasto"); await fill('[role="alertdialog"] textarea', "Ya no aplica");
     await click("Sí, anular el gasto"); await waitText("Esa acción ya no está disponible");
     await click("Recargar gasto"); await synced(courier); await waitText("Este gasto es de solo lectura.");
-    assert.equal(await exists("Reclasificar"), false); await waitTotal("$ 1.500.000"); // reloading after the conflict also refreshes list and totals
-    checks.push("409 INVALID_EXPENSE_TRANSITION: reload shows the expense read-only");
+    assert.equal(await exists("Reclasificar"), false); await waitTotal("$ 1.500.000"); // reloading after the conflict also refreshes figures
+    checks.push("409 INVALID_EXPENSE_TRANSITION: reload shows the expense read-only and refreshes the figures");
 
     // 404 on opening an expense, then retry.
     detail404 = true;
@@ -380,46 +426,59 @@ try {
     await click("Reintentar cargar el gasto"); await synced(replacement);
     checks.push("404 EXPENSE_NOT_FOUND on the detail with retry");
 
-    // Categories: create, archive (no longer offered), conflict → reactivate, rename, reorder.
+    // Categories (dialog): create, archive (not offered), conflict → reactivate, rename, reorder, archive in use keeps totals.
+    await closeDialogs(); await click("Categorías"); await poll(() => evaluate(`Boolean(document.querySelector('#new-category'))`));
     await fill("#new-category", "Domicilios Rappi"); await click("Crear categoría"); await waitText("Categoría creada.");
-    await poll(async () => (await options("#new-expense-category")).includes("Domicilios Rappi"));
+    await closeDialogs(); await poll(async () => (await registerOptions()).includes("Domicilios Rappi"));
+    await click("Categorías"); await poll(() => evaluate(`Boolean(document.querySelector('#new-category'))`));
     await click("Archivar Domicilios Rappi"); await click("Sí, archivar"); await waitText("«Domicilios Rappi» archivada.");
-    await poll(async () => !(await options("#new-expense-category")).includes("Domicilios Rappi"));
-    assert.ok((await options("#filter-category")).includes("Domicilios Rappi (archivada)"), "archived categories stay available as a filter");
+    await poll(async () => /Domicilios Rappis*Archivada/.test(await evaluate(`document.querySelector('ul[aria-label="Categorías de gastos"]').innerText`))); // archived categories stay listed
+    await closeDialogs(); assert.ok(!(await registerOptions()).includes("Domicilios Rappi"), "an archived category is not offered");
+    await click("Categorías"); await poll(() => evaluate(`Boolean(document.querySelector('#new-category'))`));
     await fill("#new-category", "  domicilios   rappi "); await click("Crear categoría");
     await waitText("Ya existe una categoría con ese nombre");
     await click("Reactivar «Domicilios Rappi»"); await waitText("«Domicilios Rappi» reactivada.");
-    await poll(async () => (await options("#new-expense-category")).includes("Domicilios Rappi"));
     assert.equal(categories.filter(c => normalized(c.name) === "domicilios rappi").length, 1, "no duplicate category");
     await click("Renombrar Otros gastos");
     await fill('ul[aria-label="Categorías de gastos"] input', "Gastos varios"); await click("Guardar nombre"); await waitText("Categoría renombrada.");
-    await poll(async () => (await options("#new-expense-category")).includes("Gastos varios"));
     assert.equal(await evaluate(`(()=>{const b=document.querySelector('button[aria-label="Bajar Arriendo"]');if(!b||b.disabled)return false;b.click();return true})()`), true, "Bajar Arriendo"); await waitText("Orden actualizado.");
     const names = () => evaluate(`[...document.querySelectorAll('ul[aria-label="Categorías de gastos"] > li')].slice(0,2).map(li=>li.querySelector('span').textContent)`);
     await poll(async () => JSON.stringify(await names()) === JSON.stringify(["Servicios públicos", "Arriendo"]));
-    // Archiving a category in use keeps its expenses and totals.
     await click("Archivar Arriendo"); await click("Sí, archivar"); await waitText("«Arriendo» archivada.");
-    await waitTotal("$ 1.500.000"); await waitText("Arriendo (archivada)");
-    await shot("04-categorias"); await shot("04-categorias", 390);
-    checks.push("Categories: create, archive (not offered, still filterable), name conflict → reactivate without duplicate, rename, reorder, archive in use keeps totals");
+    await closeDialogs();
+    const offered = await registerOptions();
+    assert.ok(offered.includes("Domicilios Rappi") && offered.includes("Gastos varios") && !offered.includes("Arriendo"));
+    await waitTotal("$ 1.500.000"); await poll(async () => (await share()).includes("Arriendo (archivada) $ 1.500.000 · 100%"));
+    checks.push("Categories dialog: create, archive (not offered, still listed), name conflict → reactivate without duplicate, rename, reorder; archiving one in use keeps its total (shown as archived)");
 
-    // Keyboard: Tab from the status filter reaches the list; visible focus.
-    await evaluate(`document.querySelector('#filter-status').focus()`);
-    for (const type of ["keyDown", "keyUp"]) await command("Input.dispatchKeyEvent", { type, key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
-    assert.equal(await evaluate(`document.activeElement?.closest('ul[aria-label="Gastos"]') !== null`), true, "Tab moves from the filters to the first expense");
+    // Keyboard: Tab from the search reaches the list; visible focus.
+    await evaluate(`document.querySelector('#expense-search').focus()`);
+    await key("Tab", "Tab", 9);
+    assert.equal(await evaluate(`document.activeElement?.closest('ul[aria-label="Gastos"]') !== null`), true, "Tab moves from the search to the first expense");
     assert.notEqual(await evaluate(`getComputedStyle(document.activeElement).outlineStyle`), "none", "visible focus");
-    checks.push("Keyboard: Tab order from filters to the list with visible focus");
+    checks.push("Keyboard: Tab order from filters to the list with visible focus; dialogs close with Escape");
 
-    // Responsive: no horizontal overflow with a detail open.
-    await open("Arriendo local noviembre"); await synced(replacement);
-    for (const width of [320, 390, 1024, 1440]) {
-      await command("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 768 });
-      await new Promise(resolve => setTimeout(resolve, 250));
+    // Responsive: stacked figures and a register button above the bottom bar on mobile; no overflow.
+    for (const width of [320, 375, 390, 768, 1024, 1440]) {
+      await viewport(width);
       const overflow = await evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
-      assert.ok(overflow <= 0, `horizontal overflow of ${overflow}px at ${width}px`);
+      const wide = overflow > 0 ? await evaluate(`[...document.querySelectorAll('main *')].filter(e=>e.getBoundingClientRect().right>document.documentElement.clientWidth+1).slice(-4).map(e=>e.tagName+'.'+String(e.className).slice(0,60)+' '+Math.round(e.getBoundingClientRect().right))`) : [];
+      assert.ok(overflow <= 0, `horizontal overflow of ${overflow}px at ${width}px: ${JSON.stringify(wide)}`);
+      assert.equal(await evaluate(`[...document.querySelectorAll('main button')].filter(b=>b.textContent.trim()==='Registrar gasto'&&b.getClientRects().length).length`), 1, `one visible «Registrar gasto» at ${width}px`);
+      if (width < 1024) {
+        const fab = await evaluate(`(()=>{const b=${button("Registrar gasto")};const nav=[...document.querySelectorAll('nav[aria-label="Principal"]')].find(n=>n.getClientRects().length);if(!b||!nav)return null;return {bottom:b.getBoundingClientRect().bottom,navTop:nav.getBoundingClientRect().top,height:b.getBoundingClientRect().height}})()`);
+        assert.ok(fab && fab.bottom <= fab.navTop && fab.height >= 44, `register button above the bottom bar at ${width}px`);
+      }
+      if (width === 375) {
+        assert.ok(await evaluate(`(()=>{const [a,b]=[...document.querySelectorAll('section[aria-labelledby="expense-figures"] article')].map(e=>e.getBoundingClientRect());return b.top>=a.bottom})()`), "figures stacked on mobile");
+        await evaluate(`window.scrollTo(0,0)`); await shot("gastos-375");
+      }
     }
+    await viewport(375); await open("Arriendo local noviembre"); await synced(replacement);
+    assert.ok(await evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`) <= 0, "detail without overflow at 375px");
+    await closeDialogs();
     await command("Emulation.clearDeviceMetricsOverride");
-    checks.push("Responsive: no horizontal overflow at 320, 390, 1024 and 1440 px");
+    checks.push("Responsive: no horizontal overflow at 320–1440 px; figures stacked and register button above the bottom bar on mobile");
 
     // Every mutation: operationId and requestId UUIDs, a new requestId per transmission, no totals or ownership sent.
     assert.ok(mutations.every(m => uuid.test(m.body.operationId) && uuid.test(m.body.requestId)));

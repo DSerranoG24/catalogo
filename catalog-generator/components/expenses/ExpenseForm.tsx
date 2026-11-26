@@ -32,10 +32,14 @@ export default function ExpenseForm({ idPrefix, categories, today, initial, rece
   return <form noValidate className="space-y-3" onSubmit={event => { event.preventDefault(); submit(); }}>
     <fieldset disabled={busy} className="grid gap-3 sm:grid-cols-2">
       <legend className="sr-only">Datos del gasto</legend>
+      <label htmlFor={id("amount")} className="grid gap-1 text-sm font-medium text-[var(--vy-text)] sm:col-span-2">Monto en pesos
+        <span className="flex items-center gap-2 rounded-2xl border border-[var(--vy-field-border)] bg-white px-4 focus-within:border-[#6D28D9] focus-within:ring-4 focus-within:ring-[#6D28D9]/20">
+          <span aria-hidden="true" className="text-3xl font-bold text-[var(--vy-text-muted)]">$</span>
+          <input id={id("amount")} inputMode="numeric" autoComplete="off" placeholder="150.000" value={form.amount} onChange={e => set({ amount: e.target.value })}
+            className="min-h-16 w-full min-w-0 bg-transparent text-3xl font-bold tracking-tight text-[var(--vy-text)] outline-none placeholder:text-[var(--vy-text-subtle)]" />
+        </span></label>
       <label htmlFor={id("date")} className="grid gap-1 text-sm font-medium">Fecha del gasto
         <Input id={id("date")} type="date" min={minExpenseDate(today)} max={today} value={form.expenseDate} onChange={e => set({ expenseDate: e.target.value })} /></label>
-      <label htmlFor={id("amount")} className="grid gap-1 text-sm font-medium">Monto en pesos
-        <Input id={id("amount")} inputMode="numeric" placeholder="150000" value={form.amount} onChange={e => set({ amount: e.target.value })} /></label>
       <label htmlFor={id("category")} className="grid gap-1 text-sm font-medium">Categoría
         <select id={id("category")} className={selectClass} value={form.categoryId} onChange={e => set({ categoryId: e.target.value })}>
           <option value="">Elige una categoría</option>{active.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}

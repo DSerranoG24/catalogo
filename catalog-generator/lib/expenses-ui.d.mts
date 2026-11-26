@@ -35,3 +35,18 @@ export function parseExpensePage(value: unknown): ExpensePage;
 export function parseSummary(value: unknown): ExpenseSummary;
 export function parseExpenseDetail(value: unknown): { expense: Expense; events: ExpenseEvent[] };
 export function describeExpenseFailure(error: unknown): Failure;
+export type ExpenseOverview = {
+  month: string; from: string; to: string; generatedAt: string; total: string; count: number; voidedCount: number;
+  previousMonth: { month: string; total: string }; days: { date: string; total: string }[];
+  byCategory: { categoryId: string; name: string; archived: boolean; total: string; count: number; percent: string }[];
+};
+export function monthLabel(month: string): string;
+export function monthName(month: string): string;
+export function shiftMonth(month: string, delta: number): string;
+export function dayHeading(date: string, today: string): string;
+export function groupByDay(items: Expense[]): { date: string; items: Expense[] }[];
+export function matchesSearch(item: Expense, query: string): boolean;
+export function parseExpenseOverview(value: unknown, month: string): ExpenseOverview;
+export const CATEGORY_STYLES: Record<string, { icon: string; tone: string }>;
+export const DEFAULT_CATEGORY_STYLE: { icon: string; tone: string };
+export const PAYMENT_TONES: Record<PaymentMethod, string>;

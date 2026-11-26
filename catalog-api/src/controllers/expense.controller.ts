@@ -48,6 +48,7 @@ export function makeExpenseController(service = makeExpenseService()) {
     reactivateCategory: handle((o, r) => service.reactivateCategory(o, r.params.id, r.body)),
     listExpenses: handle((o, r) => service.listExpenses(o, r.query)),
     summary: handle((o, r) => service.summary(o, r.query)),
+    overview: handle((o, r) => service.overview(o, r.query)),
     detail: handle((o, r) => service.detail(o, r.params.id)),
     createExpense: handle((o, r) => service.createExpense(o, r.body), true),
     reclassifyExpense: handle((o, r) => service.reclassifyExpense(o, r.params.id, r.body)),

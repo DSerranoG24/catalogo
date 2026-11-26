@@ -14,6 +14,7 @@ export function makeExpenseRouter(controller = makeExpenseController(), authenti
   router.post("/expense-categories/:id/reactivate", authentication, json, controller.reactivateCategory);
   router.get("/expenses", authentication, controller.listExpenses);
   router.get("/expenses/summary", authentication, controller.summary);
+  router.get("/expenses/overview", authentication, controller.overview);
   router.get("/expenses/:id", authentication, controller.detail);
   router.post("/expenses", authentication, json, controller.createExpense);
   router.patch("/expenses/:id", authentication, json, controller.reclassifyExpense);

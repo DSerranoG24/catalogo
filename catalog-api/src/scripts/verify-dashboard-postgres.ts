@@ -176,6 +176,22 @@ async function main() {
   assert.equal((await summaryAt(c.id, asOf, 7, true)).month.expensesTotal, "0");
   passed("Expenses module on real F1a rows: only CONFIRMED (voided excluded) of the owner by expenseDate, Bogotá month borders, profit subtracts them, isolated per owner, zero for an account without expenses");
 
+  stage = "EXPENSES_OVERVIEW";
+  const { readExpenseOverview } = await import("../repositories/expense-overview.repository.js");
+  const rent = await db.expenseCategory.create({ data: { ownerId: a.id, name: "Arriendo", normalizedKey: "arriendo" }, select: { id: true } });
+  await spend(a.id, rent.id, 1500n, "2026-03-10");
+  const march = await readExpenseOverview(a.id, "2026-03", db);
+  assert.deepEqual({ from: march.from, to: march.to, total: march.total, count: march.count, voided: march.voidedCount, previous: march.previousMonth },
+    { from: "2026-03-01", to: "2026-03-31", total: "2000", count: 2, voided: 1, previous: { month: "2026-02", total: "200" } });
+  assert.equal(march.days.length, 31); assert.equal(march.days[0]?.total, "500"); assert.equal(march.days[9]?.total, "1500"); assert.equal(march.days[1]?.total, "0");
+  assert.deepEqual(march.byCategory.map(c => [c.name, c.total, c.percent]), [["Arriendo", "1500", "75"], ["Servicios", "500", "25"]], "voided 999 never adds");
+  const february = await readExpenseOverview(a.id, "2026-02", db);
+  assert.equal(february.days.length, 28); assert.equal(february.total, "200"); assert.equal(february.previousMonth.total, "50");
+  const otherOwner = await readExpenseOverview(b.id, "2026-03", db);
+  assert.equal(otherOwner.total, "777"); assert.deepEqual(otherOwner.byCategory.map(c => c.name), ["Servicios"]);
+  assert.equal((await readExpenseOverview(c.id, "2026-03", db)).byCategory.length, 0);
+  passed("Expenses overview on real F1a rows: confirmed total, voided apart, previous month, one point per day (31/28), categories with server percent, isolated per owner");
+
   stage = "RUNTIME_PATH";
   const bogotaToday = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date());
   await spend(a.id, categoryA.id, 321n, bogotaToday);

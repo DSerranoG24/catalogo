@@ -25,7 +25,7 @@ function Change({ current, previous, against, equal }: { current: string; previo
 }
 
 /** Decorative trend line from the daily series; the chart section carries the accessible data. */
-function Sparkline({ values, color }: { values: string[]; color: string }) {
+export function Sparkline({ values, color }: { values: string[]; color: string }) {
   if (values.length < 2) return null;
   const numbers = values.map(v => BigInt(v));
   const min = numbers.reduce((a, b) => b < a ? b : a), max = numbers.reduce((a, b) => b > a ? b : a), span = max - min;

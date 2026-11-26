@@ -9,14 +9,14 @@ Reutiliza los procedimientos del [runbook de Ventas](despliegue-2026-11-ventas.m
 | Pieza | Efecto |
 | --- | --- |
 | `20261125000000_operating_expenses` | **Solo añade**: 5 tablas (`expense_categories`, `recurring_expense_templates`, `expenses`, `expense_operations`, `expense_events`), 5 tipos enum, 10 CHECK, 3 funciones y 5 triggers (historial inmutable, columnas de identidad congeladas, sin borrado, transiciones de estado). No toca tablas existentes ni datos. Una sola transacción. |
-| API (`catalog-api`) | Endpoints de categorías (`GET`, `seed`, crear, renombrar/ordenar, archivar, reactivar) y de gastos (listar, resumen, detalle, registrar, reclasificar, anular con reemplazo opcional), con parser de 16 KiB propio. Sin endpoints de plantillas recurrentes. |
-| Frontend (`catalog-generator`) | Enlace «Gastos» en la cabecera y la pantalla `/dashboard/gastos`. Hook común de envío seguro (Ventas lo usa a través de un adaptador, sin cambio de comportamiento). |
+| API (`catalog-api`) | Endpoints de categorías (`GET`, `seed`, crear, renombrar/ordenar, archivar, reactivar) y de gastos (listar, resumen, detalle, registrar, reclasificar, anular con reemplazo opcional), con parser de 16 KiB propio. Lectura `GET /expenses/overview` para la página ([definiciones](expenses-overview.md)). El resumen de Inicio pasa a leer `expenses` (`DASHBOARD_MODULES.expenses = true`). Sin endpoints de plantillas recurrentes. |
+| Frontend (`catalog-generator`) | Entrada «Gastos» en el menú (grupo «Dinero»; en móvil, en «Más»), la pantalla `/dashboard/gastos` con el diseño del panel, y en Inicio la tarjeta «Gastos del mes» y la acción «Registrar gasto». Hook común de envío seguro (Ventas lo usa a través de un adaptador, sin cambio de comportamiento). |
 
 La migración se ensayó el 24/11/2026 sobre la cadena completa de 40 migraciones en PostgreSQL local (`npm.cmd run test:expenses-postgres`, 14/14 etapas, incluida la matriz de dos cuentas y `EXPLAIN` con 20 000 filas).
 
 **Compatibilidad y orden: migración → push → API *Live* → frontend.**
 - El código publicado hoy funciona con el esquema nuevo: las tablas nuevas no las usa nadie.
-- La API nueva **necesita** la migración: sin las tablas, todos los endpoints de Gastos responden 503 (`EXPENSE_RETRY_SAME_OPERATION`) o 500. El resto de la API no se ve afectado.
+- La API nueva **necesita** la migración: sin las tablas, todos los endpoints de Gastos responden 503 (`EXPENSE_RETRY_SAME_OPERATION`) o 500, y **el resumen de Inicio (`/api/dashboard/summary`) responde 500**, porque ahora suma los gastos del mes. El resto de la API no se ve afectado. Por eso la migración va antes del push.
 - El frontend nuevo **necesita** la API nueva: con la API anterior, al abrir Gastos la siembra de categorías devuelve 404 y la pantalla muestra un error con «Reintentar cargar categorías». No hay riesgo para los datos, pero comprueba Render antes que Vercel.
 
 ## 0. Preparación (sin tocar producción)
@@ -25,10 +25,10 @@ Igual que el paso 0 del runbook de Ventas, con la rama `f1-expenses`:
 
 ```powershell
 git status                          # limpio
-git log --oneline -7 f1-expenses
+git log --oneline --first-parent -10 f1-expenses
 ```
 
-Esperado, en orden descendente: F1a-5 (este documento), F1a-4 (interfaz), F1a-3 (ensayo PostgreSQL), F1a-2 (API), F1a-1 (migración y consulta previa) y `db5e8e7` (contrato v1.1), sobre `b177f12`, que es `main`.
+Esperado, en orden descendente: «Gastos F1a: rediseño de /dashboard/gastos…», «Gastos F1a: activar el módulo…», el merge «Gastos F1a: actualizar la rama con main…» (`b068e6c`), F1a-5 a F1a-1 y `db5e8e7` (contrato v1.1). `git merge-base --is-ancestor origin/main f1-expenses` debe terminar sin error: `main` está contenido en la rama y el paso 5 avanza con `--ff-only`. Si `main` recibió commits después de `b24c054`, actualiza la rama primero.
 
 Verifica localmente la versión que se publicará:
 
@@ -105,7 +105,7 @@ git push origin main
 
 ## 6. Comprobar Render y después Vercel
 
-1. **Render:** un deploy *Live* para el SHA de F1a-5, logs de arranque sin errores de Prisma, `GET https://<API>/api/health` → 200.
+1. **Render:** un deploy *Live* para el SHA del último commit de `f1-expenses`, logs de arranque sin errores de Prisma, `GET https://<API>/api/health` → 200.
 2. Solo entonces **Vercel:** un deployment *Ready* para el mismo SHA, asignado al dominio de producción. Si Vercel terminó antes que Render, no abras Gastos hasta que Render esté *Live*.
 
 Compara ambos SHA con los del paso 0.
@@ -114,16 +114,17 @@ Compara ambos SHA con los del paso 0.
 
 En la **cuenta de prueba** (ventana privada, ver 7.0 del runbook de Ventas), nunca en la cuenta real: los gastos no se borran y quedan en el historial. No escribas datos personales en descripciones, proveedor ni referencia.
 
-1. **Navegación y siembra.** En la cabecera aparece «Gastos», junto a Inventario y Ventas. Al abrirla se ven los avisos «Las compras de mercancía se registran como entrada de inventario…» e «IVA y retenciones no se gestionan…». En «Categoría» del formulario aparecen las 11 sugeridas, incluida **«Nómina y honorarios»**. Recargar la página no las duplica.
-2. **Registrar.** Fecha de hoy, monto `12.345`, categoría «Papelería e insumos», medio Efectivo, descripción «HUMO GASTO 1», referencia «HUMO-REF». Pulsa «Registrar gasto».
-   - Esperado: «Gasto registrado.», el detalle abierto con monto `$ 12.345` y la referencia visible **solo** en el detalle (no en el listado).
-3. **Filtros y totales.** Con «Este mes», el total confirmado es la suma de los gastos de prueba del mes (si es el primero, `$ 12.345`). Filtra por medio «Nequi»: el gasto desaparece y el total baja. Vuelve a «Todos».
-4. **Reclasificar.** Registra un segundo gasto: monto `5.000`, medio «Otro» con nota «Humo nota A», descripción «HUMO GASTO 2». En su detalle pulsa «Reclasificar», cambia la categoría a «Otros gastos» y la nota a «Humo nota B», y guarda.
+1. **Navegación y siembra.** En el menú aparece «Gastos» en el grupo «Dinero» (en móvil, dentro de «Más»). Al abrirla se ven el encabezado «Gastos · Lo que cuesta mantener tu negocio», el mes actual y las tarjetas «Gastos del mes» y «Registros del mes». Pulsa «Registrar gasto»: el formulario muestra los avisos «Las compras de mercancía se registran como entrada de inventario…» e «IVA y retenciones no se gestionan…», y en «Categoría» aparecen las 11 sugeridas, incluida **«Nómina y honorarios»**. Recargar la página no las duplica.
+2. **Registrar.** Fecha de hoy, monto `12.345`, categoría «Papelería e insumos», medio Efectivo, descripción «HUMO GASTO 1», referencia «HUMO-REF». Pulsa «Guardar gasto».
+   - Esperado: «Gasto registrado.», el detalle abierto con monto `$ 12.345` y la referencia visible **solo** en el detalle (no en el listado). En la lista aparece bajo «HOY · …» con la pastilla «Efectivo».
+3. **Cifras, categorías y búsqueda.** «Gastos del mes» suma los gastos de prueba del mes (si es el primero, `$ 12.345`) y «¿En qué se va la plata?» muestra «Papelería e insumos» con su porcentaje. Escribe «humo» en el buscador: solo quedan los gastos de prueba. Con ‹ vuelve al mes anterior y con › al actual; › está deshabilitado en el mes actual.
+4. **Reclasificar.** Registra un segundo gasto: monto `5.000`, medio «Otro» con nota «Humo nota A», descripción «HUMO GASTO 2». Ábrelo, pulsa «Reclasificar», cambia la categoría a «Otros gastos» y la nota a «Humo nota B», y guarda.
    - Esperado: «Gasto reclasificado.», y en «Historial» las líneas «Categoría: «…» → «Otros gastos»» y «Nota del medio de pago: «Humo nota A» → «Humo nota B»». El monto no cambia.
-5. **Anular y reemplazar.** En «HUMO GASTO 1» pulsa «Anular gasto», escribe el motivo «Humo monto equivocado», marca «Registrar el gasto correcto al anular», cambia el monto a `12.000` y pulsa «Anular y registrar el correcto».
-   - Esperado: «Gasto anulado y reemplazado.», el original en «Anulado» y de solo lectura, con «Ver el gasto que lo reemplaza»; el total del mes baja en 345 y el contador muestra «1 anulado (no suman)».
-6. **Archivar una categoría.** En «Categorías», crea «Humo categoría», archívala («Sí, archivar») y comprueba que **ya no aparece** en la categoría del formulario de registro, pero sí en el filtro como «(archivada)». Intenta crear «humo categoría»: aparece «Ya existe una categoría con ese nombre» y el botón «Reactivar «Humo categoría»». Reactívala y vuelve a archivarla.
-7. **Móvil.** A 390 px de ancho, o en el teléfono, el formulario, el listado y el detalle se leen sin desplazamiento horizontal.
+5. **Anular y reemplazar.** Abre «HUMO GASTO 1», pulsa «Anular gasto», escribe el motivo «Humo monto equivocado», marca «Registrar el gasto correcto al anular», cambia el monto a `12.000` y pulsa «Anular y registrar el correcto».
+   - Esperado: «Gasto anulado y reemplazado.», el original en «Anulado» y de solo lectura, con «Ver el gasto que lo reemplaza»; el total del mes baja en 345 y «Registros del mes» indica «1 anulado (no suman)». Con el filtro «Anulados» aparece tachado, con la pastilla «Anulado» y su motivo.
+6. **Categorías.** Pulsa «Categorías», crea «Humo categoría», archívala («Sí, archivar») y comprueba que **ya no aparece** en la categoría del formulario de registro, pero sí en la lista de categorías como «Archivada». Intenta crear «humo categoría»: aparece «Ya existe una categoría con ese nombre» y el botón «Reactivar «Humo categoría»». Reactívala y vuelve a archivarla.
+7. **Inicio.** En Inicio aparecen la tarjeta «Gastos del mes» (violeta) con el total de los gastos de prueba vigentes y la acción rápida «Registrar gasto»; la «Utilidad del mes» los resta.
+8. **Móvil.** A 390 px de ancho, o en el teléfono, las cifras quedan apiladas, «Registrar gasto» queda sobre la barra inferior y el listado y el detalle se leen sin desplazamiento horizontal.
 
 Si un paso falla, anota el mensaje que muestra el panel y **no reviertas el esquema**.
 

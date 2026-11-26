@@ -119,3 +119,70 @@ export function describeExpenseFailure(error) {
   if (status >= 500) return { title: "El servidor no pudo completar la acción", detail: "Reintenta: se enviará la misma operación y no se duplicará.", action: "retry" };
   return { title: "No se pudo completar la acción", detail: "Revisa los datos e intenta de nuevo.", action: null };
 }
+
+// ---- Gastos page (redesign): month navigation, overview, grouping and search. ----
+const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const WEEKDAYS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+const capitalize = text => text.charAt(0).toLocaleUpperCase("es-CO") + text.slice(1);
+/** "2026-11" → "Noviembre 2026". */
+export const monthLabel = month => `${capitalize(MONTHS[Number(month.slice(5, 7)) - 1])} ${month.slice(0, 4)}`;
+/** "2026-11" → "noviembre". */
+export const monthName = month => MONTHS[Number(month.slice(5, 7)) - 1];
+/** Adds months to "YYYY-MM". */
+export function shiftMonth(month, delta) {
+  const [y, m] = month.split("-").map(Number), index = y * 12 + (m - 1) + delta;
+  return `${Math.floor(index / 12)}-${pad(index % 12 + 1)}`;
+}
+/** Day heading for the grouped list: "HOY · MIÉRCOLES 25", "AYER · MARTES 24", "LUNES 23". */
+export function dayHeading(date, today) {
+  const day = new Date(`${date}T12:00:00Z`), base = `${WEEKDAYS[day.getUTCDay()]} ${day.getUTCDate()}`;
+  const yesterday = new Date(`${today}T12:00:00Z`); yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const prefix = date === today ? "hoy · " : date === yesterday.toISOString().slice(0, 10) ? "ayer · " : "";
+  return `${prefix}${base}`.toLocaleUpperCase("es-CO");
+}
+/** Groups an already ordered list (date desc) by expenseDate. */
+export function groupByDay(items) {
+  const groups = [];
+  for (const item of items) {
+    const last = groups.at(-1);
+    if (last && last.date === item.expenseDate) last.items.push(item); else groups.push({ date: item.expenseDate, items: [item] });
+  }
+  return groups;
+}
+const fold = text => String(text ?? "").normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase("es-CO").replace(/\s+/g, " ").trim();
+/** Search over description, category, payment note and supplier; accents and case are ignored. */
+export function matchesSearch(item, query) {
+  const needle = fold(query);
+  if (!needle) return true;
+  return [item.description, item.categoryName, item.categoryNameSnapshot, item.paymentMethodNote, item.supplierName].some(value => fold(value).includes(needle));
+}
+/** Validates GET /expenses/overview (amounts are decimal strings; percents come from the server). */
+export function parseExpenseOverview(value, month) {
+  const r = value?.result;
+  const ok = value?.success === true && object(r) && r.month === month && isoDate(r.from) && isoDate(r.to) && typeof r.generatedAt === "string" && !Number.isNaN(Date.parse(r.generatedAt))
+    && money(r.total) && Number.isSafeInteger(r.count) && Number.isSafeInteger(r.voidedCount) && object(r.previousMonth) && money(r.previousMonth.total)
+    && Array.isArray(r.days) && r.days.length >= 1 && r.days.length <= 31 && r.days.every(d => object(d) && isoDate(d.date) && d.date.startsWith(month) && money(d.total))
+    && Array.isArray(r.byCategory) && r.byCategory.every(c => object(c) && uuid(c.categoryId) && typeof c.name === "string" && typeof c.archived === "boolean" && money(c.total) && typeof c.percent === "string" && /^\d{1,3}$/.test(c.percent));
+  if (!ok) invalid();
+  return r;
+}
+/** Tile icon and tint per suggested category (seedKey); custom categories use the neutral style. */
+export const CATEGORY_STYLES = {
+  rent: { icon: "home", tone: "bg-[#F1ECFF] text-[#6D28D9]" },
+  utilities: { icon: "zap", tone: "bg-[#FEF3C7] text-[#B45309]" },
+  "internet-phone": { icon: "wifi", tone: "bg-[#E0F2FE] text-[#0369A1]" },
+  "transport-delivery": { icon: "truck", tone: "bg-[#E0F2FE] text-[#0369A1]" },
+  advertising: { icon: "megaphone", tone: "bg-[#FCE7F3] text-[#BE185D]" },
+  maintenance: { icon: "wrench", tone: "bg-[#F1F5F9] text-[#334155]" },
+  stationery: { icon: "shopping-bag", tone: "bg-[#FFE4E6] text-[#BE123C]" },
+  fees: { icon: "landmark", tone: "bg-[#ECFDF5] text-[#047857]" },
+  "taxes-procedures": { icon: "receipt", tone: "bg-[#FFF7ED] text-[#C2410C]" },
+  "payroll-fees": { icon: "users", tone: "bg-[#EEF2FF] text-[#4338CA]" },
+  other: { icon: "tag", tone: "bg-[#F3F4F6] text-[#374151]" },
+};
+export const DEFAULT_CATEGORY_STYLE = { icon: "tag", tone: "bg-[#F3F0FF] text-[#5B21B6]" };
+/** Payment pill colors (text ≥ 4.5:1 on its background). */
+export const PAYMENT_TONES = {
+  CASH: "bg-[#E7F6EC] text-[#166534]", NEQUI: "bg-[#F3E8FF] text-[#6B21A8]", DAVIPLATA: "bg-[#FEE2E2] text-[#991B1B]",
+  BANK_TRANSFER: "bg-[#E6EEFF] text-[#1D4ED8]", CARD: "bg-[#F1F5F9] text-[#334155]", OTHER: "bg-[#F3F4F6] text-[#374151]",
+};
