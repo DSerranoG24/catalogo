@@ -20,12 +20,16 @@ import { z } from "zod";
  *   calendar month.
  * - lowStockCount: items with minimumStock > 0 and 0 < stock ≤ minimumStock. outOfStockCount: stock = 0.
  * - pendingOrdersCount: PENDING orders, not anonymized, of any catalog of the owner.
+ * - scheduledDueSoonCount / scheduledOverdueCount (F1b): PENDING scheduled payments due between today and today + 7, and
+ *   before today. Scheduled payments never add to sales, costs, expenses or profit; this read never generates them.
  * - recent: the 5 latest sales with a confirmation (any status but DRAFT), by confirmedAt.
  * Money is always a decimal string computed with BigInt; it is never converted to Number.
  */
 
 /** Modules available in this build. expenses: F1a (migration 20261125000000_operating_expenses and /api/expenses). */
 export const DASHBOARD_MODULES: Readonly<{ expenses: boolean }> = { expenses: true };
+/** F1b scheduled payments (migration 20261126000000_scheduled_expense_payments): attention counts are read from it. */
+export const SCHEDULED_EXPENSES_MODULE = true;
 
 export const DASHBOARD_DAYS = [7, 30, 90] as const;
 export type DashboardDays = (typeof DASHBOARD_DAYS)[number];
@@ -48,7 +52,7 @@ export const rawSummarySchema = z.object({
   month: z.object({ sales: money, cost: money, withoutCost: count }).strict(),
   previousMonth: z.object({ sales: money, cost: money }).strict(),
   series: z.array(z.object({ date: isoDay, total: money }).strict()).max(90),
-  attention: z.object({ low: count, out: count, pending: count }).strict(),
+  attention: z.object({ low: count, out: count, pending: count, dueSoon: count, overdue: count }).strict(),
   recent: z.array(z.object({ id: z.string(), status: z.enum(["CONFIRMED", "DELIVERED", "CANCELLED", "RETURNED"]), total: money, at: z.iso.datetime(), customerName: z.string().nullable() }).strict()).max(5),
   setup: z.object({ hasInventoryItems: z.boolean(), hasPublishedCatalog: z.boolean(), hasSales: z.boolean() }).strict(),
 }).strict();
@@ -84,11 +88,12 @@ export function presentSummary(rawData: unknown, rawExpenses: unknown | null, ge
       estimatedProfit: profit(raw.month.sales, raw.month.cost, expenses?.month ?? null),
       previousMonth: { salesTotal: raw.previousMonth.sales, expensesTotal: expenses?.previousMonth ?? null, estimatedProfit: profit(raw.previousMonth.sales, raw.previousMonth.cost, expenses?.previousMonth ?? null) },
     },
-    attention: { lowStockCount: raw.attention.low, outOfStockCount: raw.attention.out, pendingOrdersCount: raw.attention.pending },
+    attention: { lowStockCount: raw.attention.low, outOfStockCount: raw.attention.out, pendingOrdersCount: raw.attention.pending,
+      scheduledDueSoonCount: raw.attention.dueSoon, scheduledOverdueCount: raw.attention.overdue },
     salesSeries: fillSeries(raw.today, days, raw.series),
     recent: raw.recent.map(sale => ({ kind: "SALE" as const, ...sale })),
     setup: raw.setup,
-    modules: { expenses: expenses !== null },
+    modules: { expenses: expenses !== null, scheduledExpenses: SCHEDULED_EXPENSES_MODULE },
   };
 }
 export type DashboardSummary = ReturnType<typeof presentSummary>;

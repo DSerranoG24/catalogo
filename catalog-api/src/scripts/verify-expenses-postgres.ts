@@ -50,11 +50,15 @@ async function main() {
   const folder = await mkdtemp(path.join(tmpdir(), "expenses-migrations-"));
   const migrationRoot = path.resolve("prisma/migrations");
   const names = (await readdir(migrationRoot, { withFileTypes: true })).filter(v => v.isDirectory()).map(v => v.name).sort();
-  assert.equal(names.at(-1), MIGRATION, "the expenses migration must be the latest one");
+  // The F1a migration is rehearsed over the ones before it; later migrations (F1b onwards) are applied afterwards so the
+  // current Prisma client matches the schema.
+  const position = names.indexOf(MIGRATION);
+  assert.ok(position > 0, "the expenses migration exists");
+  const later = names.slice(position + 1);
   await mkdir(path.join(folder, "migrations"));
   await cp("prisma/schema.prisma", path.join(folder, "schema.prisma"));
   await cp(path.join(migrationRoot, "migration_lock.toml"), path.join(folder, "migrations/migration_lock.toml"));
-  for (const name of names.slice(0, -1)) await cp(path.join(migrationRoot, name), path.join(folder, "migrations", name), { recursive: true });
+  for (const name of names.slice(0, position)) await cp(path.join(migrationRoot, name), path.join(folder, "migrations", name), { recursive: true });
   // Never echo Prisma output: it may contain connection details.
   const deploy = () => spawnSync(process.execPath, [requireModule.resolve("prisma/build/index.js"), "migrate", "deploy", "--schema", path.join(folder, "schema.prisma")], {
     cwd: folder, env: { ...process.env, DATABASE_URL: target.toString() }, encoding: "utf8", timeout: 120000, windowsHide: true }).status;
@@ -80,6 +84,11 @@ async function main() {
   assert.deepEqual(constraints.map(c => c.conname).sort(), [...CHECKS].sort()); assert.ok(constraints.every(c => c.validated));
   const triggers = await database.$queryRaw<{ tgname: string }[]>`SELECT t.tgname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid WHERE c.relnamespace = ${schema}::regnamespace AND t.tgname = ANY(${TRIGGERS})`;
   assert.deepEqual(triggers.map(t => t.tgname).sort(), [...TRIGGERS].sort());
+  pass(stage);
+
+  stage = "LATER_MIGRATIONS";
+  for (const name of later) await cp(path.join(migrationRoot, name), path.join(folder, "migrations", name), { recursive: true });
+  assert.equal(deploy(), 0);
   pass(stage);
 
   const A = await database.user.create({ data: { email: `exp_a_${randomUUID()}@example.invalid` } });

@@ -9,6 +9,9 @@ import { bogotaToday } from "../services/expense-dates";
  * - Only CONFIRMED expenses add up; VOIDED are counted apart and never add. Days are F1a's expenseDate (Bogotá dates).
  * - The current month runs up to today in Bogotá; past months are complete. Future months are rejected.
  * - percent = round(categoryTotal × 100 / monthTotal), half up, with BigInt; it may not add to exactly 100.
+ * F1b (docs/expenses-f1b-contract.md §8): scheduled payments never add to total. scheduled.fixed counts the fixed-expense
+ * occurrences due in the whole month (PENDING or PAID); upcoming (PENDING due today..today+7) and overdue (PENDING due before
+ * today) only for the current month, otherwise null. variable = CONFIRMED expenses of the month without scheduledPaymentId.
  */
 const MONTH = /^(\d{4})-(0[1-9]|1[0-2])$/;
 export const expenseOverviewSchema = z.object({ month: z.string().regex(MONTH) }).strict()
@@ -20,7 +23,8 @@ export function monthBounds(month: string, today: string) {
   const last = new Date(Date.UTC(year, number, 0)).getUTCDate();
   const previous = number === 1 ? `${year - 1}-12` : `${year}-${pad(number - 1)}`;
   const end = `${month}-${pad(last)}`;
-  return { from: `${month}-01`, to: month === today.slice(0, 7) ? today : end, previous };
+  const current = month === today.slice(0, 7);
+  return { from: `${month}-01`, to: current ? today : end, previous, monthEnd: end, today, current };
 }
 
 const money = z.string().regex(/^(0|[1-9][0-9]*)$/);
@@ -29,6 +33,8 @@ const rawSchema = z.object({
   total: money, count, voidedCount: count, previousTotal: money,
   days: z.array(z.object({ date: z.iso.date(), total: money }).strict()).max(31),
   byCategory: z.array(z.object({ categoryId: z.string(), name: z.string(), archived: z.boolean(), total: money, count }).strict()),
+  fixedDue: count, fixedPaid: count, fixedPaidTotal: money, variableTotal: money, variableCount: count,
+  upcomingCount: count, upcomingTotal: money, upcomingWithout: count, overdueCount: count, overdueTotal: money, overdueWithout: count,
 }).strict();
 
 export function percentOf(part: bigint, whole: bigint) {
@@ -42,6 +48,12 @@ export function presentOverview(raw: unknown, month: string, bounds: ReturnType<
     total: data.total, count: data.count, voidedCount: data.voidedCount,
     previousMonth: { month: bounds.previous, total: data.previousTotal },
     days: data.days,
+    scheduled: {
+      fixed: { due: data.fixedDue, paid: data.fixedPaid, paidTotal: data.fixedPaidTotal },
+      upcoming: bounds.current ? { count: data.upcomingCount, plannedTotal: data.upcomingTotal, withoutAmount: data.upcomingWithout } : null,
+      overdue: bounds.current ? { count: data.overdueCount, plannedTotal: data.overdueTotal, withoutAmount: data.overdueWithout } : null,
+    },
+    variable: { total: data.variableTotal, count: data.variableCount },
     byCategory: data.byCategory
       .map(c => ({ ...c, percent: percentOf(BigInt(c.total), whole) }))
       .sort((a, b) => BigInt(b.total) > BigInt(a.total) ? 1 : BigInt(b.total) < BigInt(a.total) ? -1 : a.name.localeCompare(b.name, "es")),
@@ -50,7 +62,16 @@ export function presentOverview(raw: unknown, month: string, bounds: ReturnType<
 
 export function expenseOverviewSql(ownerId: string, bounds: ReturnType<typeof monthBounds>) {
   return Prisma.sql`
-    WITH b AS (SELECT ${bounds.from}::date AS start, ${bounds.to}::date AS finish, (${bounds.from}::date - interval '1 month')::date AS previous_start),
+    WITH b AS (SELECT ${bounds.from}::date AS start, ${bounds.to}::date AS finish, (${bounds.from}::date - interval '1 month')::date AS previous_start,
+      ${bounds.monthEnd}::date AS month_end, ${bounds.today}::date AS today),
+    pending AS (
+      SELECT s."dueDate" AS due, s."plannedAmount"::numeric AS planned FROM scheduled_expense_payments s
+      WHERE s."ownerId" = ${ownerId} AND s.status = 'PENDING'
+    ), fixed AS (
+      SELECT s.status::text AS status, e.amount::numeric AS paid FROM scheduled_expense_payments s CROSS JOIN b
+        LEFT JOIN expenses e ON e.id = s."paidExpenseId" AND e."ownerId" = s."ownerId"
+      WHERE s."ownerId" = ${ownerId} AND s."templateId" IS NOT NULL AND s.status IN ('PENDING', 'PAID') AND s."dueDate" >= b.start AND s."dueDate" <= b.month_end
+    ),
     rows AS (
       SELECT e."expenseDate" AS day, e."categoryId", e.amount::numeric AS amount, e.status::text AS status
       FROM expenses e CROSS JOIN b
@@ -58,6 +79,18 @@ export function expenseOverviewSql(ownerId: string, bounds: ReturnType<typeof mo
     ), current AS (SELECT r.* FROM rows r CROSS JOIN b WHERE r.day >= b.start)
     SELECT jsonb_build_object(
       'total', (SELECT coalesce(sum(amount) FILTER (WHERE status = 'CONFIRMED'), 0)::text FROM current),
+      'fixedDue', (SELECT count(*) FROM fixed), 'fixedPaid', (SELECT count(*) FILTER (WHERE status = 'PAID') FROM fixed),
+      'fixedPaidTotal', (SELECT coalesce(sum(paid) FILTER (WHERE status = 'PAID'), 0)::text FROM fixed),
+      'variableTotal', (SELECT coalesce(sum(e.amount::numeric), 0)::text FROM expenses e CROSS JOIN b WHERE e."ownerId" = ${ownerId} AND e.status = 'CONFIRMED'
+        AND e."scheduledPaymentId" IS NULL AND e."expenseDate" >= b.start AND e."expenseDate" <= b.finish),
+      'variableCount', (SELECT count(*) FROM expenses e CROSS JOIN b WHERE e."ownerId" = ${ownerId} AND e.status = 'CONFIRMED'
+        AND e."scheduledPaymentId" IS NULL AND e."expenseDate" >= b.start AND e."expenseDate" <= b.finish),
+      'upcomingCount', (SELECT count(*) FROM pending CROSS JOIN b WHERE due >= b.today AND due <= b.today + 7),
+      'upcomingTotal', (SELECT coalesce(sum(planned), 0)::text FROM pending CROSS JOIN b WHERE due >= b.today AND due <= b.today + 7),
+      'upcomingWithout', (SELECT count(*) FROM pending CROSS JOIN b WHERE due >= b.today AND due <= b.today + 7 AND planned IS NULL),
+      'overdueCount', (SELECT count(*) FROM pending CROSS JOIN b WHERE due < b.today),
+      'overdueTotal', (SELECT coalesce(sum(planned), 0)::text FROM pending CROSS JOIN b WHERE due < b.today),
+      'overdueWithout', (SELECT count(*) FROM pending CROSS JOIN b WHERE due < b.today AND planned IS NULL),
       'count', (SELECT count(*) FILTER (WHERE status = 'CONFIRMED') FROM current),
       'voidedCount', (SELECT count(*) FILTER (WHERE status = 'VOIDED') FROM current),
       'previousTotal', (SELECT coalesce(sum(r.amount) FILTER (WHERE r.status = 'CONFIRMED'), 0)::text FROM rows r CROSS JOIN b WHERE r.day < b.start),

@@ -9,7 +9,8 @@ import { makeExpenseRouter } from "../routes/expense.routes";
 import type { ExpenseService } from "./expense.service";
 
 const at = new Date("2026-11-25T20:56:00.000Z");
-const raw = (extra = {}) => ({ total: "0", count: 0, voidedCount: 0, previousTotal: "0", days: [], byCategory: [], ...extra });
+const raw = (extra = {}) => ({ total: "0", count: 0, voidedCount: 0, previousTotal: "0", days: [], byCategory: [], fixedDue: 0, fixedPaid: 0, fixedPaidTotal: "0",
+  variableTotal: "0", variableCount: 0, upcomingCount: 0, upcomingTotal: "0", upcomingWithout: 0, overdueCount: 0, overdueTotal: "0", overdueWithout: 0, ...extra });
 
 test("overview query: strict month YYYY-MM between 2000-01 and the current Bogotá month", () => {
   const current = bogotaToday().slice(0, 7);
@@ -22,9 +23,9 @@ test("overview query: strict month YYYY-MM between 2000-01 and the current Bogot
 });
 
 test("month bounds: current month runs to today; past months complete; 28/29/30/31 days; January's previous is December", () => {
-  assert.deepEqual(monthBounds("2026-11", "2026-11-25"), { from: "2026-11-01", to: "2026-11-25", previous: "2026-10" });
-  assert.deepEqual(monthBounds("2026-02", "2026-11-25"), { from: "2026-02-01", to: "2026-02-28", previous: "2026-01" });
-  assert.deepEqual(monthBounds("2028-02", "2028-11-01"), { from: "2028-02-01", to: "2028-02-29", previous: "2028-01" });
+  assert.deepEqual(monthBounds("2026-11", "2026-11-25"), { from: "2026-11-01", to: "2026-11-25", previous: "2026-10", monthEnd: "2026-11-30", today: "2026-11-25", current: true });
+  assert.deepEqual(monthBounds("2026-02", "2026-11-25"), { from: "2026-02-01", to: "2026-02-28", previous: "2026-01", monthEnd: "2026-02-28", today: "2026-11-25", current: false });
+  assert.deepEqual(monthBounds("2028-02", "2028-11-01"), { from: "2028-02-01", to: "2028-02-29", previous: "2028-01", monthEnd: "2028-02-29", today: "2028-11-01", current: false });
   assert.equal(monthBounds("2026-04", "2026-11-25").to, "2026-04-30");
   assert.equal(monthBounds("2026-01", "2026-11-25").previous, "2025-12");
 });
@@ -45,7 +46,7 @@ test("percent with BigInt, half up; categories sorted by total; amounts beyond 2
   assert.throws(() => presentOverview(raw({ total: "-5" }), "2026-11", monthBounds("2026-11", "2026-11-25"), at));
   assert.throws(() => presentOverview(raw({ extra: 1 }), "2026-11", monthBounds("2026-11", "2026-11-25"), at));
   const sql = expenseOverviewSql("owner-a", monthBounds("2026-11", "2026-11-25"));
-  assert.ok(!sql.sql.includes("owner-a")); assert.equal(sql.values.filter(v => v === "owner-a").length, 2, "expenses and categories are owner-scoped");
+  assert.ok(!sql.sql.includes("owner-a")); assert.equal(sql.values.filter(v => v === "owner-a").length, 6, "expenses, categories, pending, fixed and variable expenses ×2 are owner-scoped");
   assert.match(sql.sql, /status IN \('CONFIRMED', 'VOIDED'\)/);
 });
 

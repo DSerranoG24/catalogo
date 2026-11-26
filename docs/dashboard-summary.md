@@ -29,11 +29,11 @@ Código:
   "today": { "date": "2026-11-25", "salesTotal": "0", "salesCount": 0, "yesterdaySalesTotal": "0" },
   "month": { "salesTotal": "0", "costOfSales": "0", "salesWithoutCostCount": 0, "expensesTotal": null, "estimatedProfit": "0",
              "previousMonth": { "salesTotal": "0", "expensesTotal": null, "estimatedProfit": "0" } },
-  "attention": { "lowStockCount": 0, "outOfStockCount": 0, "pendingOrdersCount": 0 },
+  "attention": { "lowStockCount": 0, "outOfStockCount": 0, "pendingOrdersCount": 0, "scheduledDueSoonCount": 0, "scheduledOverdueCount": 0 },
   "salesSeries": [{ "date": "2026-11-19", "total": "0" }],
   "recent": [{ "kind": "SALE", "id": "…", "status": "DELIVERED", "total": "100000", "at": "…", "customerName": null }],
   "setup": { "hasInventoryItems": false, "hasPublishedCatalog": false, "hasSales": false },
-  "modules": { "expenses": false }
+  "modules": { "expenses": true, "scheduledExpenses": true }
 }
 ```
 
@@ -68,6 +68,7 @@ Código:
 - `lowStockCount`: artículos con `minimumStock > 0` y `0 < stock ≤ minimumStock`.
 - `outOfStockCount`: artículos con `stock = 0`.
 - `pendingOrdersCount`: pedidos `PENDING` sin anonimizar de cualquier catálogo del dueño, incluidos los archivados.
+- `scheduledDueSoonCount` y `scheduledOverdueCount` (F1b): pagos programados `PENDING` con vencimiento entre hoy y hoy + 7, y antes de hoy. Nunca suman en ventas, costos, gastos ni utilidad. El resumen solo los lee; Inicio llama antes a `POST /api/expenses/scheduled/sync` y, si falla, muestra lo que ya existe.
 - `recent`: las 5 últimas ventas con confirmación, en cualquier estado salvo `DRAFT` y por `confirmedAt`. Incluye las canceladas, con su `status`. `customerName` es la instantánea o, en ventas antiguas, el nombre heredado.
 - `setup.hasPublishedCatalog`: catálogo activo, no archivado y con al menos un producto activo, la misma regla que las métricas de admin.
 - `setup.hasSales`: alguna venta con confirmación en cualquier estado.

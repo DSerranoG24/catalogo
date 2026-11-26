@@ -83,7 +83,12 @@ export function dashboardSummarySql(ownerId: string, asOf: Date, days: Dashboard
         FROM daily d CROSS JOIN bounds b WHERE d.day >= b.series_start AND d.day <= b.today),
       'attention', (SELECT jsonb_build_object('low', st.low, 'out', st.out, 'pending', (
         SELECT count(*) FROM orders o JOIN catalogs c ON c.id = o."catalogId"
-        WHERE c."userId" = ${ownerId} AND o.status = 'PENDING' AND o."anonymizedAt" IS NULL)) FROM stock st),
+        WHERE c."userId" = ${ownerId} AND o.status = 'PENDING' AND o."anonymizedAt" IS NULL),
+        -- F1b: PENDING scheduled payments due within 7 days (today included) and overdue ones. Read only, never generated here.
+        'dueSoon', (SELECT count(*) FROM scheduled_expense_payments sp CROSS JOIN bounds bd WHERE sp."ownerId" = ${ownerId} AND sp.status = 'PENDING'
+          AND sp."dueDate" >= bd.today AND sp."dueDate" <= bd.today + 7),
+        'overdue', (SELECT count(*) FROM scheduled_expense_payments sp CROSS JOIN bounds bd WHERE sp."ownerId" = ${ownerId} AND sp.status = 'PENDING' AND sp."dueDate" < bd.today))
+        FROM stock st),
       'recent', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', r.id, 'status', r.status, 'total', r.total, 'at', r.at, 'customerName', r.customer_name)
         ORDER BY r.at DESC, r.id DESC), '[]'::jsonb) FROM recent r),
       'setup', jsonb_build_object(

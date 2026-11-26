@@ -9,7 +9,7 @@ import { dashboardExpensesSql, dashboardSummarySql, readDashboardSummary } from 
 const zero: RawSummary = {
   today: "2026-11-25", todaySales: "0", todayCount: 0, yesterdaySales: "0",
   month: { sales: "0", cost: "0", withoutCost: 0 }, previousMonth: { sales: "0", cost: "0" },
-  series: [], attention: { low: 0, out: 0, pending: 0 }, recent: [],
+  series: [], attention: { low: 0, out: 0, pending: 0, dueSoon: 0, overdue: 0 }, recent: [],
   setup: { hasInventoryItems: false, hasPublishedCatalog: false, hasSales: false },
 };
 const at = new Date("2026-11-25T17:00:00.000Z");
@@ -28,11 +28,11 @@ test("new account: every figure in zero, setup false; expenses null only when no
   assert.deepEqual(summary.today, { date: "2026-11-25", salesTotal: "0", salesCount: 0, yesterdaySalesTotal: "0" });
   assert.deepEqual(summary.month, { salesTotal: "0", costOfSales: "0", salesWithoutCostCount: 0, expensesTotal: null, estimatedProfit: "0",
     previousMonth: { salesTotal: "0", expensesTotal: null, estimatedProfit: "0" } });
-  assert.deepEqual(summary.attention, { lowStockCount: 0, outOfStockCount: 0, pendingOrdersCount: 0 });
+  assert.deepEqual(summary.attention, { lowStockCount: 0, outOfStockCount: 0, pendingOrdersCount: 0, scheduledDueSoonCount: 0, scheduledOverdueCount: 0 });
   assert.deepEqual(summary.salesSeries.map(p => p.total), Array(7).fill("0"));
   assert.deepEqual(summary.recent, []);
   assert.deepEqual(summary.setup, { hasInventoryItems: false, hasPublishedCatalog: false, hasSales: false });
-  assert.deepEqual(summary.modules, { expenses: false });
+  assert.deepEqual(summary.modules, { expenses: false, scheduledExpenses: true });
 });
 
 test("profit = sales − cost − (expenses ?? 0) with BigInt beyond Number precision; negative allowed", () => {
@@ -45,7 +45,7 @@ test("profit = sales − cost − (expenses ?? 0) with BigInt beyond Number prec
   assert.equal(withExpenses.month.expensesTotal, "1000000000000");
   assert.equal(withExpenses.month.estimatedProfit, "9007198254740992999");
   assert.deepEqual(withExpenses.month.previousMonth, { salesTotal: "100", expensesTotal: "50", estimatedProfit: "-200" });
-  assert.deepEqual(withExpenses.modules, { expenses: true });
+  assert.deepEqual(withExpenses.modules, { expenses: true, scheduledExpenses: true });
   assert.equal(presentSummary({ ...raw, month: { ...raw.month, sales: "-5000" } }, null, at, 7).month.estimatedProfit, "-5001", "a month with only returns is negative");
 });
 
@@ -75,7 +75,7 @@ test("raw rows are validated: money must be a decimal string, no extra keys, rec
 test("SQL: owner bound as a parameter in every owned table; fixed statements; expenses only with the module", async () => {
   const sql = dashboardSummarySql("owner-a", at, 30);
   assert.ok(!sql.sql.includes("owner-a"), "owner is never interpolated");
-  assert.equal(sql.values.filter(v => v === "owner-a").length, 8, "sales, returns ×2 (return and its sale), stock, recent, orders, published catalog, hasSales");
+  assert.equal(sql.values.filter(v => v === "owner-a").length, 10, "sales, returns ×2 (return and its sale), stock, recent, orders, published catalog, hasSales, scheduled ×2");
   for (const table of ['"Sale" s', '"SaleReturn" r', "inventory_items i", "catalogs c"]) assert.ok(sql.sql.includes(table), table);
   const lists = sql.sql.match(/s\.status IN \([^)]*\)/g) ?? [];
   assert.equal(lists[0], "s.status IN ('CONFIRMED', 'DELIVERED', 'RETURNED')", "sales: cancelled and drafts never count");

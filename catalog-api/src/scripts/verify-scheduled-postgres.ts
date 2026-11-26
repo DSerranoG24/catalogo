@@ -266,6 +266,59 @@ async function apiStages({ db, ids }: Context) {
   observations.eventsWritten = await db.expenseEvent.count({ where: { ownerId: a } });
 }
 
+/** Figures (F1b-3): scheduled payments never add; fixed n of m, variable, upcoming and overdue; reads never generate. */
+async function figureStages({ db }: Context) {
+  const { makeScheduledExpenseRepository } = await import("../repositories/scheduled-expense.repository.js");
+  const { makeExpenseRepository } = await import("../repositories/expense.repository.js");
+  const { expenseOverviewSql, monthBounds, presentOverview } = await import("../repositories/expense-overview.repository.js");
+  const { dashboardExpensesSql, dashboardSummarySql, readDashboardSummary } = await import("../repositories/dashboard-summary.repository.js");
+  const { presentSummary } = await import("../services/dashboard-summary.js");
+  const asOf = new Date("2026-03-10T15:00:00.000Z"), clock = () => asOf; // 10 Mar 2026 in Bogotá
+  const scheduled = makeScheduledExpenseRepository(db, clock), expenses = makeExpenseRepository(db, clock);
+  const keys = () => ({ operationId: randomUUID(), requestId: randomUUID() });
+
+  stage = "FIGURES_FIXTURES";
+  const c = await db.user.create({ data: { email: `${runId}-c@example.invalid` }, select: { id: true } });
+  const cat = (await db.expenseCategory.create({ data: { ownerId: c.id, name: "Servicios", normalizedKey: "servicios" }, select: { id: true } })).id;
+  const fixed = (anchorDate: string, estimatedAmount?: string) => scheduled.createRecurring(c.id, { ...keys(), description: `Fijo ${anchorDate}`, categoryId: cat, paymentMethod: "CASH",
+    frequency: "MONTHLY", interval: 1, anchorDate, ...(estimatedAmount ? { estimatedAmount } : {}) });
+  await fixed("2026-03-05", "100000"); await fixed("2026-03-15", "200000"); await fixed("2026-03-28");
+  const single = (dueDate: string, plannedAmount?: string) => scheduled.createScheduled(c.id, { ...keys(), dueDate, description: `Único ${dueDate}`, categoryId: cat, paymentMethod: "CASH", ...(plannedAmount ? { plannedAmount } : {}) });
+  await single("2026-03-12", "50000"); await single("2026-04-20", "999999"); await single("2026-03-01");
+  const fifth = await db.scheduledExpensePayment.findFirstOrThrow({ where: { ownerId: c.id, occurrenceDate: new Date("2026-03-05T00:00:00Z") } });
+  await scheduled.payScheduled(c.id, fifth.id, { ...keys(), expectedVersion: fifth.version, amount: "110000", expenseDate: "2026-03-08", paymentMethod: "CASH" });
+  await expenses.createExpense(c.id, { ...keys(), expenseDate: "2026-03-09", amount: "70000", categoryId: cat, paymentMethod: "CASH", description: "Gasto variable" });
+  passed("Figures fixtures: three fixed expenses (one paid with a different amount), three one-offs (upcoming, later, overdue without amount), one variable expense");
+
+  stage = "FIGURES_OVERVIEW";
+  const bounds = monthBounds("2026-03", "2026-03-10");
+  const [row] = await db.$queryRaw<{ data: unknown }[]>(expenseOverviewSql(c.id, bounds));
+  const march = presentOverview(row?.data, "2026-03", bounds, asOf);
+  assert.equal(march.total, "180000", "only real expenses add: 110000 paid + 70000 variable; planned amounts never add");
+  assert.deepEqual(march.scheduled, { fixed: { due: 3, paid: 1, paidTotal: "110000" }, upcoming: { count: 2, plannedTotal: "250000", withoutAmount: 0 }, overdue: { count: 1, plannedTotal: "0", withoutAmount: 1 } });
+  assert.deepEqual(march.variable, { total: "70000", count: 1 });
+  const febBounds = monthBounds("2026-02", "2026-03-10");
+  const [febRow] = await db.$queryRaw<{ data: unknown }[]>(expenseOverviewSql(c.id, febBounds));
+  const february = presentOverview(febRow?.data, "2026-02", febBounds, asOf);
+  assert.equal(february.scheduled.upcoming, null); assert.equal(february.scheduled.overdue, null); assert.equal(february.scheduled.fixed.due, 0);
+  passed("Overview: total ignores scheduled payments; Fijos pagados 1 de 3 ($ 110.000); Variables $ 70.000; Próximos 2 ($ 250.000); Vencidos 1 sin monto; past months without upcoming/overdue");
+
+  stage = "FIGURES_SUMMARY";
+  const [summaryRow] = await db.$queryRaw<{ data: unknown }[]>(dashboardSummarySql(c.id, asOf, 7));
+  const [expenseRow] = await db.$queryRaw<{ data: unknown }[]>(dashboardExpensesSql(c.id, asOf));
+  const summary = presentSummary(summaryRow?.data, expenseRow?.data ?? null, asOf, 7);
+  assert.equal(summary.attention.scheduledDueSoonCount, 2); assert.equal(summary.attention.scheduledOverdueCount, 1);
+  assert.equal(summary.month.expensesTotal, "180000"); assert.equal(summary.month.estimatedProfit, "-180000", "profit subtracts real expenses only");
+  // The real summary runs READ ONLY and never generates occurrences.
+  const before = await db.scheduledExpensePayment.count({ where: { ownerId: c.id } });
+  const live = await readDashboardSummary(c.id, 7, { database: db });
+  assert.equal(await db.scheduledExpensePayment.count({ where: { ownerId: c.id } }), before, "reads never write");
+  assert.equal(live.modules.scheduledExpenses, true);
+  await rejects(() => db.$transaction(async tx => { await tx.$executeRaw`SET TRANSACTION READ ONLY`; await tx.scheduledExpensePayment.updateMany({ where: { ownerId: c.id }, data: { version: { increment: 1 } } }); }),
+    /read-only|25006/, "the summary transaction mode rejects writes");
+  passed("Summary: 2 payments due this week, 1 overdue; expenses and profit unaffected by scheduled payments; READ ONLY and never generates");
+}
+
 /** Stages appended by later F1b commits (API and figures). */
 export const laterStages: ((context: Context) => Promise<void>)[] = [];
 
@@ -273,6 +326,7 @@ async function main() {
   const context = await prepare();
   await schemaStages(context);
   await apiStages(context);
+  await figureStages(context);
   for (const run of laterStages) await run(context);
 }
 

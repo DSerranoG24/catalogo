@@ -108,12 +108,12 @@ async function main() {
   assert.equal(sumA.month.estimatedProfit, (103000n - big - 60009n).toString());
   assert.deepEqual(sumA.month.previousMonth, { salesTotal: (7000n + big - 900n).toString(), expensesTotal: null, estimatedProfit: (7000n + big - 900n - 1n).toString() });
   assert.deepEqual(sumA.salesSeries, [["2026-02-23", "0"], ["2026-02-24", "0"], ["2026-02-25", "0"], ["2026-02-26", "0"], ["2026-02-27", "0"], ["2026-02-28", "7000"], ["2026-03-01", (103000n - big).toString()]].map(([date, total]) => ({ date, total })));
-  assert.deepEqual(sumA.attention, { lowStockCount: 2, outOfStockCount: 2, pendingOrdersCount: 1 });
+  assert.deepEqual(sumA.attention, { lowStockCount: 2, outOfStockCount: 2, pendingOrdersCount: 1, scheduledDueSoonCount: 0, scheduledOverdueCount: 0 });
   assert.deepEqual(sumA.recent.map(r => [r.status, r.total, r.at]), [["CONFIRMED", "3000", "2026-03-01T14:00:00.000Z"], ["CANCELLED", "999999", "2026-03-01T13:00:00.000Z"],
     ["DELIVERED", "100000", "2026-03-01T05:00:00.000Z"], ["CONFIRMED", "7000", "2026-03-01T04:59:59.999Z"], ["RETURNED", big.toString(), "2026-02-10T17:00:00.000Z"]]);
   assert.equal(sumA.recent[2]?.customerName, "Cliente A");
   assert.deepEqual(sumA.setup, { hasInventoryItems: true, hasPublishedCatalog: true, hasSales: true });
-  assert.deepEqual(sumA.modules, { expenses: false });
+  assert.deepEqual(sumA.modules, { expenses: false, scheduledExpenses: true });
   passed("Owner A: 23:59:59.999/00:00 Bogotá borders, cancelled and drafts excluded, return subtracted on its own day, resellable cost back, damaged cost kept, sale without cost counted once, BigInt beyond 2^53, low/out stock, pending non-anonymized orders, recent 5 by confirmation");
 
   stage = "OWNER_A_30_DAYS";
@@ -142,14 +142,14 @@ async function main() {
   const sumB = await summaryAt(b.id, asOf, 7);
   assert.deepEqual(sumB.today, { date: "2026-03-01", salesTotal: "123", salesCount: 1, yesterdaySalesTotal: "0" });
   assert.equal(sumB.month.costOfSales, "100");
-  assert.deepEqual(sumB.attention, { lowStockCount: 0, outOfStockCount: 0, pendingOrdersCount: 1 });
+  assert.deepEqual(sumB.attention, { lowStockCount: 0, outOfStockCount: 0, pendingOrdersCount: 1, scheduledDueSoonCount: 0, scheduledOverdueCount: 0 });
   assert.deepEqual(sumB.setup, { hasInventoryItems: true, hasPublishedCatalog: false, hasSales: true }, "inactive catalog is not published");
   assert.equal(sumB.recent.length, 1);
   const sumC = await summaryAt(c.id, asOf, 7);
   assert.deepEqual({ today: sumC.today, month: sumC.month, attention: sumC.attention, recent: sumC.recent, setup: sumC.setup },
     { today: { date: "2026-03-01", salesTotal: "0", salesCount: 0, yesterdaySalesTotal: "0" },
       month: { salesTotal: "0", costOfSales: "0", salesWithoutCostCount: 0, expensesTotal: null, estimatedProfit: "0", previousMonth: { salesTotal: "0", expensesTotal: null, estimatedProfit: "0" } },
-      attention: { lowStockCount: 0, outOfStockCount: 0, pendingOrdersCount: 0 }, recent: [], setup: { hasInventoryItems: false, hasPublishedCatalog: false, hasSales: false } });
+      attention: { lowStockCount: 0, outOfStockCount: 0, pendingOrdersCount: 0, scheduledDueSoonCount: 0, scheduledOverdueCount: 0 }, recent: [], setup: { hasInventoryItems: false, hasPublishedCatalog: false, hasSales: false } });
   assert.ok(sumC.salesSeries.every(p => p.total === "0"));
   passed("Two accounts isolated (B never sees A and vice versa); new account all zeros with setup false");
 
