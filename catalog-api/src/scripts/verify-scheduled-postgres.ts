@@ -166,12 +166,113 @@ async function schemaStages({ db, ids }: Context) {
   passed("Transitions: CANCELLED terminal, PAID not cancellable, each transition changes only its columns, identity frozen, rescheduling allowed, no deletes, linked expenses are MANUAL");
 }
 
+/** API-level stages (F1b-2): repositories against the real schema with a fixed clock (Bogotá 2026-03-10). */
+async function apiStages({ db, ids }: Context) {
+  const { makeScheduledExpenseRepository } = await import("../repositories/scheduled-expense.repository.js");
+  const { makeExpenseRepository } = await import("../repositories/expense.repository.js");
+  const clock = () => new Date("2026-03-10T15:00:00.000Z");
+  const scheduled = makeScheduledExpenseRepository(db, clock), expenses = makeExpenseRepository(db, clock);
+  const keys = () => ({ operationId: randomUUID(), requestId: randomUUID() });
+  const a = ids.a as string, b = ids.b as string, catA = ids.catA as string;
+  const pendingOf = (templateId: string) => db.scheduledExpensePayment.findMany({ where: { templateId, status: "PENDING" }, orderBy: { dueDate: "asc" } });
+  const dates = (rows: { dueDate: Date }[]) => rows.map(r => r.dueDate.toISOString().slice(0, 10));
+
+  stage = "API_CREATE_AND_SYNC";
+  const rent = await scheduled.createRecurring(a, { ...keys(), description: "Arriendo local", categoryId: catA, paymentMethod: "BANK_TRANSFER", estimatedAmount: "600000",
+    frequency: "MONTHLY", interval: 1, anchorDate: "2026-01-31" }) as unknown as { template: { id: string; version: number }; generated: number };
+  assert.equal(rent.generated, 2, "anchor in the past: only the latest due date (Feb 28) plus the future one (Mar 31)");
+  assert.deepEqual(dates(await pendingOf(rent.template.id)), ["2026-02-28", "2026-03-31"]);
+  // A fixed expense created directly (never synced) and five syncs at once: no duplicates, no errors.
+  const weekly = await db.recurringExpenseTemplate.create({ data: { ownerId: a, description: "Domicilios", categoryId: catA, paymentMethod: "CASH", estimatedAmount: 50000n,
+    frequency: "WEEKLY", interval: 1, anchorDate: new Date("2026-03-12T00:00:00Z") } });
+  const runs = await Promise.all(Array.from({ length: 5 }, () => scheduled.sync(a)));
+  assert.equal(runs.reduce((sum, r) => sum + r.generated, 0), 3, "Mar 12, 19 and 26 generated once in total");
+  assert.deepEqual(dates(await pendingOf(weekly.id)), ["2026-03-12", "2026-03-19", "2026-03-26"]);
+  assert.equal((await scheduled.sync(a)).generated, 0, "sync again: nothing new");
+  passed("Create + sync: past anchor keeps only the latest due date; five syncs in parallel generate each date once, without errors");
+
+  stage = "API_PAY";
+  const [feb] = await pendingOf(rent.template.id);
+  assert.ok(feb);
+  const payKeys = keys();
+  const pay = { ...payKeys, expectedVersion: feb.version, amount: "610000", expenseDate: "2026-03-05", paymentMethod: "NEQUI" as const };
+  const [first, second] = await Promise.all([scheduled.payScheduled(a, feb.id, pay), scheduled.payScheduled(a, feb.id, { ...pay, requestId: randomUUID() })]) as unknown as { idempotent: boolean; expense: { id: string; amount: string } }[];
+  assert.ok(first && second);
+  assert.equal(first.expense.id, second.expense.id, "same operationId: same expense"); assert.deepEqual([first.idempotent, second.idempotent].sort(), [false, true]);
+  assert.equal(first.expense.amount, "610000", "paid amount differs from the planned 600000");
+  assert.equal(await db.expense.count({ where: { scheduledPaymentId: feb.id } }), 1, "one expense");
+  await rejects(() => scheduled.payScheduled(a, feb.id, { ...pay, ...keys() }), /INVALID_SCHEDULED_TRANSITION/, "another operation on a PAID payment");
+  const [mar] = (await pendingOf(rent.template.id));
+  assert.ok(mar);
+  await rejects(() => scheduled.payScheduled(a, mar.id, { ...keys(), expectedVersion: mar.version, amount: "1", expenseDate: "2026-03-11", paymentMethod: "CASH" }), /INVALID_EXPENSE_INPUT/, "payment date in the future");
+  await rejects(() => scheduled.payScheduled(b, mar.id, { ...keys(), expectedVersion: mar.version, amount: "1", expenseDate: "2026-03-10", paymentMethod: "CASH" }), /SCHEDULED_EXPENSE_NOT_FOUND/, "another account");
+  passed("Pay: repeated (parallel) with the same operationId creates one expense; amount may differ; another operation, future date and another account are rejected");
+
+  stage = "API_VOID";
+  const paidExpense = await db.expense.findFirstOrThrow({ where: { id: first.expense.id } });
+  await expenses.voidExpense(a, paidExpense.id, { ...keys(), expectedVersion: paidExpense.version, reason: "Registrado dos veces" });
+  let state = await db.scheduledExpensePayment.findUniqueOrThrow({ where: { id: feb.id } });
+  assert.equal(state.status, "PENDING", "void without replacement reopens (decision F1b-1)");
+  const repaid = await scheduled.payScheduled(a, feb.id, { ...keys(), expectedVersion: state.version, amount: "600000", expenseDate: "2026-03-06", paymentMethod: "BANK_TRANSFER" }) as unknown as { expense: { id: string; version: number } };
+  const replaced = await expenses.voidExpense(a, repaid.expense.id, { ...keys(), expectedVersion: repaid.expense.version, reason: "Monto equivocado",
+    replacement: { expenseDate: "2026-03-06", amount: "600500", categoryId: catA, paymentMethod: "BANK_TRANSFER", description: "Arriendo local" } }) as unknown as { replacement: { id: string; scheduledPaymentId: string } };
+  state = await db.scheduledExpensePayment.findUniqueOrThrow({ where: { id: feb.id } });
+  assert.equal(state.status, "PAID"); assert.equal(state.paidExpenseId, replaced.replacement.id); assert.equal(replaced.replacement.scheduledPaymentId, feb.id);
+  const reopened = await db.expenseEvent.count({ where: { entityKind: "SCHEDULED_PAYMENT", entityId: feb.id, eventType: { in: ["REOPENED", "PAYMENT_REPLACED", "PAID"] } } });
+  assert.equal(reopened, 4, "PAID, REOPENED, PAID, PAYMENT_REPLACED in the history");
+  passed("Void without replacement → PENDING; pay again; void with replacement → PAID pointing to the replacement; history keeps every step");
+
+  stage = "API_EDIT_TEMPLATE";
+  const weeklyRows = await pendingOf(weekly.id);
+  const nineteenth = weeklyRows[1]!;
+  await scheduled.updateScheduled(a, nineteenth.id, { ...keys(), expectedVersion: nineteenth.version, dueDate: "2026-03-20", plannedAmount: "55000" });
+  let template = await db.recurringExpenseTemplate.findUniqueOrThrow({ where: { id: weekly.id } });
+  const amountEdit = await scheduled.updateRecurring(a, weekly.id, { ...keys(), expectedVersion: template.version, estimatedAmount: "52000" }) as unknown as { updatedPayments: number };
+  assert.equal(amountEdit.updatedPayments, 2, "Mar 12 and 26 updated; the rescheduled Mar 19 is customized");
+  const afterEdit = await pendingOf(weekly.id);
+  assert.deepEqual(afterEdit.map(r => [r.dueDate.toISOString().slice(0, 10), r.plannedAmount?.toString()]), [["2026-03-12", "52000"], ["2026-03-20", "55000"], ["2026-03-26", "52000"]]);
+  template = await db.recurringExpenseTemplate.findUniqueOrThrow({ where: { id: weekly.id } });
+  const ruleEdit = await scheduled.updateRecurring(a, weekly.id, { ...keys(), expectedVersion: template.version, interval: 2 }) as unknown as { cancelled: number; generated: number };
+  assert.equal(ruleEdit.cancelled, 2); assert.equal(ruleEdit.generated, 2, "every 2 weeks from the anchor: Mar 12 and 26 again (cancelled ones do not block)");
+  assert.deepEqual(dates(await pendingOf(weekly.id)), ["2026-03-12", "2026-03-20", "2026-03-26"]);
+  passed("Edit a fixed expense: amount changes future uncustomized pending only (decision F1b-5); a rule change cancels them and regenerates");
+
+  stage = "API_PAUSE_RESUME_END";
+  template = await db.recurringExpenseTemplate.findUniqueOrThrow({ where: { id: weekly.id } });
+  const paused = await scheduled.setRecurringState(a, weekly.id, "pause", { ...keys(), expectedVersion: template.version }) as unknown as { cancelled: number };
+  assert.equal(paused.cancelled, 3, "pausing cancels the future pending ones");
+  assert.equal((await scheduled.sync(a)).generated, 0, "a paused fixed expense generates nothing");
+  template = await db.recurringExpenseTemplate.findUniqueOrThrow({ where: { id: weekly.id } });
+  const resumed = await scheduled.setRecurringState(a, weekly.id, "resume", { ...keys(), expectedVersion: template.version }) as unknown as { generated: number };
+  assert.equal(resumed.generated, 2, "resume generates the future dates again (Mar 12 and 26)");
+  template = await db.recurringExpenseTemplate.findUniqueOrThrow({ where: { id: weekly.id } });
+  await scheduled.setRecurringState(a, weekly.id, "end", { ...keys(), expectedVersion: template.version });
+  assert.equal((await pendingOf(weekly.id)).length, 0); assert.equal((await db.recurringExpenseTemplate.findUniqueOrThrow({ where: { id: weekly.id } })).status, "ENDED");
+  template = await db.recurringExpenseTemplate.findUniqueOrThrow({ where: { id: weekly.id } });
+  await rejects(() => scheduled.setRecurringState(a, weekly.id, "resume", { ...keys(), expectedVersion: template.version }), /INVALID_RECURRING_TRANSITION/, "ENDED is terminal");
+  passed("Pause cancels future pending and stops generation; resume regenerates without the paused dates; end is terminal");
+
+  stage = "API_SINGLE";
+  const single = await scheduled.createScheduled(a, { ...keys(), dueDate: "2026-04-15", plannedAmount: "320000", description: "Impuesto predial", categoryId: catA, paymentMethod: "CASH" }) as unknown as { payment: { id: string; version: number; kind: string } };
+  assert.equal(single.payment.kind, "single");
+  await rejects(() => scheduled.createScheduled(a, { ...keys(), dueDate: "2027-03-12", description: "Muy lejos", categoryId: catA, paymentMethod: "CASH" }), /INVALID_EXPENSE_INPUT/, "more than 366 days ahead");
+  await scheduled.cancelScheduled(a, single.payment.id, { ...keys(), expectedVersion: single.payment.version, reason: "Ya no aplica" });
+  await rejects(() => scheduled.cancelScheduled(a, single.payment.id, { ...keys(), expectedVersion: single.payment.version + 1 }), /INVALID_SCHEDULED_TRANSITION/, "cancel is terminal");
+  const listedB = await scheduled.listScheduled(b, { status: "all", kind: "all" });
+  assert.equal(listedB.items.length, 0, "B sees none of A's payments");
+  const listedA = await scheduled.listScheduled(a, { status: "PENDING", kind: "fixed" });
+  assert.ok(listedA.items.every(item => item.kind === "fixed" && item.status === "PENDING"));
+  passed("One-off: future due date, limit of 366 days, cancel is terminal; lists are owner-scoped and filter by kind");
+  observations.eventsWritten = await db.expenseEvent.count({ where: { ownerId: a } });
+}
+
 /** Stages appended by later F1b commits (API and figures). */
 export const laterStages: ((context: Context) => Promise<void>)[] = [];
 
 async function main() {
   const context = await prepare();
   await schemaStages(context);
+  await apiStages(context);
   for (const run of laterStages) await run(context);
 }
 

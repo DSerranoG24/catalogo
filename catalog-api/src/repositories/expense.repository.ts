@@ -11,9 +11,9 @@ import { normalizeCategoryName, type CreateExpenseInput, type ExpenseInput, type
 export class ExpenseError extends Error {
   constructor(public readonly code: string, public readonly details?: Record<string, unknown>) { super(code); }
 }
-type Tx = Prisma.TransactionClient;
-type Keys = { operationId: string; requestId: string };
-type EventDraft = { entityKind: "EXPENSE" | "CATEGORY"; entityId: string; eventType: string; before?: unknown; after: unknown };
+export type Tx = Prisma.TransactionClient;
+export type Keys = { operationId: string; requestId: string };
+export type EventDraft = { entityKind: "EXPENSE" | "CATEGORY" | "SCHEDULED_PAYMENT" | "TEMPLATE"; entityId: string; eventType: string; before?: unknown; after: unknown };
 const PAGE = 25;
 export const CATEGORY_QUOTA = 100;
 export const SEED_CATEGORIES = [
@@ -30,7 +30,7 @@ export function expenseCommandHash(kind: string, resourceId: string, input: obje
 }
 const jsonSafe = (value: unknown): Prisma.InputJsonObject => JSON.parse(JSON.stringify(value, (_key, v) => typeof v === "bigint" ? v.toString() : v));
 
-type ExpenseRow = Expense & { category?: Pick<ExpenseCategory, "name" | "archivedAt"> | null; replacedBy?: { id: string }[] };
+type ExpenseRow = Expense & { category?: Pick<ExpenseCategory, "name" | "archivedAt"> | null; replacedBy?: { id: string }[]; scheduledPayment?: { templateId: string | null } | null };
 export const categoryView = (c: ExpenseCategory) => ({ id: c.id, name: c.name, seedKey: c.seedKey, position: c.position, archivedAt: c.archivedAt?.toISOString() ?? null, version: c.version });
 /** paymentReference is private: only the detail view (withReference) includes it. */
 export function expenseView(e: ExpenseRow, withReference = false) {
@@ -41,9 +41,11 @@ export function expenseView(e: ExpenseRow, withReference = false) {
     replacesExpenseId: e.replacesExpenseId, replacedByExpenseId: e.replacedBy?.[0]?.id ?? null,
     recordedAt: e.recordedAt.toISOString(), confirmedAt: e.confirmedAt?.toISOString() ?? null, voidedAt: e.voidedAt?.toISOString() ?? null, voidReason: e.voidReason,
     version: e.version, ...(withReference ? { paymentReference: e.paymentReference } : {}),
+    // F1b: set when the expense paid a scheduled payment; fixed when that payment was a fixed-expense occurrence.
+    scheduledPaymentId: e.scheduledPaymentId ?? null, fixed: Boolean(e.scheduledPayment?.templateId),
   };
 }
-const withCategory = { category: { select: { name: true, archivedAt: true } }, replacedBy: { select: { id: true } } } satisfies Prisma.ExpenseInclude;
+export const withCategory = { category: { select: { name: true, archivedAt: true } }, replacedBy: { select: { id: true } }, scheduledPayment: { select: { templateId: true } } } satisfies Prisma.ExpenseInclude;
 
 function encodeCursor(e: Expense) { return Buffer.from(JSON.stringify({ d: fromDbDate(e.expenseDate), r: e.recordedAt.toISOString(), i: e.id })).toString("base64url"); }
 function decodeCursor(cursor: string) {
@@ -54,8 +56,12 @@ function decodeCursor(cursor: string) {
   throw new ExpenseError("INVALID_EXPENSE_INPUT");
 }
 
-export function makeExpenseRepository(database: typeof prisma = prisma, clock: () => Date = () => new Date()) {
-  async function mutation<T extends object>(ownerId: string, input: Keys, kind: string, resourceId: string, work: (tx: Tx, now: Date) => Promise<{ result: T; events: EventDraft[] }>) {
+/**
+ * Idempotent mutation (contract §9–10): users FOR SHARE (open account) -> advisory lock 'expenses-v1' per owner ->
+ * receipt by (owner, operationId) whose hash excludes requestId -> work -> receipt and events. Shared by F1a and F1b.
+ */
+export function makeExpenseMutation(database: typeof prisma = prisma, clock: () => Date = () => new Date()) {
+  return async function mutation<T extends object>(ownerId: string, input: Keys, kind: string, resourceId: string, work: (tx: Tx, now: Date) => Promise<{ result: T; events: EventDraft[] }>) {
     const requestHash = expenseCommandHash(kind, resourceId, input);
     return database.$transaction(async tx => {
       await lockInventoryOwner(tx, ownerId);
@@ -72,17 +78,49 @@ export function makeExpenseRepository(database: typeof prisma = prisma, clock: (
         before: event.before === undefined ? Prisma.DbNull : jsonSafe(event.before), after: jsonSafe(event.after) } });
       return { ...(snapshot as Record<string, unknown>), idempotent: false };
     });
+  };
+}
+
+/** Active category of the owner (archived ones cannot receive new expenses). */
+export async function activeCategory(tx: Tx, ownerId: string, id: string) {
+  const row = await tx.expenseCategory.findFirst({ where: { id, ownerId } });
+  if (!row) throw new ExpenseError("EXPENSE_CATEGORY_NOT_FOUND");
+  if (row.archivedAt) throw new ExpenseError("EXPENSE_CATEGORY_ARCHIVED");
+  return row;
+}
+/** Inserts a CONFIRMED expense; scheduledPaymentId links it to the scheduled payment it pays (F1b). */
+export async function insertExpense(tx: Tx, ownerId: string, input: ExpenseInput, now: Date, replacesExpenseId?: string, scheduledPaymentId?: string) {
+  if (!isAllowedExpenseDate(input.expenseDate, now)) throw new ExpenseError("INVALID_EXPENSE_INPUT");
+  const category = await activeCategory(tx, ownerId, input.categoryId);
+  return tx.expense.create({ data: {
+    ownerId, status: "CONFIRMED", source: "MANUAL", expenseDate: toDbDate(input.expenseDate), amount: BigInt(input.amount), categoryId: category.id, categoryNameSnapshot: category.name,
+    paymentMethod: input.paymentMethod, paymentMethodNote: input.paymentMethodNote ?? null, paymentReference: input.paymentReference ?? null, description: input.description,
+    supplierName: input.supplierName ?? null, replacesExpenseId: replacesExpenseId ?? null, scheduledPaymentId: scheduledPaymentId ?? null, confirmedAt: now,
+  }, include: withCategory });
+}
+
+/**
+ * F1b decision 1: voiding the expense that paid a scheduled payment reopens it (PENDING); voiding and replacing keeps it
+ * PAID and points it to the replacement. Runs inside the void transaction; the deferred trigger checks coherence.
+ */
+async function relinkScheduledPayment(tx: Tx, ownerId: string, paymentId: string, voidedId: string, replacementId: string | null, now: Date): Promise<EventDraft> {
+  await tx.$queryRaw`SELECT id FROM scheduled_expense_payments WHERE id = ${paymentId} AND "ownerId" = ${ownerId} FOR UPDATE`;
+  const payment = await tx.scheduledExpensePayment.findFirst({ where: { id: paymentId, ownerId } });
+  if (!payment || payment.status !== "PAID" || payment.paidExpenseId !== voidedId) throw new ExpenseError("INVALID_EXPENSE_TRANSITION");
+  if (replacementId) {
+    await tx.scheduledExpensePayment.update({ where: { id_ownerId: { id: paymentId, ownerId } }, data: { paidExpenseId: replacementId, paidAt: now, version: { increment: 1 } } });
+    return { entityKind: "SCHEDULED_PAYMENT", entityId: paymentId, eventType: "PAYMENT_REPLACED", before: { paidExpenseId: voidedId }, after: { paidExpenseId: replacementId } };
   }
+  await tx.scheduledExpensePayment.update({ where: { id_ownerId: { id: paymentId, ownerId } }, data: { status: "PENDING", paidExpenseId: null, paidAt: null, version: { increment: 1 } } });
+  return { entityKind: "SCHEDULED_PAYMENT", entityId: paymentId, eventType: "REOPENED", before: { status: "PAID", paidExpenseId: voidedId }, after: { status: "PENDING" } };
+}
+
+export function makeExpenseRepository(database: typeof prisma = prisma, clock: () => Date = () => new Date()) {
+  const mutation = makeExpenseMutation(database, clock);
   async function lockedCategory(tx: Tx, ownerId: string, id: string) {
     await tx.$queryRaw`SELECT id FROM expense_categories WHERE id = ${id} AND "ownerId" = ${ownerId} FOR UPDATE`;
     const row = await tx.expenseCategory.findFirst({ where: { id, ownerId } });
     if (!row) throw new ExpenseError("EXPENSE_CATEGORY_NOT_FOUND");
-    return row;
-  }
-  async function activeCategory(tx: Tx, ownerId: string, id: string) {
-    const row = await tx.expenseCategory.findFirst({ where: { id, ownerId } });
-    if (!row) throw new ExpenseError("EXPENSE_CATEGORY_NOT_FOUND");
-    if (row.archivedAt) throw new ExpenseError("EXPENSE_CATEGORY_ARCHIVED");
     return row;
   }
   async function lockedExpense(tx: Tx, ownerId: string, id: string) {
@@ -97,15 +135,6 @@ export function makeExpenseRepository(database: typeof prisma = prisma, clock: (
   async function nameConflict(tx: Tx, ownerId: string, name: string, exceptId?: string) {
     const existing = await tx.expenseCategory.findFirst({ where: { ownerId, normalizedKey: normalizeCategoryName(name) } });
     if (existing && existing.id !== exceptId) throw new ExpenseError("EXPENSE_CATEGORY_NAME_CONFLICT", { existingId: existing.id, archived: Boolean(existing.archivedAt) });
-  }
-  async function insertExpense(tx: Tx, ownerId: string, input: ExpenseInput, now: Date, replacesExpenseId?: string) {
-    if (!isAllowedExpenseDate(input.expenseDate, now)) throw new ExpenseError("INVALID_EXPENSE_INPUT");
-    const category = await activeCategory(tx, ownerId, input.categoryId);
-    return tx.expense.create({ data: {
-      ownerId, status: "CONFIRMED", source: "MANUAL", expenseDate: toDbDate(input.expenseDate), amount: BigInt(input.amount), categoryId: category.id, categoryNameSnapshot: category.name,
-      paymentMethod: input.paymentMethod, paymentMethodNote: input.paymentMethodNote ?? null, paymentReference: input.paymentReference ?? null, description: input.description,
-      supplierName: input.supplierName ?? null, replacesExpenseId: replacesExpenseId ?? null, confirmedAt: now,
-    }, include: withCategory });
   }
   const allCategories = (tx: Tx, ownerId: string) => tx.expenseCategory.findMany({ where: { ownerId }, orderBy: [{ position: "asc" }, { id: "asc" }] });
 
@@ -193,10 +222,11 @@ export function makeExpenseRepository(database: typeof prisma = prisma, clock: (
         const events: EventDraft[] = [{ entityKind: "EXPENSE", entityId: id, eventType: "VOIDED", before: { status: current.status }, after: { status: "VOIDED", voidReason: input.reason } }];
         let replacement: ExpenseRow | null = null;
         if (input.replacement) {
-          replacement = await insertExpense(tx, ownerId, input.replacement, now, id);
+          replacement = await insertExpense(tx, ownerId, input.replacement, now, id, current.scheduledPaymentId ?? undefined);
           events.push({ entityKind: "EXPENSE", entityId: replacement.id, eventType: "CREATED", after: { ...expenseView(replacement, true), replacesExpenseId: id } });
           events.push({ entityKind: "EXPENSE", entityId: id, eventType: "REPLACED", after: { replacementId: replacement.id } });
         }
+        if (current.scheduledPaymentId) events.push(await relinkScheduledPayment(tx, ownerId, current.scheduledPaymentId, id, replacement?.id ?? null, now));
         const finalVoided = replacement ? { ...voided, replacedBy: [{ id: replacement.id }] } : voided;
         return { result: { voided: expenseView(finalVoided, true), replacement: replacement ? expenseView(replacement, true) : null }, events };
       });
@@ -211,7 +241,8 @@ export function makeExpenseRepository(database: typeof prisma = prisma, clock: (
           { expenseDate: toDbDate(cursor.d), recordedAt: new Date(cursor.r), id: { lt: cursor.i } },
         ] } : {};
         const rows = await tx.expense.findMany({ where: { ownerId, expenseDate: { gte: toDbDate(query.from), lte: toDbDate(query.to) }, ...(query.status === "all" ? {} : { status: query.status }),
-          ...(query.categoryId ? { categoryId: query.categoryId } : {}), ...(query.paymentMethod ? { paymentMethod: query.paymentMethod } : {}), ...after },
+          ...(query.categoryId ? { categoryId: query.categoryId } : {}), ...(query.paymentMethod ? { paymentMethod: query.paymentMethod } : {}),
+          ...(query.origin === "fixed" ? { scheduledPayment: { templateId: { not: null } } } : {}), ...after },
           include: withCategory, orderBy: [{ expenseDate: "desc" }, { recordedAt: "desc" }, { id: "desc" }], take: PAGE + 1 });
         const page = rows.slice(0, PAGE);
         return { items: page.map(row => expenseView(row)), nextCursor: rows.length > PAGE ? encodeCursor(page[page.length - 1]) : null, pageSize: PAGE };

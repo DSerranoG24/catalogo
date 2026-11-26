@@ -13,6 +13,8 @@ import { orderCustomerPreviewSchema, confirmOrderCustomerSchema, orderCustomerMa
 import { customerSalesQuerySchema } from "../schemas/customer-sales.schema";
 import { dashboardQuerySchema } from "../services/dashboard-summary";
 import { expenseOverviewSchema } from "../repositories/expense-overview.repository";
+import { cancelScheduledSchema, createRecurringSchema, createScheduledSchema, payScheduledSchema, recurringListSchema, recurringStateSchema, scheduledListSchema,
+  updateRecurringSchema, updateScheduledSchema } from "../schemas/scheduled-expense.schema";
 import { createDeviceBrandSchema, createDeviceModelSchema, addBrandAliasSchema, addDeviceAliasSchema,
   addCompatibilitySchema, updateCompatibilitySchema, deviceListSchema, modelListSchema, compatibilityPageSchema } from "../schemas/compatibility.schema";
 
@@ -51,6 +53,15 @@ const schemas = {
   OrderCustomerMatches: orderCustomerMatchesSchema,
   DashboardSummaryQuery: dashboardQuerySchema,
   ExpenseOverviewQuery: expenseOverviewSchema,
+  ScheduledListQuery: scheduledListSchema,
+  CreateScheduledPayment: createScheduledSchema,
+  UpdateScheduledPayment: updateScheduledSchema,
+  PayScheduledPayment: payScheduledSchema,
+  CancelScheduledPayment: cancelScheduledSchema,
+  RecurringListQuery: recurringListSchema,
+  CreateRecurringExpense: createRecurringSchema,
+  UpdateRecurringExpense: updateRecurringSchema,
+  RecurringExpenseState: recurringStateSchema,
 } satisfies Record<string, z.ZodType>;
 
 const ref = (name: keyof typeof schemas) => ({ $ref: `#/components/schemas/${name}` });
@@ -177,6 +188,48 @@ const paths = {
       },
     }),
   },
+  "/api/expenses/scheduled/sync": {
+    post: operation("Generar las ocurrencias de los gastos fijos hasta el horizonte (F1b)", { security: secured,
+      description: "Acción explícita: las lecturas nunca escriben. Genera hasta máx(fin de mes, hoy + 7) en Bogotá, como máximo 24 por gasto fijo y llamada. Idempotente y segura en paralelo (índice único parcial e inserción que ignora duplicados, bloqueo por cuenta). Limitador propio por cuenta. Ver docs/expenses-f1b-contract.md.",
+      responses: { "200": { description: "{success:true,result:{generated,pendingCount}}" }, "429": { description: "RATE_LIMITED" }, "401": { description: "Sesión requerida o expirada" }, "503": { description: "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId" } } }),
+  },
+  "/api/expenses/scheduled": {
+    get: operation("Listar pagos programados propios por vencimiento", { security: secured, parameters: [
+      { name: "status", in: "query", schema: { type: "string", enum: ["PENDING", "PAID", "CANCELLED", "all"], default: "PENDING" } },
+      { name: "kind", in: "query", schema: { type: "string", enum: ["fixed", "single", "all"], default: "all" } },
+      { name: "from", in: "query", schema: { type: "string", format: "date" } }, { name: "to", in: "query", schema: { type: "string", format: "date" } }],
+      responses: { "200": { description: "{success:true,result:{items:[ScheduledPayment],truncated,today}}; importes como strings decimales; hasta 500 por consulta" }, "400": { description: "INVALID_EXPENSE_INPUT" }, "401": { description: "Sesión requerida o expirada" }, "503": { description: "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId" } } }),
+    post: operation("Programar un pago único (no suma en totales hasta pagarlo)", { security: secured, requestBody: jsonBody("CreateScheduledPayment"),
+      responses: { "201": { description: "{success:true,result:{payment,idempotent:false}}" }, "200": { description: "Repetición idempotente" }, "400": { description: "INVALID_EXPENSE_INPUT o EXPENSE_CATEGORY_ARCHIVED" }, "409": { description: "SCHEDULED_EXPENSE_QUOTA o IDEMPOTENCY_CONFLICT" }, "401": { description: "Sesión requerida o expirada" }, "503": { description: "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId" } } }),
+  },
+  "/api/expenses/scheduled/{id}": {
+    patch: operation("Editar o reprogramar un pago pendiente", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("UpdateScheduledPayment"),
+      responses: { "200": response, "404": { description: "SCHEDULED_EXPENSE_NOT_FOUND" }, "409": { description: "INVALID_SCHEDULED_TRANSITION o VERSION_CONFLICT" }, "401": { description: "Sesión requerida o expirada" }, "503": { description: "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId" } } }),
+  },
+  "/api/expenses/scheduled/{id}/pay": {
+    post: operation("Marcar pagado: crea el gasto real vinculado en la misma transacción", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("PayScheduledPayment"),
+      description: "amount obligatorio (puede diferir del previsto); expenseDate es la fecha del pago, nunca futura. Idempotente: la misma operationId devuelve el mismo gasto.",
+      responses: { "200": { description: "{success:true,result:{payment,expense,idempotent}}" }, "400": { description: "INVALID_EXPENSE_INPUT o EXPENSE_CATEGORY_ARCHIVED" }, "404": { description: "SCHEDULED_EXPENSE_NOT_FOUND" }, "409": { description: "INVALID_SCHEDULED_TRANSITION, VERSION_CONFLICT o IDEMPOTENCY_CONFLICT" }, "401": { description: "Sesión requerida o expirada" }, "503": { description: "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId" } } }),
+  },
+  "/api/expenses/scheduled/{id}/cancel": {
+    post: operation("Omitir (ocurrencia) o cancelar (pago único); definitivo", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("CancelScheduledPayment"),
+      responses: { "200": response, "404": { description: "SCHEDULED_EXPENSE_NOT_FOUND" }, "409": { description: "INVALID_SCHEDULED_TRANSITION o VERSION_CONFLICT" }, "401": { description: "Sesión requerida o expirada" }, "503": { description: "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId" } } }),
+  },
+  "/api/expenses/recurring": {
+    get: operation("Listar gastos fijos con su próxima fecha", { security: secured, parameters: [{ name: "status", in: "query", schema: { type: "string", enum: ["current", "ACTIVE", "PAUSED", "ENDED", "all"], default: "current" } }],
+      responses: { "200": { description: "{success:true,result:{templates:[RecurringExpense]}}" }, "400": { description: "INVALID_EXPENSE_INPUT" }, "401": { description: "Sesión requerida o expirada" }, "503": { description: "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId" } } }),
+    post: operation("Crear un gasto fijo (semanal, mensual o anual, cada 1 a 12) y generar sus ocurrencias", { security: secured, requestBody: jsonBody("CreateRecurringExpense"),
+      responses: { "201": { description: "{success:true,result:{template,generated,idempotent:false}}" }, "400": { description: "INVALID_EXPENSE_INPUT o EXPENSE_CATEGORY_ARCHIVED" }, "409": { description: "RECURRING_EXPENSE_QUOTA o IDEMPOTENCY_CONFLICT" }, "401": { description: "Sesión requerida o expirada" }, "503": { description: "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId" } } }),
+  },
+  "/api/expenses/recurring/{id}": {
+    patch: operation("Editar un gasto fijo; cambia también los pagos futuros pendientes no editados a mano", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("UpdateRecurringExpense"),
+      responses: { "200": { description: "{success:true,result:{template,updatedPayments,cancelled,generated}}" }, "404": { description: "RECURRING_EXPENSE_NOT_FOUND" }, "409": { description: "INVALID_RECURRING_TRANSITION o VERSION_CONFLICT" }, "401": { description: "Sesión requerida o expirada" }, "503": { description: "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId" } } }),
+  },
+  ...Object.fromEntries((["pause", "resume", "end"] as const).map(action => [`/api/expenses/recurring/{id}/${action}`, {
+    post: operation(action === "pause" ? "Pausar: cancela los pagos futuros pendientes" : action === "resume" ? "Reanudar sin generar las fechas de la pausa" : "Terminar (definitivo): cancela los pagos futuros pendientes", {
+      security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("RecurringExpenseState"),
+      responses: { "200": { description: "{success:true,result:{template,cancelled,generated}}" }, "404": { description: "RECURRING_EXPENSE_NOT_FOUND" }, "409": { description: "INVALID_RECURRING_TRANSITION o VERSION_CONFLICT" }, "401": { description: "Sesión requerida o expirada" }, "503": { description: "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId" } } }),
+  }])),
   "/api/customers/{id}/sales": {
     get: operation("Consultar ventas vinculadas explícitamente a un cliente propio", {
       security: secured,

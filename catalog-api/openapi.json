@@ -865,6 +865,512 @@
         ]
       }
     },
+    "/api/expenses/scheduled/sync": {
+      "post": {
+        "summary": "Generar las ocurrencias de los gastos fijos hasta el horizonte (F1b)",
+        "responses": {
+          "200": {
+            "description": "{success:true,result:{generated,pendingCount}}"
+          },
+          "401": {
+            "description": "Sesión requerida o expirada"
+          },
+          "429": {
+            "description": "RATE_LIMITED"
+          },
+          "503": {
+            "description": "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Acción explícita: las lecturas nunca escriben. Genera hasta máx(fin de mes, hoy + 7) en Bogotá, como máximo 24 por gasto fijo y llamada. Idempotente y segura en paralelo (índice único parcial e inserción que ignora duplicados, bloqueo por cuenta). Limitador propio por cuenta. Ver docs/expenses-f1b-contract.md."
+      }
+    },
+    "/api/expenses/scheduled": {
+      "get": {
+        "summary": "Listar pagos programados propios por vencimiento",
+        "responses": {
+          "200": {
+            "description": "{success:true,result:{items:[ScheduledPayment],truncated,today}}; importes como strings decimales; hasta 500 por consulta"
+          },
+          "400": {
+            "description": "INVALID_EXPENSE_INPUT"
+          },
+          "401": {
+            "description": "Sesión requerida o expirada"
+          },
+          "503": {
+            "description": "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "PAID",
+                "CANCELLED",
+                "all"
+              ],
+              "default": "PENDING"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "fixed",
+                "single",
+                "all"
+              ],
+              "default": "all"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Programar un pago único (no suma en totales hasta pagarlo)",
+        "responses": {
+          "200": {
+            "description": "Repetición idempotente"
+          },
+          "201": {
+            "description": "{success:true,result:{payment,idempotent:false}}"
+          },
+          "400": {
+            "description": "INVALID_EXPENSE_INPUT o EXPENSE_CATEGORY_ARCHIVED"
+          },
+          "401": {
+            "description": "Sesión requerida o expirada"
+          },
+          "409": {
+            "description": "SCHEDULED_EXPENSE_QUOTA o IDEMPOTENCY_CONFLICT"
+          },
+          "503": {
+            "description": "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateScheduledPayment"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/expenses/scheduled/{id}": {
+      "patch": {
+        "summary": "Editar o reprogramar un pago pendiente",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "401": {
+            "description": "Sesión requerida o expirada"
+          },
+          "404": {
+            "description": "SCHEDULED_EXPENSE_NOT_FOUND"
+          },
+          "409": {
+            "description": "INVALID_SCHEDULED_TRANSITION o VERSION_CONFLICT"
+          },
+          "503": {
+            "description": "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateScheduledPayment"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/expenses/scheduled/{id}/pay": {
+      "post": {
+        "summary": "Marcar pagado: crea el gasto real vinculado en la misma transacción",
+        "responses": {
+          "200": {
+            "description": "{success:true,result:{payment,expense,idempotent}}"
+          },
+          "400": {
+            "description": "INVALID_EXPENSE_INPUT o EXPENSE_CATEGORY_ARCHIVED"
+          },
+          "401": {
+            "description": "Sesión requerida o expirada"
+          },
+          "404": {
+            "description": "SCHEDULED_EXPENSE_NOT_FOUND"
+          },
+          "409": {
+            "description": "INVALID_SCHEDULED_TRANSITION, VERSION_CONFLICT o IDEMPOTENCY_CONFLICT"
+          },
+          "503": {
+            "description": "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayScheduledPayment"
+              }
+            }
+          }
+        },
+        "description": "amount obligatorio (puede diferir del previsto); expenseDate es la fecha del pago, nunca futura. Idempotente: la misma operationId devuelve el mismo gasto."
+      }
+    },
+    "/api/expenses/scheduled/{id}/cancel": {
+      "post": {
+        "summary": "Omitir (ocurrencia) o cancelar (pago único); definitivo",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "401": {
+            "description": "Sesión requerida o expirada"
+          },
+          "404": {
+            "description": "SCHEDULED_EXPENSE_NOT_FOUND"
+          },
+          "409": {
+            "description": "INVALID_SCHEDULED_TRANSITION o VERSION_CONFLICT"
+          },
+          "503": {
+            "description": "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelScheduledPayment"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/expenses/recurring": {
+      "get": {
+        "summary": "Listar gastos fijos con su próxima fecha",
+        "responses": {
+          "200": {
+            "description": "{success:true,result:{templates:[RecurringExpense]}}"
+          },
+          "400": {
+            "description": "INVALID_EXPENSE_INPUT"
+          },
+          "401": {
+            "description": "Sesión requerida o expirada"
+          },
+          "503": {
+            "description": "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "current",
+                "ACTIVE",
+                "PAUSED",
+                "ENDED",
+                "all"
+              ],
+              "default": "current"
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Crear un gasto fijo (semanal, mensual o anual, cada 1 a 12) y generar sus ocurrencias",
+        "responses": {
+          "201": {
+            "description": "{success:true,result:{template,generated,idempotent:false}}"
+          },
+          "400": {
+            "description": "INVALID_EXPENSE_INPUT o EXPENSE_CATEGORY_ARCHIVED"
+          },
+          "401": {
+            "description": "Sesión requerida o expirada"
+          },
+          "409": {
+            "description": "RECURRING_EXPENSE_QUOTA o IDEMPOTENCY_CONFLICT"
+          },
+          "503": {
+            "description": "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRecurringExpense"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/expenses/recurring/{id}": {
+      "patch": {
+        "summary": "Editar un gasto fijo; cambia también los pagos futuros pendientes no editados a mano",
+        "responses": {
+          "200": {
+            "description": "{success:true,result:{template,updatedPayments,cancelled,generated}}"
+          },
+          "401": {
+            "description": "Sesión requerida o expirada"
+          },
+          "404": {
+            "description": "RECURRING_EXPENSE_NOT_FOUND"
+          },
+          "409": {
+            "description": "INVALID_RECURRING_TRANSITION o VERSION_CONFLICT"
+          },
+          "503": {
+            "description": "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRecurringExpense"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/expenses/recurring/{id}/pause": {
+      "post": {
+        "summary": "Pausar: cancela los pagos futuros pendientes",
+        "responses": {
+          "200": {
+            "description": "{success:true,result:{template,cancelled,generated}}"
+          },
+          "401": {
+            "description": "Sesión requerida o expirada"
+          },
+          "404": {
+            "description": "RECURRING_EXPENSE_NOT_FOUND"
+          },
+          "409": {
+            "description": "INVALID_RECURRING_TRANSITION o VERSION_CONFLICT"
+          },
+          "503": {
+            "description": "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecurringExpenseState"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/expenses/recurring/{id}/resume": {
+      "post": {
+        "summary": "Reanudar sin generar las fechas de la pausa",
+        "responses": {
+          "200": {
+            "description": "{success:true,result:{template,cancelled,generated}}"
+          },
+          "401": {
+            "description": "Sesión requerida o expirada"
+          },
+          "404": {
+            "description": "RECURRING_EXPENSE_NOT_FOUND"
+          },
+          "409": {
+            "description": "INVALID_RECURRING_TRANSITION o VERSION_CONFLICT"
+          },
+          "503": {
+            "description": "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecurringExpenseState"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/expenses/recurring/{id}/end": {
+      "post": {
+        "summary": "Terminar (definitivo): cancela los pagos futuros pendientes",
+        "responses": {
+          "200": {
+            "description": "{success:true,result:{template,cancelled,generated}}"
+          },
+          "401": {
+            "description": "Sesión requerida o expirada"
+          },
+          "404": {
+            "description": "RECURRING_EXPENSE_NOT_FOUND"
+          },
+          "409": {
+            "description": "INVALID_RECURRING_TRANSITION o VERSION_CONFLICT"
+          },
+          "503": {
+            "description": "EXPENSE_RETRY_SAME_OPERATION: reintentar con la misma operationId"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecurringExpenseState"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/customers/{id}/sales": {
       "get": {
         "summary": "Consultar ventas vinculadas explícitamente a un cliente propio",
@@ -3578,6 +4084,559 @@
         },
         "required": [
           "month"
+        ],
+        "additionalProperties": false
+      },
+      "ScheduledListQuery": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "default": "PENDING",
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "PAID",
+              "CANCELLED",
+              "all"
+            ]
+          },
+          "kind": {
+            "default": "all",
+            "type": "string",
+            "enum": [
+              "fixed",
+              "single",
+              "all"
+            ]
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateScheduledPayment": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "dueDate": {
+            "type": "string"
+          },
+          "plannedAmount": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1200,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "CASH",
+              "NEQUI",
+              "DAVIPLATA",
+              "BANK_TRANSFER",
+              "CARD",
+              "OTHER"
+            ]
+          },
+          "paymentMethodNote": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 320,
+                "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supplierName": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 640,
+                "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId",
+          "dueDate",
+          "description",
+          "categoryId",
+          "paymentMethod"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateScheduledPayment": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "dueDate": {
+            "type": "string"
+          },
+          "plannedAmount": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1200,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "CASH",
+              "NEQUI",
+              "DAVIPLATA",
+              "BANK_TRANSFER",
+              "CARD",
+              "OTHER"
+            ]
+          },
+          "paymentMethodNote": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 320,
+                "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supplierName": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 640,
+                "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId",
+          "expectedVersion"
+        ],
+        "additionalProperties": false
+      },
+      "PayScheduledPayment": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "amount": {
+            "type": "string"
+          },
+          "expenseDate": {
+            "type": "string"
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "CASH",
+              "NEQUI",
+              "DAVIPLATA",
+              "BANK_TRANSFER",
+              "CARD",
+              "OTHER"
+            ]
+          },
+          "paymentMethodNote": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 320,
+                "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "paymentReference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 400,
+                "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1200,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "supplierName": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 640,
+                "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId",
+          "expectedVersion",
+          "amount",
+          "expenseDate",
+          "paymentMethod"
+        ],
+        "additionalProperties": false
+      },
+      "CancelScheduledPayment": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1200,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId",
+          "expectedVersion"
+        ],
+        "additionalProperties": false
+      },
+      "RecurringListQuery": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "default": "current",
+            "type": "string",
+            "enum": [
+              "current",
+              "ACTIVE",
+              "PAUSED",
+              "ENDED",
+              "all"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateRecurringExpense": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1200,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "CASH",
+              "NEQUI",
+              "DAVIPLATA",
+              "BANK_TRANSFER",
+              "CARD",
+              "OTHER"
+            ]
+          },
+          "paymentMethodNote": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 320,
+                "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supplierName": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 640,
+                "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "estimatedAmount": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frequency": {
+            "type": "string",
+            "enum": [
+              "WEEKLY",
+              "MONTHLY",
+              "YEARLY"
+            ]
+          },
+          "interval": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12
+          },
+          "anchorDate": {
+            "type": "string"
+          },
+          "endDate": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId",
+          "description",
+          "categoryId",
+          "paymentMethod",
+          "frequency",
+          "interval",
+          "anchorDate"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateRecurringExpense": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1200,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "CASH",
+              "NEQUI",
+              "DAVIPLATA",
+              "BANK_TRANSFER",
+              "CARD",
+              "OTHER"
+            ]
+          },
+          "paymentMethodNote": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 320,
+                "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supplierName": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 640,
+                "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "estimatedAmount": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frequency": {
+            "type": "string",
+            "enum": [
+              "WEEKLY",
+              "MONTHLY",
+              "YEARLY"
+            ]
+          },
+          "interval": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12
+          },
+          "anchorDate": {
+            "type": "string"
+          },
+          "endDate": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId",
+          "expectedVersion"
+        ],
+        "additionalProperties": false
+      },
+      "RecurringExpenseState": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId",
+          "expectedVersion"
         ],
         "additionalProperties": false
       }
