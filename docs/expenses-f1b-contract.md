@@ -1,6 +1,6 @@
 # Contrato de Gastos F1b — Gastos fijos y pagos programados
 
-**Estado:** aprobado por el dueño el 25/11/2026 para implementar F1b. Las decisiones están en la [sección 14](#14-decisiones-del-dueño). Amplía el [contrato de Gastos v1.2](expenses-contract.md) y **sustituye su diseño de F1b**, que preveía ocurrencias `PENDING_CONFIRMATION` dentro de `expenses`. Este documento no incluye código ni migraciones, y no autoriza despliegues.
+**Estado:** aprobado por el dueño el 25/11/2026, con las correcciones del planificador A, B y C ([sección 15](#15-correcciones-del-planificador)). Las decisiones están en la [sección 14](#14-decisiones-del-dueño). Amplía el [contrato de Gastos v1.2](expenses-contract.md) y **sustituye su diseño de F1b**, que preveía ocurrencias `PENDING_CONFIRMATION` dentro de `expenses`. Este documento no incluye código ni migraciones, y no autoriza despliegues.
 
 ## 1. Decisiones del dueño que guían el diseño
 
@@ -38,7 +38,7 @@ v1.2 generaba las ocurrencias como filas de `expenses` en `PENDING_CONFIRMATION`
 | --- | --- |
 | `id`, `ownerId` | UUID en `TEXT`; `UNIQUE (id, ownerId)`. |
 | `status` | Enum nuevo `ScheduledExpenseStatus`: `PENDING`, `PAID` o `CANCELLED`. |
-| `templateId?`, `occurrenceDate?` | O ambos nulos (pago único) o ambos presentes (ocurrencia). `UNIQUE (templateId, occurrenceDate)`, de modo que una fecha de un gasto fijo no se genera dos veces. FK compuesta `(templateId, ownerId)`. |
+| `templateId?`, `occurrenceDate?` | O ambos nulos (pago único) o ambos presentes (ocurrencia). **Índice único parcial `(templateId, occurrenceDate) WHERE status <> 'CANCELLED'`**: una fecha de un gasto fijo no se genera dos veces; una ocurrencia cancelada al cambiar la regla no bloquea la nueva. FK compuesta `(templateId, ownerId)`. Se usa `occurrenceDate`, que no cambia, y no `dueDate`, que se puede reprogramar (sección 15, B). |
 | `dueDate` | `DATE` de Bogotá. Puede ser futura. Al generarse es igual a `occurrenceDate` y se puede reprogramar mientras esté `PENDING`. |
 | `plannedAmount?` | Monto previsto, de 1 a 1e12, o nulo si se desconoce (por ejemplo, servicios variables). Es informativo: **nunca suma** en los totales de gastos. |
 | `description`, `categoryId`, `categoryNameSnapshot?`, `paymentMethod`, `paymentMethodNote?`, `supplierName?` | Las mismas reglas que un gasto. Son los valores sugeridos para el pago. FK compuesta `(categoryId, ownerId)`. |
@@ -94,11 +94,11 @@ stateDiagram-v2
 - **Zona horaria:** todas las fechas son de calendario en `America/Bogota`. «Hoy» sale del reloj de la base convertido a Bogotá.
 - **Ocurrencias persistidas, no calculadas al vuelo.** Cada ocurrencia es una fila de `scheduled_expense_payments`. Así se puede marcar pagada, reprogramar, omitir y conservar su historial, y las cifras se calculan con SQL sencillo.
 - **Horizonte:** se generan las ocurrencias hasta `H = máx(último día del mes actual, hoy + 7 días)` (Bogotá). Cubre «n de m del mes» y «próximos 7 días» aunque crucen de mes. `generatedThrough` pasa a significar «última fecha generada» y puede ser futura.
-- **Cuándo se genera:**
-  - **Al abrir Gastos o Inicio**, con `POST /scheduled-expenses/refresh`. Amplía la decisión 11 de v1.2, que solo lo hacía al abrir Gastos, porque Inicio también muestra los vencimientos. No hay trabajador en segundo plano; los avisos por WhatsApp son F3.
+- **Cuándo se genera** (corrección A: las lecturas nunca escriben):
+  - **Al abrir Gastos o Inicio**, con la acción explícita `POST /api/expenses/scheduled/sync`, que la página llama antes de leer. Amplía la decisión 11 de v1.2, que solo lo hacía al abrir Gastos, porque Inicio también muestra los vencimientos. No hay trabajador en segundo plano; los avisos por WhatsApp son F3.
   - **Dentro de la misma transacción** al crear, editar o reanudar un gasto fijo.
   - Como máximo 24 ocurrencias por gasto fijo y llamada; el resto, en llamadas siguientes.
-  - La unicidad `(templateId, occurrenceDate)` y el bloqueo de la cuenta impiden duplicados aunque haya dos llamadas a la vez.
+  - Inserción con `ON CONFLICT DO NOTHING` sobre el índice único parcial, dentro del bloqueo de la cuenta: dos pestañas, reintentos o llamadas a la vez no crean duplicados ni errores (corrección B).
 - **Ancla en el pasado:** como en la decisión 6, de las fechas ya vencidas solo se genera la más reciente, que queda vencida. Después, las futuras hasta `H`.
 - **Pausar (`PAUSED`):**
   - no se generan fechas nuevas;
@@ -121,7 +121,7 @@ stateDiagram-v2
 
 ## 7. Marcar pagado
 
-`POST /scheduled-expenses/:id/pay` con:
+`POST /expenses/scheduled/:id/pay` con:
 
 ```
 { operationId, requestId, expectedVersion, amount, expenseDate, paymentMethod, paymentMethodNote?,
@@ -159,7 +159,7 @@ scheduled: {
   fixed: { due: m, paid: n, paidTotal },           // ocurrencias de gastos fijos con dueDate en el mes (sin CANCELLED)
   upcoming: { count, plannedTotal, withoutAmount }, // PENDING con dueDate entre hoy y hoy + 7 (solo en el mes actual; si no, null)
   overdue: { count, plannedTotal, withoutAmount },  // PENDING con dueDate < hoy (solo en el mes actual; si no, null)
-  variable: { total, count }                        // gastos CONFIRMED del mes sin scheduledPaymentId (propuesto, tarjeta «Variables»)
+  variable: { total, count }                        // gastos CONFIRMED del mes sin scheduledPaymentId (tarjeta «Variables»)
 }
 ```
 
@@ -176,7 +176,7 @@ Todo se calcula en SQL, en la misma lectura de solo lectura de `overview`, con i
 - `attention` gana `scheduledDueSoonCount` (`PENDING` en `[hoy, hoy + 7]`) y `scheduledOverdueCount` (`PENDING` vencidos).
 - `modules` gana `scheduledExpenses: boolean`.
 - En «Requiere tu atención» aparecen dos filas nuevas: «n pagos por vencer» y «n pagos vencidos», con «Ver» hacia `/dashboard/gastos`.
-- Sigue siendo una lectura de solo lectura. La interfaz llama antes a `refresh`; si `refresh` falla, se muestran los programados ya generados.
+- Sigue siendo una lectura en una transacción `READ ONLY`. La interfaz llama antes a `sync`; si `sync` falla, se muestran los programados ya generados con un aviso discreto (corrección C).
 - La utilidad no cambia: solo resta gastos `CONFIRMED`.
 
 ## 9. API (F1b)
@@ -185,16 +185,16 @@ Todos los endpoints son privados, con `Cache-Control: private, no-store`, valida
 
 | Método y ruta | Uso |
 | --- | --- |
-| `GET /recurring-expenses?status` | Gastos fijos propios con su próxima fecha y el estado del pago del mes. |
-| `POST /recurring-expenses` | `{description, categoryId, paymentMethod, paymentMethodNote?, supplierName?, estimatedAmount?, frequency, interval, anchorDate, endDate?}`. Genera hasta el horizonte. |
-| `PATCH /recurring-expenses/:id` | `{expectedVersion, …}`. Solo `ACTIVE` o `PAUSED` (sección 6). |
-| `POST /recurring-expenses/:id/pause`, `…/resume`, `…/end` | `{expectedVersion}`. |
-| `GET /scheduled-expenses?status&from&to&cursor` | Programados por `dueDate` ascendente. `status`: `PENDING` (por defecto), `PAID`, `CANCELLED` o `all`. |
-| `POST /scheduled-expenses` | Pago único: `{dueDate, plannedAmount?, description, categoryId, paymentMethod, paymentMethodNote?, supplierName?}`. |
-| `PATCH /scheduled-expenses/:id` | `{expectedVersion, dueDate?, plannedAmount?, …}`. Solo `PENDING`. |
-| `POST /scheduled-expenses/:id/pay` | Sección 7. |
-| `POST /scheduled-expenses/:id/cancel` | `{expectedVersion, reason?}`. Solo `PENDING`. |
-| `POST /scheduled-expenses/refresh` | Sin cuerpo. Genera hasta el horizonte y devuelve `{generated, pendingCount}`. Idempotente y con limitador propio. |
+| `GET /expenses/recurring?status` | Gastos fijos propios con su próxima fecha y el estado del pago del mes. |
+| `POST /expenses/recurring` | `{description, categoryId, paymentMethod, paymentMethodNote?, supplierName?, estimatedAmount?, frequency, interval, anchorDate, endDate?}`. Genera hasta el horizonte. |
+| `PATCH /expenses/recurring/:id` | `{expectedVersion, …}`. Solo `ACTIVE` o `PAUSED` (sección 6). |
+| `POST /expenses/recurring/:id/pause`, `…/resume`, `…/end` | `{expectedVersion}`. |
+| `GET /expenses/scheduled?status&from&to&cursor` | Programados por `dueDate` ascendente. `status`: `PENDING` (por defecto), `PAID`, `CANCELLED` o `all`. |
+| `POST /expenses/scheduled` | Pago único: `{dueDate, plannedAmount?, description, categoryId, paymentMethod, paymentMethodNote?, supplierName?}`. |
+| `PATCH /expenses/scheduled/:id` | `{expectedVersion, dueDate?, plannedAmount?, …}`. Solo `PENDING`. |
+| `POST /expenses/scheduled/:id/pay` | Sección 7. |
+| `POST /expenses/scheduled/:id/cancel` | `{expectedVersion, reason?}`. Solo `PENDING`. |
+| `POST /api/expenses/scheduled/sync` | Sin cuerpo. Genera hasta el horizonte y devuelve `{generated, pendingCount}`. Idempotente y con limitador propio. |
 | `POST /expenses/:id/void` (F1a, sin cambio de contrato) | Efecto nuevo sobre el programado vinculado (sección 7). |
 
 **Retirados del diseño de v1.2, nunca implementados:** `GET /expenses/pending`, `POST /expenses/pending/refresh`, `POST /expenses/:id/confirm` y `POST /expenses/:id/skip`.
@@ -215,7 +215,7 @@ Todos los endpoints son privados, con `Cache-Control: private, no-store`, valida
   3. recibo;
   4. filas `FOR UPDATE` en orden de ID: gasto fijo, programado, gasto y categoría.
 
-  `refresh` usa el mismo bloqueo de la cuenta.
+  `sync` usa el mismo bloqueo de la cuenta.
 - **Propietario:**
   - todas las consultas filtran por `ownerId` de la sesión;
   - las FKs compuestas impiden mezclar cuentas: programado ↔ gasto fijo, categoría y gasto;
@@ -233,7 +233,7 @@ Todos los endpoints son privados, con `Cache-Control: private, no-store`, valida
 | `dueDate` de un pago único | Entre hoy menos 5 años y hoy + 366 días |
 | Monto | Hasta 1e12 |
 | `interval` | De 1 a 12 |
-| Ocurrencias por gasto fijo en cada `refresh` | 24 |
+| Ocurrencias por gasto fijo en cada `sync` | 24 |
 | `cancelReason` | Hasta 300 caracteres |
 
 ## 11. Casos límite
@@ -243,8 +243,8 @@ Todos los endpoints son privados, con `Cache-Control: private, no-store`, valida
 | Mensual con ancla el 31 | 31 ene → 28/29 feb → 31 mar → 30 abr. |
 | Anual con ancla el 29 de febrero | 28 de febrero en los años no bisiestos. |
 | Ancla hace tres meses | Solo la ocurrencia vencida más reciente, más las futuras hasta el horizonte. |
-| No se abre la app en meses | El siguiente `refresh` genera las fechas pendientes desde `generatedThrough`, 24 por llamada. Las de meses atrás quedan vencidas (decisión F1b-3). |
-| Dos `refresh` a la vez | La unicidad `(templateId, occurrenceDate)` y el bloqueo de la cuenta evitan duplicados. |
+| No se abre la app en meses | El siguiente `sync` genera las fechas pendientes desde `generatedThrough`, 24 por llamada. Las de meses atrás quedan vencidas (decisión F1b-3). |
+| Dos `sync` a la vez | La unicidad `(templateId, occurrenceDate)` y el bloqueo de la cuenta evitan duplicados. |
 | Pagar dos veces (doble clic o reintento) | Misma `operationId`: el mismo resultado, un solo gasto. Otra `operationId` sobre un `PAID`: 409. |
 | Pagar con un monto distinto del previsto | Permitido; suma lo pagado. |
 | Pagar antes del vencimiento | Permitido; el gasto lleva la fecha del pago. |
@@ -276,7 +276,7 @@ Todos los endpoints son privados, con `Cache-Control: private, no-store`, valida
    - trigger diferido de coherencia `PAID` ⇔ gasto vigente.
 
    Incluye consulta previa y ensayo en PostgreSQL. No modifica la migración de F1a.
-2. **F1b-2 API.** Gastos fijos (CRUD de estado), programados únicos, `refresh`, pagar, cancelar u omitir, y efecto de la anulación. Pruebas unitarias y de ruta y matriz de dos cuentas.
+2. **F1b-2 API.** Gastos fijos (CRUD de estado), programados únicos, `sync`, pagar, cancelar u omitir, y efecto de la anulación. Pruebas unitarias y de ruta y matriz de dos cuentas.
 3. **F1b-3 Cifras.** Bloque `scheduled` en `overview` y filas nuevas en el resumen de Inicio. Ensayo en PostgreSQL con bordes de mes y horizonte.
 4. **F1b-4 Interfaz.**
    - **Gastos:**
@@ -285,7 +285,7 @@ Todos los endpoints son privados, con `Cache-Control: private, no-store`, valida
      - chip «Fijos» y etiqueta «Fijo» en la lista;
      - acción «Programar pago».
    - **Inicio:** las filas de atención nuevas.
-   - **Ambas:** llaman a `refresh` al abrirse.
+   - **Ambas:** llaman a `sync` al abrirse.
 5. **F1b-5 Despliegue.** Runbook (consulta previa, volcado manual, migración, API y luego frontend, prueba de humo) y actualización de `estado.md`.
 
 Recordatorios por WhatsApp (F3) y soportes (F1c) quedan fuera.
@@ -302,4 +302,36 @@ Tomadas el 25/11/2026 sobre las preguntas de la propuesta.
 | F1b-4 | Frecuencias | Semanal, mensual o anual, cada 1 a 12 (cubre quincenal, bimestral, trimestral y semestral). «Dos días fijos al mes» se registra como dos gastos fijos mensuales. |
 | F1b-5 | Editar un gasto fijo | Cambian los pagos pendientes con vencimiento posterior a hoy que no se hayan editado a mano (`customizedAt` nulo), además de las ocurrencias que se generen después. Los pagados, los cancelados y los editados a mano no cambian. |
 
-Sigue abierta la tarjeta «Variables» de la sección 8 (propuesta): se implementa en F1b-3 y F1b-4 salvo que el dueño diga lo contrario.
+La tarjeta «Variables» de la sección 8 queda aprobada: gastos vigentes del mes sin `scheduledPaymentId`. No hay frecuencia «quincenal»: la quincena (el 15 y el último día) son dos gastos fijos mensuales, con anclas el 15 y el 31.
+
+## 15. Correcciones del planificador
+
+Incorporadas el 25/11/2026. Prevalecen sobre cualquier texto anterior de este documento.
+
+**A. Las lecturas nunca escriben.**
+- `GET /api/expenses/overview` y `GET /api/dashboard/summary` siguen siendo de solo lectura; `summary` mantiene su transacción `READ ONLY`.
+- La generación de ocurrencias es la acción explícita `POST /api/expenses/scheduled/sync`. Gastos e Inicio la llaman antes de leer, y también se ejecuta dentro de crear, editar y reanudar un gasto fijo.
+
+**B. Generación idempotente y segura en paralelo.**
+- La base de datos impone la unicidad de las ocurrencias con un índice único parcial `(templateId, occurrenceDate) WHERE status <> 'CANCELLED'`.
+- La inserción ignora duplicados (`ON CONFLICT DO NOTHING`) y corre dentro del bloqueo de la cuenta: `users` `FOR SHARE` y `pg_advisory_xact_lock(hashtext('expenses-v1'), hashtext(ownerId))`.
+- Dos pestañas o reintentos no crean pagos duplicados ni errores visibles.
+- La clave es `occurrenceDate` y no `dueDate`. `dueDate` se puede reprogramar y `occurrenceDate` no: con la clave en `dueDate`, reprogramar un pago permitiría generar otra vez la fecha original.
+
+**C. Si `sync` falla, la página no se bloquea.** Gastos e Inicio muestran lo que ya existe y un aviso discreto («No se pudieron actualizar los pagos programados»), y siguen leyendo con normalidad.
+
+### Rutas finales (sustituyen las de la sección 9)
+
+| Método y ruta | Uso |
+| --- | --- |
+| `POST /api/expenses/scheduled/sync` | Sin cuerpo. Genera las ocurrencias hasta el horizonte y devuelve `{generated, pendingCount}`. |
+| `GET /api/expenses/scheduled?status&kind&from&to` | Programados por `dueDate` ascendente. `status`: `PENDING` (por defecto), `PAID`, `CANCELLED` o `all`. `kind`: `fixed`, `single` o `all`. |
+| `POST /api/expenses/scheduled` | Pago único. |
+| `PATCH /api/expenses/scheduled/:id` | Editar o reprogramar; solo `PENDING`. |
+| `POST /api/expenses/scheduled/:id/pay` | Marcar pagado (sección 7). |
+| `POST /api/expenses/scheduled/:id/cancel` | Omitir (ocurrencia) o cancelar (pago único); solo `PENDING`. |
+| `GET /api/expenses/recurring?status` | Gastos fijos con su próxima fecha. |
+| `POST /api/expenses/recurring` | Crear un gasto fijo; genera hasta el horizonte. |
+| `PATCH /api/expenses/recurring/:id` | Editar (sección 6); solo `ACTIVE` o `PAUSED`. |
+| `POST /api/expenses/recurring/:id/pause`, `…/resume`, `…/end` | Cambios de estado. |
+| `GET /api/expenses?…&origin=fixed` (F1a, parámetro opcional nuevo) | Solo los gastos creados al pagar ocurrencias de gastos fijos (chip «Fijos»). La vista de cada gasto añade `scheduledPaymentId` y `fixed`. |
