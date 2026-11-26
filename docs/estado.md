@@ -25,14 +25,15 @@ Rutas de la API bajo `/api`. Las tablas usan el nombre SQL real: los modelos de 
 | Ventas presenciales: borrador, confirmación, entrega, cancelación, devoluciones parciales | `"Sale"`, `"SaleLine"`, `"SaleOperation"`, `"SaleReturn"`, `"SaleReturnLine"` y referencias en `inventory_movements` | `/sales` | `/dashboard/ventas` |
 | Clientes e historial de ventas por cliente | `customers`, `"Sale".customerId` y columnas `customer*Snapshot` | `/customers` (incluye `archive`, `reactivate`, `/:id/sales`) | Dentro de `/dashboard/ventas` |
 | Conversión de pedido a venta y revisión del cliente del pedido | `"Sale".sourceOrderId`, `orders.customerId`, `order_customer_operations` | `/orders/:id/convert-to-sale`, `customer-preview`, `customer-confirm`, `customer-matches` | Panel de pedidos |
-| Gastos operativos F1a: categorías y gastos puntuales (rama `f1-expenses`, integrada con `main` y sin publicar) | `expense_categories`, `expenses`, `expense_operations`, `expense_events` y `recurring_expense_templates` (creada, sin uso) | `/expense-categories` (incluye `seed`, `archive`, `reactivate`), `/expenses` (incluye `summary`, `overview`, `:id/void`) | `/dashboard/gastos` (menú «Dinero») y tarjeta en Inicio |
+| Gastos operativos F1a: categorías y gastos puntuales (en `main`; migración aplicada según el responsable) | `expense_categories`, `expenses`, `expense_operations`, `expense_events` y `recurring_expense_templates` | `/expense-categories` (incluye `seed`, `archive`, `reactivate`), `/expenses` (incluye `summary`, `overview`, `:id/void`) | `/dashboard/gastos` (menú «Dinero») y tarjeta en Inicio |
+| Gastos F1b: gastos fijos y pagos programados (rama local `f1b-scheduled`, sin publicar) | `scheduled_expense_payments`, `expenses."scheduledPaymentId"` y uso de `recurring_expense_templates` | `/expenses/scheduled` (incluye `sync`, `:id/pay`, `:id/cancel`), `/expenses/recurring` (incluye `pause`, `resume`, `end`) | Tarjetas, chip «Fijos» y tarjeta «Gastos fijos» en `/dashboard/gastos`; filas de pagos en «Requiere tu atención» de Inicio |
 | Compatibilidades privadas por artículo (incremento 1) | `device_brands`, `device_brand_names`, `device_models`, `device_model_names`, `compatibility_sets`, `item_compatibilities`, `compatibility_operations`, `compatibility_events` | `/device-brands`, `/device-models`, `/inventory/items/:id/compatibilities`, `compatibility-events` | Bloque «Compatibilidades» en `/dashboard/inventario` |
 
 Contratos por módulo: [inventario](inventory.md), [hoja](inventory-sheet-contract.md), [ventas](sales-contract.md), [historial de clientes](customer-sales-history.md), [compatibilidades](inventory-compatibilities-design.md), [gastos](expenses-contract.md), [cotizaciones](quotations.md), [importación](product-import.md) y [cuentas](accounts.md).
 
 Reglas vigentes sin cambio: los pedidos del catálogo no reservan ni descuentan stock; solo confirmar una venta descuenta existencias. Los precios se calculan en el servidor. Las ventas y los pedidos conservan instantáneas.
 
-No existe ningún modelo, ruta ni pantalla de **pagos/cartera** ni **servicio técnico**. De **gastos** solo existe F1a (sin plantillas recurrentes, fotos, proveedores, exportación ni informes), en la rama `f1-expenses`.
+No existe ningún modelo, ruta ni pantalla de **pagos/cartera** ni **servicio técnico**. De **gastos** existe F1a en `main` y F1b (gastos fijos y pagos programados) en la rama local `f1b-scheduled`. No hay soportes (fotos, F1c), proveedores como entidad, exportación, informes ni avisos por WhatsApp (F3).
 
 ## Migraciones
 
@@ -45,7 +46,8 @@ No existe ningún modelo, ruta ni pantalla de **pagos/cartera** ni **servicio t�
   No se verificó desde esta sesión.
 - **Aplicada en producción según el responsable**, con `main` publicado en `b177f12`: `20261124210000_sale_partial_returns_and_movement_roles`. No se verificó desde esta sesión.
   Contiene el CHECK de rol frente a tipo, el índice y los triggers de devoluciones acumuladas y de transiciones. Se aplicó con el [anexo F0d del runbook](despliegue-2026-11-ventas.md#anexo-f0d-reglas-e-interfaz-de-ventas-20261124210000).
-- **Preparada en la rama local `f1-expenses`, sin aplicar:** `20261125000000_operating_expenses` (5 tablas, 5 enum, 10 CHECK, 3 funciones y 5 triggers; solo añade). Procedimiento: [runbook de Gastos F1a](despliegue-f1a-gastos.md), empezando por [la consulta de solo lectura](sql/verify-expenses-preflight.sql).
+- **Aplicada en producción según el responsable (25/11/2026):** `20261125000000_operating_expenses` (Gastos F1a). No se verificó desde esta sesión.
+- **Preparada en la rama local `f1b-scheduled`, sin aplicar:** `20261126000000_scheduled_expense_payments` (1 tabla, 1 enum, 1 columna en `expenses`, 3 CHECK, 2 índices únicos parciales, 2 funciones y 4 triggers; solo añade). Hay 41 migraciones en esa rama. Procedimiento: [runbook de F1b](despliegue-f1b.md), empezando por [la consulta de solo lectura](sql/verify-scheduled-preflight.sql).
 - `20261124000000_private_item_compatibilities` está confirmada en Git. **En este corte no se ha verificado si ya se aplicó en algún entorno.**
 - Tres migraciones tienen nombres poco descriptivos generados con `prisma migrate dev`: `20261120194535_ultima` (crea ventas), `20261120204832_new` (imágenes y publicaciones de inventario) y `20261121004537_n` (`"Sale".sourceOrderId`). No deben renombrarse si ya están aplicadas.
 
@@ -86,11 +88,17 @@ Gastos F1a (rama `f1-expenses`, 24/11/2026, hasta las 20:40 UTC−5):
 
 No existe un script `typecheck` independiente en ninguno de los dos paquetes; los builds hacen la comprobación de tipos. En este corte no se ejecutaron los scripts de navegador, E2E ni PostgreSQL. El 24 de noviembre, durante el cierre de compatibilidades, pasaron los navegadores de compatibilidades, inventario, ventas por cliente y clientes de pedidos. El de inventario solo pasa si se ejecuta desde una ruta con `C:\` en mayúscula; con `c:\` en minúscula, webpack duplica módulos de Next.
 
+Gastos F1b (rama `f1b-scheduled`, 26/11/2026):
+- API: `npm.cmd test` correcto (385/385) y `npm.cmd run build` correcto. No existe script `lint`.
+- PostgreSQL en clúster local desechable: `test:scheduled-postgres` (esquema, API y cifras sobre 41 migraciones, sin deriva), `test:expenses-postgres` (15 etapas) y `test:dashboard-postgres`, correctos.
+- Frontend: `npm.cmd test`, `npm.cmd run lint` (0 errores, las 4 advertencias de siempre), `tsc --noEmit` y `npm.cmd run build`, correctos.
+- Navegador: `test:expenses-browser` (F1a y F1b), `test:dashboard-browser` y `test:panel-browser`, correctos.
+
 ## Pendientes vigentes
 
 - **Ventas F0d (reglas e interfaz):** publicadas en `main` (`b177f12`) con su migración aplicada, según el responsable. No se verificó desde esta sesión.
 - **Venta de prueba entregada y después cancelada (`29b2435…`)**, de la prueba en producción del 24/11/2026: no se corrige. La consulta previa la muestra como diagnóstico.
-- **Gastos F1a (rama `f1-expenses`, sin publicar):** la rama ya incluye `main` (`b24c054`), el módulo está activo en el menú y en el resumen de Inicio, y la página tiene el diseño del panel ([docs/diseno](diseno/README.md#página-de-gastos-dashboardgastos)). Falta aplicar la migración y publicar según el [runbook](despliegue-f1a-gastos.md): **migración antes del push**, porque el resumen de Inicio ya lee `expenses`. Fuera de F1a: plantillas recurrentes (tabla creada, sin endpoints ni UI), fotos, proveedor como entidad, exportación e informes. `openapi.json` incluye `GET /expenses/overview`, pero todavía no el resto de endpoints de F1a.
+- **Gastos F1b (rama local `f1b-scheduled`, sin publicar):** falta aplicar la migración y publicar según el [runbook](despliegue-f1b.md). **La migración va antes del push**, porque la API nueva lee `scheduledPaymentId` en todos los gastos y el resumen de Inicio cuenta los pagos programados. Fuera de F1b: soportes (F1c), avisos por WhatsApp (F3) y la frecuencia «quincenal» (una quincena son dos fijos mensuales). `openapi.json` incluye las rutas de F1b y `GET /expenses/overview`, pero todavía no el resto de endpoints de F1a.
 - **Integridad de ventas:** siguen sin respaldo en base de datos las sumas de líneas frente a totales y la inmutabilidad de líneas confirmadas.
 - **Compatibilidades:** su migración se instala sin errores dentro de la cadena completa (ensayo de ventas del 24/11/2026), pero falta probar en PostgreSQL aislado sus restricciones, triggers diferidos y concurrencia. Los incrementos 2 a 5 del diseño no están aprobados. La API todavía no devuelve el ID de la relación existente cuando detecta un duplicado.
 - **Ventas:** el listado devuelve como máximo 50 ventas, sin paginación ni filtros. No existe acción para descartar un borrador. Sigue sin retirarse la venta sintética `fb13793c` desplegada ([detalle](customer-sales-history.md)).
