@@ -152,3 +152,47 @@ Referencia visual: [`gastos.png`](gastos.png). Se implementa con lo que F1a perm
 **Móvil:** las cifras se apilan, la lista ocupa todo el ancho y «Registrar gasto» queda fijo sobre la barra inferior, respetando el área segura.
 
 **Pruebas:** `npm.cmd run test:expenses-browser` (flujo completo de F1a sobre la pantalla nueva) y `scripts/verify-expenses-ui.mjs` (helpers, validador de `overview` y contraste de las pastillas).
+
+## Tema del panel (`.vy-theme`) y campo de monto
+
+**Tema.** Los componentes compartidos (`Button`, `Input`, `Dialog`, `AlertDialog` y el `select` de Ventas) leen variables como `--color-primary`, `--field-focus` o `--border-normal`. La clase `.vy-theme` (`app/globals.css`) las redefine con la paleta nueva solo donde se aplica, de modo que la variante por defecto de `Button` no cambia y las pantallas sin rediseñar conservan el verde.
+
+| Variable | Con `.vy-theme` |
+| --- | --- |
+| `--color-primary` / `--color-primary-hover` | `--vy-blue-600` / `--vy-blue-700` (botón principal) |
+| `--field-focus`, `--field-focus-ring` | `--vy-blue-600` y `rgb(4 80 229 / 25%)` (anillo de foco) |
+| `--field-border`, `--border-strong` | `--vy-field-border` (`#8592AD`, 3,13:1) |
+| `--border-normal` | `#A9B5CC` (borde gris azulado de los botones secundarios) |
+| `--border-subtle`, `--surface-sunken` | `--vy-border`, `--vy-surface-soft` |
+| `--text-primary`, `--text-secondary`, `--text-muted` | `--vy-text`, `--vy-text-muted`, `--vy-text-subtle` |
+| `--status-error-text` / `--status-error-surface` | `#B42318` / `#FEF3F2` (acciones destructivas: blanco sobre rojo, 6,0:1) |
+| `--brand-emerald`, `--brand-forest` | `--vy-blue-600`, `--vy-text` (por si un componente los usa directamente) |
+
+**Dónde se aplica:**
+- en el `<main>` de Gastos y en sus diálogos propios;
+- en `AlertDialog` y `Dialog` con `theme="panel"`, una prop opcional que hace falta porque esos diálogos se pintan en un portal fuera de la página. Sin la prop no cambian.
+
+`test:expenses-browser` comprueba con estilos calculados que no queda ningún color de la paleta verde antigua en la página ni en los diálogos de registrar, detalle, reclasificar, anular, categorías y archivar. Antes inserta un elemento verde de control que el escaneo debe detectar.
+
+**Siguen con el verde (sin rediseñar):**
+- Catálogos (lista, crear y espacio de trabajo: productos, pedidos, reseñas, banners y ajustes del catálogo);
+- Inventario (incluidas hoja y lotes);
+- Vender (ventas e historial por cliente);
+- Ajustes/Cuenta (cierre de cuenta) y el enlace «Volver a catálogos»;
+- el aviso de verificación de correo, común a todo el panel, también encima de Gastos;
+- Admin;
+- las páginas públicas (inicio y catálogo).
+
+**Campo de monto («Registrar gasto» y el reemplazo al anular).** Muestra separadores de miles colombianos mientras se escribe (`12.345`, `1.250.000`) con `formatAmountInput` (`lib/expenses-ui.mjs`):
+- Solo admite dígitos. Al pegar, «12.345» y «12345» dan lo mismo.
+- Una coma decimal (`1,5`) se deja tal cual para que la validación la rechace en lugar de adivinar.
+- El cursor queda tras el mismo dígito al editar en medio, y borrar un punto borra el dígito vecino.
+- La API recibe el mismo entero sin separadores que antes, y siguen el límite de $ 1.000.000.000.000 y el nombre accesible «Monto en pesos».
+
+**Inicio: rejilla de cifras.** Las columnas siguen a las tarjetas visibles:
+
+| Ancho | Con 2 tarjetas | Con 3 tarjetas |
+| --- | --- | --- |
+| Móvil | 1 columna | 1 columna |
+| Tablet (≥ `sm`) | 2 columnas | 2 columnas (2 + 1) |
+| Escritorio (≥ `lg`) | 2 en una fila | 3 en una fila |

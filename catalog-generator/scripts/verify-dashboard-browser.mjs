@@ -107,6 +107,19 @@ try {
     assert.equal(await evaluate(`[...document.querySelectorAll('section[aria-labelledby="quick-actions"] a')].map(a=>a.getAttribute('href')).join()`), "/dashboard/gastos,/dashboard/inventario");
     checks.push("modules.expenses=true with Gastos enabled: violet «Gastos del mes» card ($ 980.000, igual que el mes anterior), three figure cards, «Registrar gasto» quick action");
 
+    // Card grid follows the visible cards: 3 in one row from lg, 2 columns on tablet, 1 on mobile; 2 cards side by side.
+    const cardRows = async () => { const tops = await evaluate(`[...document.querySelectorAll('section[aria-labelledby="figures-title"] article')].map(a=>Math.round(a.getBoundingClientRect().top))`); return tops.map(t => tops.filter(x => Math.abs(x - t) <= 2).length); };
+    for (const [width, expected] of [[1440, [3, 3, 3]], [1024, [3, 3, 3]], [768, [2, 2, 1]], [375, [1, 1, 1]]]) {
+      await viewport(width); await waitText("Gastos del mes");
+      assert.deepEqual(await cardRows(), expected, `three cards at ${width}px`);
+      assert.ok(await evaluate(`document.documentElement.scrollWidth <= document.documentElement.clientWidth`), `no overflow with three cards at ${width}px`);
+    }
+    scenario = days => summary(days);
+    await viewport(1440); await open(); await waitText("Utilidad del mes");
+    for (const [width, expected] of [[1440, [2, 2]], [1024, [2, 2]], [768, [2, 2]], [375, [1, 1]]]) { await viewport(width); assert.deepEqual(await cardRows(), expected, `two cards at ${width}px`); }
+    await viewport(1440);
+    checks.push("Figure grid: three cards in one row at 1440 and 1024 px, 2+1 at 768 px, stacked at 375 px; two cards side by side from 768 px");
+
     // Zero attention rows, negative profit, no previous data.
     scenario = days => summary(days, base => ({ ...base, attention: { lowStockCount: 0, outOfStockCount: 0, pendingOrdersCount: 0 },
       month: { ...base.month, salesWithoutCostCount: 0, estimatedProfit: "-5000", previousMonth: { salesTotal: "0", expensesTotal: null, estimatedProfit: "0" } } }));

@@ -19,7 +19,7 @@ const fieldLabels: Record<string, string> = { categoryName: "Categoría", descri
 function EventLine({ event }: { event: ExpenseEvent }) {
   const changes = event.eventType === "RECLASSIFIED" && event.before
     ? Object.keys(fieldLabels).filter(k => event.before![k] !== event.after[k]).map(k => `${fieldLabels[k]}: «${String(event.before![k] ?? "—")}» → «${String(event.after[k] ?? "—")}»`) : [];
-  return <li className="rounded-xl border border-[#e2e8e0] p-3 text-sm">
+  return <li className="rounded-xl border border-[var(--vy-border)] p-3 text-sm">
     <p className="font-medium">{EVENT_LABELS[event.eventType] ?? event.eventType} · {formatDate(event.occurredAt)}</p>
     {changes.map(c => <p key={c} className="break-words">{c}</p>)}
     {event.eventType === "VOIDED" && typeof event.after.voidReason === "string" && <p className="break-words">Motivo: {event.after.voidReason}</p>}
@@ -56,7 +56,7 @@ export default function ExpenseDetail({ expenseId, categories, today, onChanged,
   const reload = () => { clearFailure(); setMessage(""); setRevision(v => v + 1); onChanged(); };
   const done = (text: string) => { setDialog(null); setReason(""); setReplace(false); setMessage(text); setRevision(v => v + 1); onChanged(); };
 
-  if (!data) return <section aria-label="Detalle del gasto" className="space-y-3 rounded-2xl border border-[#dce4dc] bg-white p-5">
+  if (!data) return <section aria-label="Detalle del gasto" className="space-y-3 rounded-2xl border border-[var(--vy-border)] bg-white p-5">
     {loadError ? <FailureNotice failure={{ ...loadError, action: loadError.action === "login" ? "login" : "reload" }} busy={false} onReload={reload} reloadLabel="Reintentar cargar el gasto" /> : <p role="status">Cargando gasto…</p>}
     <Button variant="secondary" onClick={onClose}>Volver al listado</Button>
   </section>;
@@ -87,7 +87,7 @@ export default function ExpenseDetail({ expenseId, categories, today, onChanged,
     ["Anulado", expense.voidedAt ? `${formatDate(expense.voidedAt)} · ${expense.voidReason}` : null],
   ];
 
-  return <section aria-labelledby={`expense-${expense.id}`} data-expense-id={expense.id} data-expense-version={expense.version} className="space-y-5 rounded-2xl border border-[#dce4dc] bg-white p-5">
+  return <section aria-labelledby={`expense-${expense.id}`} data-expense-id={expense.id} data-expense-version={expense.version} className="space-y-5 rounded-2xl border border-[var(--vy-border)] bg-white p-5">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0 space-y-1">
         <h2 id={`expense-${expense.id}`} ref={heading} tabIndex={-1} className="break-words text-xl font-semibold focus-visible:outline-2 focus-visible:outline-offset-4">{expense.description}</h2>
@@ -96,7 +96,7 @@ export default function ExpenseDetail({ expenseId, categories, today, onChanged,
       <Button variant="secondary" disabled={locked} onClick={onClose}>Volver al listado</Button>
     </div>
     <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-      {rows.filter(([, v]) => v).map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-[#52675b]">{label}</dt><dd className="break-words font-medium">{value}</dd></div>)}
+      {rows.filter(([, v]) => v).map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-[var(--vy-text-muted)]">{label}</dt><dd className="break-words font-medium">{value}</dd></div>)}
     </dl>
     {expense.replacedByExpenseId && <Button variant="secondary" onClick={() => onOpen(expense.replacedByExpenseId!)}>Ver el gasto que lo reemplaza</Button>}
     {expense.replacesExpenseId && <Button variant="secondary" onClick={() => onOpen(expense.replacesExpenseId!)}>Ver el gasto anulado que reemplaza</Button>}
@@ -106,15 +106,15 @@ export default function ExpenseDetail({ expenseId, categories, today, onChanged,
     {confirmed ? <div className="flex flex-wrap gap-2">
       <Button variant="secondary" disabled={locked} onClick={openReclassify}>Reclasificar</Button>
       <Button variant="destructive" disabled={locked} onClick={() => setDialog("void")}>Anular gasto</Button>
-    </div> : <p className="text-sm text-[#52675b]">Este gasto es de solo lectura.</p>}
-    <p className="text-xs text-[#52675b]">Para corregir monto, fecha, medio de pago, proveedor o referencia, anula el gasto y registra el correcto.</p>
+    </div> : <p className="text-sm text-[var(--vy-text-muted)]">Este gasto es de solo lectura.</p>}
+    <p className="text-xs text-[var(--vy-text-muted)]">Para corregir monto, fecha, medio de pago, proveedor o referencia, anula el gasto y registra el correcto.</p>
 
     <section aria-labelledby={`history-${expense.id}`} className="space-y-2">
       <h3 id={`history-${expense.id}`} className="text-lg font-semibold">Historial</h3>
       <ol className="space-y-2">{events.map(event => <EventLine key={event.id} event={event} />)}</ol>
     </section>
 
-    <AlertDialog open={dialog === "reclassify"} onOpenChange={open => { if (!open) setDialog(null); }} title="Reclasificar gasto" description="Cambia la categoría, la descripción o la nota del medio de pago. El monto, la fecha y el medio no cambian.">
+    <AlertDialog theme="panel" open={dialog === "reclassify"} onOpenChange={open => { if (!open) setDialog(null); }} title="Reclasificar gasto" description="Cambia la categoría, la descripción o la nota del medio de pago. El monto, la fecha y el medio no cambian.">
       <div className="mt-4 space-y-3">
         <label className="grid gap-1 text-sm font-medium">Categoría<select className={selectClass} value={draft.categoryId} onChange={e => setDraft(d => ({ ...d, categoryId: e.target.value }))}>
           {categories.filter(c => !c.archivedAt || c.id === expense.categoryId).map(c => <option key={c.id} value={c.id} disabled={Boolean(c.archivedAt)}>{c.name}{c.archivedAt ? " (archivada)" : ""}</option>)}
@@ -125,10 +125,10 @@ export default function ExpenseDetail({ expenseId, categories, today, onChanged,
       <DialogActions><AlertDialogCancel label="Volver" /><Button disabled={!draft.description.trim() || (expense.paymentMethod === "OTHER" && draft.note.trim().length < 3)} onClick={reclassify}>Guardar reclasificación</Button></DialogActions>
     </AlertDialog>
 
-    <AlertDialog open={dialog === "void"} onOpenChange={open => { if (!open) setDialog(null); }} title="¿Anular el gasto?" description="Deja de contar en los totales y queda en el historial. No se puede deshacer.">
+    <AlertDialog theme="panel" open={dialog === "void"} onOpenChange={open => { if (!open) setDialog(null); }} title="¿Anular el gasto?" description="Deja de contar en los totales y queda en el historial. No se puede deshacer.">
       <label className="mt-4 grid gap-1 text-sm font-medium">Motivo de la anulación (obligatorio)<Textarea maxLength={300} value={reason} onChange={e => setReason(e.target.value)} /></label>
       <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" className="size-4" checked={replace} onChange={e => setReplace(e.target.checked)} />Registrar el gasto correcto al anular</label>
-      {replace ? <div className="mt-3 rounded-xl border border-[#e2e8e0] p-3">
+      {replace ? <div className="mt-3 rounded-xl border border-[var(--vy-border)] p-3">
         <ExpenseForm idPrefix={`replace-${expense.id}`} categories={categories} today={today} busy={locked} disabled={reason.trim().length < 3} submitLabel="Anular y registrar el correcto"
           initial={{ expenseDate: expense.expenseDate, amount: expense.amount ?? "", categoryId: expense.categoryArchived ? "" : expense.categoryId, paymentMethod: expense.paymentMethod,
             paymentMethodNote: expense.paymentMethodNote ?? "", paymentReference: expense.paymentReference ?? "", description: expense.description, supplierName: expense.supplierName ?? "" }}

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { CATEGORY_STYLES, dayHeading, groupByDay, matchesSearch, monthLabel, monthName, parseExpenseOverview, PAYMENT_TONES, shiftMonth } from "../lib/expenses-ui.mjs";
+import { CATEGORY_STYLES, EXPENSE_STATUS_TONES, formatAmountInput, dayHeading, groupByDay, matchesSearch, monthLabel, monthName, parseExpenseOverview, PAYMENT_TONES, shiftMonth } from "../lib/expenses-ui.mjs";
 import { bogotaToday, describeExpenseFailure, EXPENSE_STATUS_LABELS, formatCop, formatExpenseDate, minExpenseDate, monthRange, parseCategories, parseExpenseDetail,
   parseExpensePage, parseSummary, PAYMENT_LABELS, PAYMENT_METHODS, possibleDuplicate, previousMonthRange, validateExpenseForm, validRange, yearRange } from "../lib/expenses-ui.mjs";
 
@@ -107,5 +107,25 @@ const L = h => { const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 
 const ratio = classes => { const [bg, fg] = [classes.match(/bg-\[(#[0-9A-Fa-f]{6})\]/)[1], classes.match(/text-\[(#[0-9A-Fa-f]{6})\]/)[1]]; const [a, b] = [L(bg), L(fg)]; return (Math.max(a, b) + .05) / (Math.min(a, b) + .05); };
 for (const [method, classes] of Object.entries(PAYMENT_TONES)) assert.ok(ratio(classes) >= 4.5, `${method} pill contrast ${ratio(classes).toFixed(2)}`);
 for (const [key, style] of Object.entries(CATEGORY_STYLES)) assert.ok(ratio(style.tone) >= 3, `${key} icon contrast`);
+
+// Amount field: thousands separators while typing, caret kept, paste with or without dots, separators deleted with their digit.
+const type = text => [...text].reduce((state, ch) => formatAmountInput(state.value.slice(0, state.caret) + ch + state.value.slice(state.caret), state.caret + 1, state.value), { value: "", caret: 0 });
+assert.deepEqual(type("1250000"), { value: "1.250.000", caret: 9 });
+assert.deepEqual(type("12345"), { value: "12.345", caret: 6 });
+assert.deepEqual(formatAmountInput("1.50.000", 2, "1.250.000", "deleteContentBackward"), { value: "150.000", caret: 1 }, "backspace in the middle keeps the caret");
+assert.deepEqual(formatAmountInput("1250.000", 1, "1.250.000", "deleteContentBackward"), { value: "250.000", caret: 0 }, "backspace over a dot deletes the digit before it");
+assert.deepEqual(formatAmountInput("1.250000", 5, "1.250.000", "deleteContentForward"), { value: "125.000", caret: 5 }, "delete over a dot deletes the digit after it");
+assert.deepEqual(formatAmountInput("1.2950.000", 4, "1.250.000", "insertText"), { value: "12.950.000", caret: 4 }, "typing in the middle keeps the caret after the new digit");
+assert.equal(formatAmountInput("12.345", 6).value, "12.345", "paste with dots"); assert.equal(formatAmountInput("12345", 5).value, "12.345", "paste without dots");
+assert.equal(formatAmountInput(" 1 250 000 ", 11).value, "1.250.000", "spaces as separators");
+assert.equal(formatAmountInput("1000000000000", 13).value, "1.000.000.000.000"); assert.equal(formatAmountInput("9007199254740993", 16).value, "9.007.199.254.740.993");
+assert.deepEqual(formatAmountInput("", 0), { value: "", caret: 0 }); assert.equal(formatAmountInput("0", 1).value, "0"); assert.equal(formatAmountInput("0050", 4).value, "50");
+assert.equal(formatAmountInput("12a3", 4).value, "123", "only digits");
+assert.equal(formatAmountInput("1,5", 3).value, "1,5", "a decimal comma is left for validation to reject");
+for (const amount of ["1.250.000", "12.345", "1.000.000.000.000"]) assert.deepEqual(validateExpenseForm(form({ amount }), today).errors, [], amount);
+assert.equal(validateExpenseForm(form({ amount: "1.250.000" }), today).payload.amount, "1250000", "the API still receives digits only");
+assert.ok(validateExpenseForm(form({ amount: "1.000.000.000.001" }), today).errors.length > 0, "limit kept");
+assert.ok(validateExpenseForm(form({ amount: "1,5" }), today).errors.some(e => e.includes("monto")));
+for (const [status, classes] of Object.entries(EXPENSE_STATUS_TONES)) assert.ok(ratio(classes) >= 4.5, `${status} badge contrast`);
 
 console.log("verify-expenses-ui: ok");

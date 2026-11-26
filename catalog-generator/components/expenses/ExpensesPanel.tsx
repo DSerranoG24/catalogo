@@ -23,14 +23,14 @@ const ICONS: Record<string, LucideIcon> = { home: Home, zap: Zap, wifi: Wifi, tr
 // Searching loads the rest of the month's pages (25 each) so results are complete, up to this many pages.
 const SEARCH_PAGE_LIMIT = 20;
 const card = "min-w-0 rounded-2xl border border-[var(--vy-border)] bg-white p-5 shadow-[0_10px_30px_-24px_rgba(1,28,79,0.5)]";
-const focus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#6D28D9]";
+const focus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--vy-blue-600)]";
 
 /** Modal used for registering, the expense detail and categories (Radix: focus trap, Escape, focus return). */
 function Sheet({ open, onOpenChange, title, description, children }: { open: boolean; onOpenChange: (open: boolean) => void; title: string; description?: string; children: ReactNode }) {
   return <Dialog.Root open={open} onOpenChange={onOpenChange}>
     <Dialog.Portal>
-      <Dialog.Overlay className="fixed inset-0 z-50 bg-[#011C4F]/40" />
-      <Dialog.Content {...(description ? {} : { "aria-describedby": undefined })} className="fixed inset-x-0 bottom-0 z-50 max-h-[92vh] overflow-y-auto rounded-t-3xl bg-white p-5 text-[var(--vy-text)] shadow-[0_-20px_60px_-30px_rgba(1,28,79,0.5)] sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[min(42rem,calc(100vw-2rem))] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl sm:p-7"
+      <Dialog.Overlay className="vy-theme fixed inset-0 z-50 bg-[#011C4F]/40" />
+      <Dialog.Content {...(description ? {} : { "aria-describedby": undefined })} className="vy-theme fixed inset-x-0 bottom-0 z-50 max-h-[92vh] overflow-y-auto rounded-t-3xl bg-white p-5 text-[var(--vy-text)] shadow-[0_-20px_60px_-30px_rgba(1,28,79,0.5)] sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[min(42rem,calc(100vw-2rem))] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl sm:p-7"
         style={{ paddingBottom: "calc(1.25rem + env(safe-area-inset-bottom))" }}>
         <div className="mb-4 flex items-start justify-between gap-3">
           <div><Dialog.Title className="text-xl font-semibold">{title}</Dialog.Title>{description && <Dialog.Description className="mt-1 text-sm text-[var(--vy-text-muted)]">{description}</Dialog.Description>}</div>
@@ -143,7 +143,7 @@ export default function ExpensesPanel() {
     className={`min-h-12 items-center gap-2 rounded-xl bg-[var(--vy-blue-600)] px-5 font-semibold text-white shadow-[0_14px_28px_-14px_rgba(4,80,229,0.9)] transition hover:bg-[var(--vy-blue-700)] disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--vy-blue-600)] ${extra}`}>
     <Plus aria-hidden="true" className="size-5" />Registrar gasto</button>;
 
-  return <main className="mx-auto w-full max-w-6xl space-y-6 px-5 pb-28 pt-6 sm:px-8 lg:pb-8 lg:pt-4">
+  return <main className="vy-theme mx-auto w-full max-w-6xl space-y-6 px-5 pb-28 pt-6 sm:px-8 lg:pb-8 lg:pt-4">
     <div className="flex flex-wrap items-center justify-between gap-4">
       <div className="flex items-center gap-4">
         <span aria-hidden="true" className="grid size-16 place-items-center rounded-2xl bg-[linear-gradient(135deg,#F3EEFF,#E4DAFE)] text-[#6D28D9] shadow-[0_12px_24px_-16px_rgba(109,40,217,0.7)]"><ReceiptText className="size-8" /></span>
@@ -198,7 +198,7 @@ export default function ExpensesPanel() {
         <span className="sr-only">Buscar gasto, categoría o nota</span>
         <Search aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-[var(--vy-text-muted)]" />
         <input id="expense-search" type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar gasto, categoría o nota"
-          className="min-h-11 w-full rounded-xl border border-[var(--vy-field-border)] bg-white py-2 pl-12 pr-4 text-base text-[var(--vy-text)] outline-none placeholder:text-[var(--vy-text-subtle)] focus:border-[#6D28D9] focus:ring-4 focus:ring-[#6D28D9]/20" />
+          className="min-h-11 w-full rounded-xl border border-[var(--vy-field-border)] bg-white py-2 pl-12 pr-4 text-base text-[var(--vy-text)] outline-none placeholder:text-[var(--vy-text-subtle)] focus:border-[var(--vy-blue-600)] focus:ring-4 focus:ring-[#0450E5]/25" />
       </label>
     </div>
 

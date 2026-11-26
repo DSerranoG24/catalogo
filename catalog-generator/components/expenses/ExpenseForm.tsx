@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { selectClass } from "@/components/sales/CustomerPicker";
-import { minExpenseDate, PAYMENT_LABELS, PAYMENT_METHODS, possibleDuplicate, validateExpenseForm,
+import { formatAmountInput, minExpenseDate, PAYMENT_LABELS, PAYMENT_METHODS, possibleDuplicate, validateExpenseForm,
   type Expense, type ExpenseCategory, type ExpenseForm as Form, type ExpensePayload } from "@/lib/expenses-ui.mjs";
 
 export const emptyExpenseForm = (today: string): Form => ({ expenseDate: today, amount: "", categoryId: "", paymentMethod: "CASH", paymentMethodNote: "", paymentReference: "", description: "", supplierName: "" });
@@ -14,7 +14,14 @@ export default function ExpenseForm({ idPrefix, categories, today, initial, rece
   idPrefix: string; categories: ExpenseCategory[]; today: string; initial?: Form; recent?: Expense[]; busy: boolean; disabled?: boolean; submitLabel: string;
   onSubmit: (payload: ExpensePayload, reset: () => void) => void;
 }) {
-  const [form, setForm] = useState<Form>(initial ?? emptyExpenseForm(today));
+  const [form, setForm] = useState<Form>(() => initial ? { ...initial, amount: formatAmountInput(initial.amount, 0).value } : emptyExpenseForm(today));
+  // Thousands separators while typing: keep the caret after the same digit (formatAmountInput computes it).
+  const amountRef = useRef<HTMLInputElement>(null), caret = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const input = amountRef.current, position = caret.current;
+    caret.current = null;
+    if (input && position !== null && document.activeElement === input) input.setSelectionRange(position, position);
+  });
   const [errors, setErrors] = useState<string[]>([]);
   const [duplicate, setDuplicate] = useState(false);
   const active = categories.filter(c => !c.archivedAt);
@@ -33,9 +40,10 @@ export default function ExpenseForm({ idPrefix, categories, today, initial, rece
     <fieldset disabled={busy} className="grid gap-3 sm:grid-cols-2">
       <legend className="sr-only">Datos del gasto</legend>
       <label htmlFor={id("amount")} className="grid gap-1 text-sm font-medium text-[var(--vy-text)] sm:col-span-2">Monto en pesos
-        <span className="flex items-center gap-2 rounded-2xl border border-[var(--vy-field-border)] bg-white px-4 focus-within:border-[#6D28D9] focus-within:ring-4 focus-within:ring-[#6D28D9]/20">
+        <span className="flex items-center gap-2 rounded-2xl border border-[var(--vy-field-border)] bg-white px-4 focus-within:border-[var(--vy-blue-600)] focus-within:ring-4 focus-within:ring-[#0450E5]/25">
           <span aria-hidden="true" className="text-3xl font-bold text-[var(--vy-text-muted)]">$</span>
-          <input id={id("amount")} inputMode="numeric" autoComplete="off" placeholder="150.000" value={form.amount} onChange={e => set({ amount: e.target.value })}
+          <input ref={amountRef} id={id("amount")} inputMode="numeric" autoComplete="off" placeholder="150.000" value={form.amount}
+            onChange={e => { const next = formatAmountInput(e.target.value, e.target.selectionStart ?? e.target.value.length, form.amount, (e.nativeEvent as InputEvent).inputType); caret.current = next.caret; set({ amount: next.value }); }}
             className="min-h-16 w-full min-w-0 bg-transparent text-3xl font-bold tracking-tight text-[var(--vy-text)] outline-none placeholder:text-[var(--vy-text-subtle)]" />
         </span></label>
       <label htmlFor={id("date")} className="grid gap-1 text-sm font-medium">Fecha del gasto
@@ -57,7 +65,7 @@ export default function ExpenseForm({ idPrefix, categories, today, initial, rece
       <label htmlFor={id("reference")} className="grid gap-1 text-sm font-medium">Referencia de pago (opcional, privada)
         <Input id={id("reference")} maxLength={100} placeholder="Nº de transacción" value={form.paymentReference} onChange={e => set({ paymentReference: e.target.value })} /></label>
     </fieldset>
-    <p className="text-xs text-[#52675b]">No escribas números de documento, cuentas completas ni datos de salud.{payroll && " En nómina y honorarios, identifica a la persona sin datos sensibles."}</p>
+    <p className="text-xs text-[var(--vy-text-muted)]">No escribas números de documento, cuentas completas ni datos de salud.{payroll && " En nómina y honorarios, identifica a la persona sin datos sensibles."}</p>
     {errors.length > 0 && <ul role="alert" className="list-disc space-y-1 rounded-xl border border-[#efc2bd] bg-[#fdf0ee] p-4 pl-8 text-sm text-[#5e1f17]">{errors.map(e => <li key={e}>{e}</li>)}</ul>}
     {duplicate && <p role="alert" className="rounded-xl border border-[#ecd3a3] bg-[#fdf5e6] p-3 text-sm text-[#7a4f0b]">Ya hay un gasto confirmado de este monto en esa fecha. Si es otro gasto distinto, pulsa de nuevo para registrarlo.</p>}
     <Button type="submit" loading={busy} disabled={busy || disabled}>{submitLabel}</Button>

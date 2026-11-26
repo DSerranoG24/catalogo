@@ -13,6 +13,8 @@ type DialogProps = {
   description: ReactNode;
   children: ReactNode;
   busy?: boolean;
+  /** "panel": redesigned screens (blue primary, blue focus). Without it the original palette is kept. */
+  theme?: "panel";
 };
 
 // Controlled dialogs may be opened by several row buttons rather than a single Trigger.
@@ -37,11 +39,11 @@ function useReturnFocus() {
   };
 }
 
-export function Dialog({ open, onOpenChange, title, description, children, busy = false }: DialogProps) {
-  const focus = useReturnFocus();
+export function Dialog({ open, onOpenChange, title, description, children, busy = false, theme }: DialogProps) {
+  const focus = useReturnFocus(), themed = theme === "panel" ? " vy-theme" : "";
   return <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
-    <RadixDialog.Portal><RadixDialog.Overlay className={styles.overlay} />
-      <RadixDialog.Content {...focus} className={styles.dialog} onEscapeKeyDown={event => { if (busy) event.preventDefault(); }} onInteractOutside={event => event.preventDefault()}>
+    <RadixDialog.Portal><RadixDialog.Overlay className={styles.overlay + themed} />
+      <RadixDialog.Content {...focus} className={styles.dialog + themed} onEscapeKeyDown={event => { if (busy) event.preventDefault(); }} onInteractOutside={event => event.preventDefault()}>
         <RadixDialog.Title className={styles.title}>{title}</RadixDialog.Title>
         <RadixDialog.Description className={styles.description}>{description}</RadixDialog.Description>
         {children}
@@ -50,11 +52,11 @@ export function Dialog({ open, onOpenChange, title, description, children, busy 
   </RadixDialog.Root>;
 }
 
-export function AlertDialog({ open, onOpenChange, title, description, children, busy = false }: DialogProps) {
-  const focus = useReturnFocus();
+export function AlertDialog({ open, onOpenChange, title, description, children, busy = false, theme }: DialogProps) {
+  const focus = useReturnFocus(), themed = theme === "panel" ? " vy-theme" : "";
   return <RadixAlertDialog.Root open={open} onOpenChange={onOpenChange}>
-    <RadixAlertDialog.Portal><RadixAlertDialog.Overlay className={styles.overlay} />
-      <RadixAlertDialog.Content {...focus} className={styles.dialog} onEscapeKeyDown={event => { if (busy) event.preventDefault(); }}>
+    <RadixAlertDialog.Portal><RadixAlertDialog.Overlay className={styles.overlay + themed} />
+      <RadixAlertDialog.Content {...focus} className={styles.dialog + themed} onEscapeKeyDown={event => { if (busy) event.preventDefault(); }}>
         <RadixAlertDialog.Title className={styles.title}>{title}</RadixAlertDialog.Title>
         <RadixAlertDialog.Description className={styles.description}>{description}</RadixAlertDialog.Description>
         {children}

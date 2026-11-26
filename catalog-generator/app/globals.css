@@ -67,6 +67,31 @@
   --vy-field-border: #8592AD;
 }
 
+/* Panel theme (redesigned screens): the shared components (Button, Input, dialogs, selects) read these variables.
+   Applied with the .vy-theme class; screens without it keep the original palette. */
+.vy-theme {
+  --brand-emerald: var(--vy-blue-600);
+  --brand-emerald-hover: var(--vy-blue-700);
+  --brand-emerald-soft: #E6EEFF;
+  --brand-forest: var(--vy-text);
+  --surface-raised: #ffffff;
+  --surface-sunken: var(--vy-surface-soft);
+  --border-normal: #A9B5CC;
+  --border-subtle: var(--vy-border);
+  --border-strong: var(--vy-field-border);
+  --text-primary: var(--vy-text);
+  --text-secondary: var(--vy-text-muted);
+  --text-muted: var(--vy-text-subtle);
+  --color-primary: var(--vy-blue-600);
+  --color-primary-hover: var(--vy-blue-700);
+  --field-background: #ffffff;
+  --field-border: var(--vy-field-border);
+  --field-focus: var(--vy-blue-600);
+  --field-focus-ring: rgb(4 80 229 / 25%);
+  --status-error-text: #B42318;
+  --status-error-surface: #FEF3F2;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

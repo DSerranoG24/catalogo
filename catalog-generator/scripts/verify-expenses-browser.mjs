@@ -240,6 +240,15 @@ try {
       if (reference) await fill("#new-expense-reference", reference);
       await submit("Guardar gasto");
     }
+    // Old palette (brand emerald family and its greige neutrals): none of it may remain on Gastos or its dialogs.
+    const OLD = ["#0F6B57", "#0B5646", "#E8F3EF", "#0B2E27", "#EDF3EC", "#D6DFD7", "#E2E8E0", "#A8C2AF", "#52655A", "#68756E", "#FCFDFB", "#52675B", "#DCE4DC", "#F3F5F2", "#CFD6CF", "#3F4A43",
+      "#B8DCC6", "#ECF7F0", "#1F5B37", "#5A886C", "#2F7A52", "#F2FAF4", "#9FC4AE", "#C3E5D4", "#B8DEC8", "#37443D", "#87928B", "#D9E2D9"]
+      .map(h => `rgb(${parseInt(h.slice(1, 3), 16)},${parseInt(h.slice(3, 5), 16)},${parseInt(h.slice(5, 7), 16)})`);
+    const noOldGreen = async label => {
+      const found = await evaluate(`(()=>{const old=${JSON.stringify(OLD)};const out=[];for(const root of document.querySelectorAll('main,[role="dialog"],[role="alertdialog"]'))for(const e of [root,...root.querySelectorAll('*')]){const cs=getComputedStyle(e);for(const p of ['color','backgroundColor','borderTopColor','borderRightColor','borderBottomColor','borderLeftColor','outlineColor']){const v=cs[p].replaceAll(' ','');if(old.includes(v))out.push((e.id||e.tagName)+' '+p+' '+v)}}return out.slice(0,8)})()`);
+      assert.deepEqual(found, [], `old green on ${label}`);
+    };
+    const styleOf = (label, prop) => evaluate(`(()=>{const b=${button(label)};return b?getComputedStyle(b)[${JSON.stringify(prop)}].replaceAll(' ',''):null})()`);
     const viewport = async width => { await command("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 768 }); await new Promise(r => setTimeout(r, 300)); };
     // Optional review screenshots: EXPENSES_SCREENSHOTS=<folder outside the repo>.
     const shot = async name => {
@@ -270,11 +279,37 @@ try {
     assert.ok((await options("#new-expense-category")).includes("Nómina y honorarios"));
     const dialogText = norm(await evaluate(`document.querySelector('[role="dialog"]').innerText`));
     for (const notice of ["Las compras de mercancía se registran como entrada de inventario", "IVA y retenciones no se gestionan", "No escribas números de documento"]) assert.ok(dialogText.includes(notice), notice);
+    // Amount: thousands separators while typing, caret kept when editing in the middle, paste with or without dots.
+    const amount = () => evaluate(`(()=>{const i=document.querySelector('#new-expense-amount');return {value:i.value,caret:i.selectionStart}})()`);
+    await evaluate(`document.querySelector('#new-expense-amount').focus()`);
+    for (const ch of "1250000") await command("Input.insertText", { text: ch });
+    assert.deepEqual(await amount(), { value: "1.250.000", caret: 9 });
+    await evaluate(`document.querySelector('#new-expense-amount').setSelectionRange(3,3)`);
+    await command("Input.dispatchKeyEvent", { type: "keyDown", key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 });
+    await command("Input.dispatchKeyEvent", { type: "keyUp", key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 });
+    assert.deepEqual(await amount(), { value: "150.000", caret: 1 }, "backspace in the middle keeps the caret there");
+    await command("Input.insertText", { text: "9" });
+    assert.deepEqual(await amount(), { value: "1.950.000", caret: 3 }, "typing in the middle keeps the caret after the new digit");
+    await fill("#new-expense-amount", "12.345"); assert.equal((await amount()).value, "12.345", "paste with dots");
+    await fill("#new-expense-amount", "12345"); assert.equal((await amount()).value, "12.345", "paste without dots");
+    await fill("#new-expense-amount", "1000000000000"); assert.equal((await amount()).value, "1.000.000.000.000");
+    assert.equal(await evaluate(`document.querySelector('label[for="new-expense-amount"]').textContent.includes('Monto en pesos')`), true, "accessible name kept");
+    await fill("#new-expense-amount", "");
+    // New style: blue primary, blue focus ring, no old green anywhere.
+    assert.equal(await styleOf("Guardar gasto", "backgroundColor"), "rgb(4,80,229)");
+    await evaluate(`${button("Guardar gasto")}.focus()`);
+    await command("Input.dispatchKeyEvent", { type: "keyDown", key: "Shift", code: "ShiftLeft", windowsVirtualKeyCode: 16 });
+    await command("Input.dispatchKeyEvent", { type: "keyUp", key: "Shift", code: "ShiftLeft", windowsVirtualKeyCode: 16 });
+    // Positive control: the scan must detect an old-green element before its absence means anything.
+    await evaluate(`(()=>{const p=document.createElement('p');p.id='old-green-control';p.style.color='#0F6B57';document.querySelector('main').append(p)})()`);
+    await assert.rejects(noOldGreen("the control"), /old green on the control/);
+    await evaluate(`document.querySelector('#old-green-control').remove()`);
+    await noOldGreen("the register dialog");
     await shot("gastos-registrar-1440");
     checks.push("Gastos page: menu entry current, header (icon, title, subtitle, month, Registrar gasto), seed as the only write, 11 categories with «Nómina y honorarios», notices in the register form, no Fijos/Próximos/Variables/Con soporte/Exportar/Gastos fijos");
 
     // Client validation blocks the request.
-    await fill("#new-expense-amount", "1.5"); await click("Guardar gasto"); await waitText("Escribe un monto entre");
+    await fill("#new-expense-amount", "1,5"); await click("Guardar gasto"); await waitText("Escribe un monto entre");
     assert.ok(norm(await text()).includes("Elige una categoría.") && norm(await text()).includes("Escribe una descripción"));
     assert.equal(count("/api/expenses"), 0);
     checks.push("Client validation of amount, category and description with no request");
@@ -304,7 +339,7 @@ try {
     await register({ amount: "80000", category: "Publicidad y redes", method: "NEQUI", description: "Pauta Instagram" });
     await waitText("El servidor no pudo completar la acción");
     assert.equal(expenses.length, 3, "the server committed before the reply was lost");
-    assert.equal(await evaluate(`document.querySelector('#new-expense-amount').value`), "80000", "the form keeps the data while the reply is unknown");
+    assert.equal(await evaluate(`document.querySelector('#new-expense-amount').value`), "80.000", "the form keeps the data while the reply is unknown");
     await click("Reintentar"); await waitText("Gasto registrado.");
     const sends = mutations.filter(m => m.path === "/api/expenses").slice(-2);
     assert.equal(sends[0].body.operationId, sends[1].body.operationId, "retry keeps the operationId");
@@ -345,7 +380,16 @@ try {
     // Reclassify: category, description and the OTHER note; history shows before → after.
     const courier = byDescription("Mensajería clientes");
     await open("Mensajería clientes"); await synced(courier);
+    await noOldGreen("the detail dialog");
+    assert.equal(await styleOf("Anular gasto", "backgroundColor"), "rgb(180,35,24)", "destructive in the status red");
+    assert.equal(await styleOf("Reclasificar", "borderTopColor"), "rgb(169,181,204)", "secondary with a blue-grey border");
     await click("Reclasificar");
+    await noOldGreen("the reclassify dialog");
+    assert.equal(await styleOf("Guardar reclasificación", "backgroundColor"), "rgb(4,80,229)");
+    // Keyboard focus ring on a dialog button is blue.
+    await evaluate(`document.querySelector('[role="alertdialog"] textarea').focus()`);
+    await key("Tab", "Tab", 9);
+    assert.equal(await evaluate(`getComputedStyle(document.activeElement).outlineColor.replaceAll(' ','')`), "rgb(4,80,229)", "blue focus ring");
     assert.equal(await choose('[role="alertdialog"] select', "Publicidad y redes"), true);
     await fill('[role="alertdialog"] textarea', "Mensajería de pedidos");
     await fill('[role="alertdialog"] input', "Bancolombia app");
@@ -391,6 +435,8 @@ try {
     await open("Pauta Instagram"); await synced(ads);
     await click("Anular gasto");
     assert.equal(await evaluate(`${button("Sí, anular el gasto")}.disabled`), true, "a reason is mandatory");
+    await noOldGreen("the void dialog");
+    assert.equal(await styleOf("Sí, anular el gasto", "backgroundColor"), "rgb(180,35,24)");
     await fill('[role="alertdialog"] textarea', "Cobro duplicado");
     await doubleClick("Sí, anular el gasto"); await waitText("Gasto anulado. Ya no cuenta en los totales.");
     assert.equal(count(`/api/expenses/${ads.id}/void`), 1); await synced(ads);
@@ -431,7 +477,10 @@ try {
     await fill("#new-category", "Domicilios Rappi"); await click("Crear categoría"); await waitText("Categoría creada.");
     await closeDialogs(); await poll(async () => (await registerOptions()).includes("Domicilios Rappi"));
     await click("Categorías"); await poll(() => evaluate(`Boolean(document.querySelector('#new-category'))`));
-    await click("Archivar Domicilios Rappi"); await click("Sí, archivar"); await waitText("«Domicilios Rappi» archivada.");
+    await noOldGreen("the categories dialog");
+    await click("Archivar Domicilios Rappi");
+    await poll(() => evaluate(`Boolean(document.querySelector('[role="alertdialog"]'))`)); await noOldGreen("the archive dialog");
+    await click("Sí, archivar"); await waitText("«Domicilios Rappi» archivada.");
     await poll(async () => /Domicilios Rappis*Archivada/.test(await evaluate(`document.querySelector('ul[aria-label="Categorías de gastos"]').innerText`))); // archived categories stay listed
     await closeDialogs(); assert.ok(!(await registerOptions()).includes("Domicilios Rappi"), "an archived category is not offered");
     await click("Categorías"); await poll(() => evaluate(`Boolean(document.querySelector('#new-category'))`));
@@ -456,7 +505,10 @@ try {
     await key("Tab", "Tab", 9);
     assert.equal(await evaluate(`document.activeElement?.closest('ul[aria-label="Gastos"]') !== null`), true, "Tab moves from the search to the first expense");
     assert.notEqual(await evaluate(`getComputedStyle(document.activeElement).outlineStyle`), "none", "visible focus");
+    await noOldGreen("the Gastos page");
     checks.push("Keyboard: Tab order from filters to the list with visible focus; dialogs close with Escape");
+    checks.push("New style: no old green (computed styles) on the page or in the register, detail, reclassify, void, categories and archive dialogs; blue primary and focus ring, status red for void, blue-grey secondary borders");
+    checks.push("Amount field: «1.250.000» while typing, caret kept when deleting or typing in the middle, paste with or without dots, 13 digits, empty; API still receives digits only");
 
     // Responsive: stacked figures and a register button above the bottom bar on mobile; no overflow.
     for (const width of [320, 375, 390, 768, 1024, 1440]) {

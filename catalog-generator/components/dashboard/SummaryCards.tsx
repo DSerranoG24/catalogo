@@ -60,7 +60,8 @@ export default function SummaryCards({ data }: { data: DashboardSummary }) {
   const { month } = data;
   return <section aria-labelledby="figures-title">
     <h2 id="figures-title" className="sr-only">Cifras</h2>
-    <div className={`grid gap-4 sm:grid-cols-2 ${expenses ? "xl:grid-cols-3" : ""}`}>
+    {/* Columns follow the visible cards: one on mobile, two on tablet, all of them in one row from lg. */}
+    <div data-figure-cards={expenses ? 3 : 2} className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${expenses ? "lg:grid-cols-3" : ""}`}>
       <Card tint="blue" icon={<ShoppingCart className="size-5" />} title="Ventas hoy" value={data.today.salesTotal} spark={data.salesSeries.map(p => p.total)}>
         <Change current={data.today.salesTotal} previous={data.today.yesterdaySalesTotal} against="vs ayer" equal="Igual que ayer" />
       </Card>

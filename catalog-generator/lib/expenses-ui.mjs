@@ -7,10 +7,10 @@ export const PAYMENT_LABELS = { CASH: "Efectivo", NEQUI: "Nequi", DAVIPLATA: "Da
 export const EXPENSE_STATUS_LABELS = { CONFIRMED: "Confirmado", VOIDED: "Anulado", PENDING_CONFIRMATION: "Por confirmar", SKIPPED: "Omitido" };
 // Same palette as Ventas; text/background pairs keep at least 4.5:1 contrast.
 export const EXPENSE_STATUS_TONES = {
-  CONFIRMED: "border-[#b8dcc6] bg-[#ecf7f0] text-[#1f5b37]",
+  CONFIRMED: "border-[#C7D7FE] bg-[#E6EEFF] text-[#1D4ED8]",
   VOIDED: "border-[#efc2bd] bg-[#fdf0ee] text-[#8a2b20]",
   PENDING_CONFIRMATION: "border-[#ecd3a3] bg-[#fdf5e6] text-[#7a4f0b]",
-  SKIPPED: "border-[#cfd6cf] bg-[#f3f5f2] text-[#3f4a43]",
+  SKIPPED: "border-[#CBD5E6] bg-[#F1F4FA] text-[#334155]",
 };
 export const MAX_EXPENSE_AMOUNT = 1000000000000n;
 
@@ -186,3 +186,29 @@ export const PAYMENT_TONES = {
   CASH: "bg-[#E7F6EC] text-[#166534]", NEQUI: "bg-[#F3E8FF] text-[#6B21A8]", DAVIPLATA: "bg-[#FEE2E2] text-[#991B1B]",
   BANK_TRANSFER: "bg-[#E6EEFF] text-[#1D4ED8]", CARD: "bg-[#F1F5F9] text-[#334155]", OTHER: "bg-[#F3F4F6] text-[#374151]",
 };
+
+// ---- Amount field: Colombian thousands separator while typing (the payload stays digits only). ----
+const digitsOf = text => text.replace(/\D/g, "");
+const groupThousands = digits => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+/**
+ * Formats the amount input as it is typed: "1250000" → "1.250.000". Only digits are kept; a comma (decimal
+ * separator) or other text leaves the value untouched so validation rejects it instead of guessing.
+ * The caret stays after the same digit it followed. Deleting a separator deletes the digit next to it.
+ * @param {string} raw value after the edit  @param {number} caret caret after the edit
+ * @param {string} previous value before the edit  @param {string} [inputType] InputEvent.inputType
+ */
+export function formatAmountInput(raw, caret, previous = "", inputType = "") {
+  if (/[^\d.\s]/.test(raw.replace(/[^\d.\s,]/g, "")) || raw.includes(",")) return { value: raw, caret };
+  let digits = digitsOf(raw), before = digitsOf(raw.slice(0, caret)).length;
+  // A separator was removed (same digits, shorter text): remove the neighbouring digit instead.
+  if (previous && raw.length < previous.length && digits === digitsOf(previous)) {
+    if (inputType === "deleteContentBackward" && before > 0) { digits = digits.slice(0, before - 1) + digits.slice(before); before -= 1; }
+    else if (inputType === "deleteContentForward" && before < digits.length) digits = digits.slice(0, before) + digits.slice(before + 1);
+  }
+  const trimmed = digits.replace(/^0+(?=\d)/, "");
+  before = Math.max(0, before - (digits.length - trimmed.length));
+  const value = groupThousands(trimmed);
+  let position = 0, seen = 0;
+  while (position < value.length && seen < before) { if (/\d/.test(value[position])) seen++; position++; }
+  return { value, caret: position };
+}

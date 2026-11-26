@@ -50,3 +50,4 @@ export function parseExpenseOverview(value: unknown, month: string): ExpenseOver
 export const CATEGORY_STYLES: Record<string, { icon: string; tone: string }>;
 export const DEFAULT_CATEGORY_STYLE: { icon: string; tone: string };
 export const PAYMENT_TONES: Record<PaymentMethod, string>;
+export function formatAmountInput(raw: string, caret: number, previous?: string, inputType?: string): { value: string; caret: number };
