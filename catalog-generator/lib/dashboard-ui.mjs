@@ -25,6 +25,10 @@ export function parseDashboardSummary(value, days) {
   const previous = month.previousMonth;
   if (!object(previous) || !money(previous.salesTotal) || !expenses(previous.expensesTotal) || !money(previous.estimatedProfit)) fail();
   if (!object(attention) || !count(attention.lowStockCount) || !count(attention.outOfStockCount) || !count(attention.pendingOrdersCount)) fail();
+  // F1b: scheduled-payment counts come with modules.scheduledExpenses; an API without the module sends neither.
+  if (modules.scheduledExpenses !== undefined && typeof modules.scheduledExpenses !== "boolean") fail();
+  if (modules.scheduledExpenses === true ? !count(attention.scheduledDueSoonCount) || !count(attention.scheduledOverdueCount)
+    : attention.scheduledDueSoonCount !== undefined || attention.scheduledOverdueCount !== undefined) fail();
   if (!Array.isArray(salesSeries) || salesSeries.length !== days || !salesSeries.every(p => object(p) && isoDay(p.date) && money(p.total))) fail();
   if (salesSeries.some((p, i) => i > 0 && p.date !== nextDay(salesSeries[i - 1].date)) || salesSeries.at(-1).date !== today.date) fail();
   if (!Array.isArray(recent) || recent.length > 5 || !recent.every(r => object(r) && r.kind === "SALE" && typeof r.id === "string" && STATUSES.includes(r.status)

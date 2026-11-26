@@ -8,7 +8,7 @@ export type Expense = {
   categoryId: string; categoryName: string | null; categoryArchived: boolean; categoryNameSnapshot: string | null;
   paymentMethod: PaymentMethod; paymentMethodNote: string | null; description: string; supplierName: string | null;
   replacesExpenseId: string | null; replacedByExpenseId: string | null; recordedAt: string; confirmedAt: string | null; voidedAt: string | null; voidReason: string | null;
-  version: number; paymentReference?: string | null;
+  version: number; paymentReference?: string | null; scheduledPaymentId?: string | null; fixed?: boolean;
 };
 export type ExpenseEvent = { id: string; eventType: string; before: Record<string, unknown> | null; after: Record<string, unknown>; occurredAt: string };
 export type ExpensePage = { items: Expense[]; nextCursor: string | null; pageSize: number };
@@ -39,6 +39,7 @@ export type ExpenseOverview = {
   month: string; from: string; to: string; generatedAt: string; total: string; count: number; voidedCount: number;
   previousMonth: { month: string; total: string }; days: { date: string; total: string }[];
   byCategory: { categoryId: string; name: string; archived: boolean; total: string; count: number; percent: string }[];
+  scheduled: ScheduledFigures; variable: { total: string; count: number };
 };
 export function monthLabel(month: string): string;
 export function monthName(month: string): string;
@@ -51,3 +52,36 @@ export const CATEGORY_STYLES: Record<string, { icon: string; tone: string }>;
 export const DEFAULT_CATEGORY_STYLE: { icon: string; tone: string };
 export const PAYMENT_TONES: Record<PaymentMethod, string>;
 export function formatAmountInput(raw: string, caret: number, previous?: string, inputType?: string): { value: string; caret: number };
+export type ScheduledFigures = {
+  fixed: { due: number; paid: number; paidTotal: string };
+  upcoming: { count: number; plannedTotal: string; withoutAmount: number } | null;
+  overdue: { count: number; plannedTotal: string; withoutAmount: number } | null;
+};
+export type Frequency = "WEEKLY" | "MONTHLY" | "YEARLY";
+export type ScheduledPayment = {
+  id: string; status: "PENDING" | "PAID" | "CANCELLED"; kind: "fixed" | "single"; templateId: string | null; occurrenceDate: string | null; dueDate: string;
+  daysUntilDue: number; overdue: boolean; plannedAmount: string | null; description: string; categoryId: string; categoryName: string | null; categoryArchived: boolean;
+  paymentMethod: PaymentMethod; paymentMethodNote: string | null; supplierName: string | null; customized: boolean; paidExpenseId: string | null; paidAt: string | null;
+  paidAmount: string | null; paidDate: string | null; cancelledAt: string | null; cancelReason: string | null; version: number;
+};
+export type RecurringExpense = {
+  id: string; status: "ACTIVE" | "PAUSED" | "ENDED"; description: string; categoryId: string; categoryName: string | null; categoryArchived: boolean;
+  paymentMethod: PaymentMethod; paymentMethodNote: string | null; supplierName: string | null; estimatedAmount: string | null; frequency: Frequency; interval: number;
+  anchorDate: string; endDate: string | null; nextDate: string | null; endedAt: string | null; version: number;
+};
+export type ScheduleForm = { plannedAmount: string; dueDate: string; categoryId: string; paymentMethod: PaymentMethod | ""; paymentMethodNote: string; description: string;
+  supplierName: string; repeat: boolean; frequency: Frequency; interval: string; endDate: string };
+export type PayForm = { amount: string; expenseDate: string; paymentMethod: PaymentMethod | ""; paymentMethodNote: string; paymentReference: string };
+export const FREQUENCIES: Frequency[];
+export const MAX_SCHEDULE_DAYS_AHEAD: number;
+export function frequencyLabel(frequency: Frequency, interval: number): string;
+export function addDays(date: string, days: number): string;
+export function monthEnd(month: string): string;
+export function amountDigits(value: string): string | null;
+export function validateScheduleForm(form: ScheduleForm, today: string): { errors: string[]; path: "/expenses/scheduled" | "/expenses/recurring"; payload: Record<string, unknown> };
+export function validatePayForm(form: PayForm, today: string): { errors: string[]; payload: Record<string, unknown> };
+export function parseScheduledList(value: unknown): { items: ScheduledPayment[]; truncated: boolean; today: string };
+export function parseRecurringList(value: unknown): RecurringExpense[];
+export function parseSyncReply(value: unknown): { generated: number; pendingCount: number };
+export function sortScheduled(items: ScheduledPayment[]): ScheduledPayment[];
+export function scheduledState(s: ScheduledPayment): { key: "paid" | "cancelled" | "overdue" | "soon" | "pending"; label: string; tone: string };

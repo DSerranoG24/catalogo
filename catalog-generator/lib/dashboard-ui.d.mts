@@ -7,11 +7,11 @@ export type DashboardSummary = {
   today: { date: string; salesTotal: string; salesCount: number; yesterdaySalesTotal: string };
   month: { salesTotal: string; costOfSales: string; salesWithoutCostCount: number; expensesTotal: string | null; estimatedProfit: string;
     previousMonth: { salesTotal: string; expensesTotal: string | null; estimatedProfit: string } };
-  attention: { lowStockCount: number; outOfStockCount: number; pendingOrdersCount: number };
+  attention: { lowStockCount: number; outOfStockCount: number; pendingOrdersCount: number; scheduledDueSoonCount?: number; scheduledOverdueCount?: number };
   salesSeries: { date: string; total: string }[];
   recent: RecentSale[];
   setup: { hasInventoryItems: boolean; hasPublishedCatalog: boolean; hasSales: boolean };
-  modules: { expenses: boolean };
+  modules: { expenses: boolean; scheduledExpenses?: boolean };
 };
 export function parseDashboardSummary(value: unknown, days: DashboardDays): DashboardSummary;
 export function formatCopCompact(value: string | bigint): string;

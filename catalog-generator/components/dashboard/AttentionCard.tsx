@@ -1,11 +1,15 @@
 import Link from "next/link";
-import { AlertTriangle, Bell, CheckCircle2, PackageX, PlusCircle } from "lucide-react";
+import { AlertOctagon, AlertTriangle, Bell, CalendarClock, CheckCircle2, PackageX, PlusCircle } from "lucide-react";
 import { plural, type DashboardSummary } from "@/lib/dashboard-ui.mjs";
 import { isEnabled } from "@/lib/panel-navigation";
 
 /** Rows only for modules that exist; zero rows are hidden. Fiados and equipos are not shown (no module). */
-export default function AttentionCard({ attention, ordersHref }: { attention: DashboardSummary["attention"]; ordersHref: string }) {
+export default function AttentionCard({ attention, ordersHref, scheduled = false }: { attention: DashboardSummary["attention"]; ordersHref: string; scheduled?: boolean }) {
+  const payments = scheduled && isEnabled("gastos");
+  const dueSoon = payments ? attention.scheduledDueSoonCount ?? 0 : 0, overdue = payments ? attention.scheduledOverdueCount ?? 0 : 0;
   const rows = [
+    overdue > 0 && { key: "overdue", icon: <AlertOctagon className="size-6 text-[#B42318]" />, text: plural(overdue, "pago vencido", "pagos vencidos"), href: "/dashboard/gastos", action: "Ver" },
+    dueSoon > 0 && { key: "due", icon: <CalendarClock className="size-6 text-[#C2410C]" />, text: dueSoon === 1 ? "1 pago vence esta semana" : `${dueSoon} pagos vencen esta semana`, href: "/dashboard/gastos", action: "Ver" },
     isEnabled("inventario") && attention.lowStockCount > 0 && { key: "low", icon: <AlertTriangle className="size-6 text-[#B45309]" />, text: plural(attention.lowStockCount, "producto con stock bajo", "productos con stock bajo"), href: "/dashboard/inventario", action: "Ver" },
     isEnabled("inventario") && attention.outOfStockCount > 0 && { key: "out", icon: <PackageX className="size-6 text-[#B42318]" />, text: plural(attention.outOfStockCount, "producto agotado", "productos agotados"), href: "/dashboard/inventario", action: "Ver" },
     isEnabled("catalogo") && attention.pendingOrdersCount > 0 && { key: "orders", icon: <PlusCircle className="size-6 text-[#15803D]" />, text: plural(attention.pendingOrdersCount, "pedido nuevo", "pedidos nuevos"), href: ordersHref, action: "Revisar" },

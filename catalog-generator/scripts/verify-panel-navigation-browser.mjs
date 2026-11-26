@@ -15,6 +15,7 @@ async function api(req, res) {
   const reply = (body, status = 200) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(body)); };
   if (url.pathname === "/api/me") return reply({ user: { email: "fixture@example.invalid", name: null, emailVerifiedAt: now(), hasLocalPassword: true } });
   if (url.pathname === "/api/catalogs") return reply({ catalogs: [] });
+  if (req.method === "POST" && url.pathname === "/api/expenses/scheduled/sync") return reply({ success: true, result: { generated: 0, pendingCount: 0 } }); // F1b: Inicio syncs before reading
   if (url.pathname === "/api/sales") return reply({ result: [] });
   if (url.pathname === "/api/inventory/items") return reply({ success: true, result: { items: [], total: 0, page: 1 } });
   if (url.pathname === "/api/customers") return reply({ success: true, customers: [], hasMore: false, page: 1, pageSize: 25 });

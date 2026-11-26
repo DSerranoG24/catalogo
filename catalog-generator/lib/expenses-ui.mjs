@@ -156,13 +156,21 @@ export function matchesSearch(item, query) {
   if (!needle) return true;
   return [item.description, item.categoryName, item.categoryNameSnapshot, item.paymentMethodNote, item.supplierName].some(value => fold(value).includes(needle));
 }
+const count = v => Number.isSafeInteger(v) && v >= 0;
+const pendingFigure = v => object(v) && count(v.count) && money(v.plannedTotal) && count(v.withoutAmount) && v.withoutAmount <= v.count;
+/** F1b figures: upcoming and overdue only exist for the current month (null otherwise). */
+function validScheduledFigures(s) {
+  return object(s) && object(s.fixed) && count(s.fixed.due) && count(s.fixed.paid) && s.fixed.paid <= s.fixed.due && money(s.fixed.paidTotal)
+    && (s.upcoming === null || pendingFigure(s.upcoming)) && (s.overdue === null || pendingFigure(s.overdue)) && (s.upcoming === null) === (s.overdue === null);
+}
 /** Validates GET /expenses/overview (amounts are decimal strings; percents come from the server). */
 export function parseExpenseOverview(value, month) {
   const r = value?.result;
   const ok = value?.success === true && object(r) && r.month === month && isoDate(r.from) && isoDate(r.to) && typeof r.generatedAt === "string" && !Number.isNaN(Date.parse(r.generatedAt))
     && money(r.total) && Number.isSafeInteger(r.count) && Number.isSafeInteger(r.voidedCount) && object(r.previousMonth) && money(r.previousMonth.total)
     && Array.isArray(r.days) && r.days.length >= 1 && r.days.length <= 31 && r.days.every(d => object(d) && isoDate(d.date) && d.date.startsWith(month) && money(d.total))
-    && Array.isArray(r.byCategory) && r.byCategory.every(c => object(c) && uuid(c.categoryId) && typeof c.name === "string" && typeof c.archived === "boolean" && money(c.total) && typeof c.percent === "string" && /^\d{1,3}$/.test(c.percent));
+    && Array.isArray(r.byCategory) && r.byCategory.every(c => object(c) && uuid(c.categoryId) && typeof c.name === "string" && typeof c.archived === "boolean" && money(c.total) && typeof c.percent === "string" && /^\d{1,3}$/.test(c.percent))
+    && validScheduledFigures(r.scheduled) && object(r.variable) && money(r.variable.total) && Number.isSafeInteger(r.variable.count);
   if (!ok) invalid();
   return r;
 }
@@ -211,4 +219,121 @@ export function formatAmountInput(raw, caret, previous = "", inputType = "") {
   let position = 0, seen = 0;
   while (position < value.length && seen < before) { if (/\d/.test(value[position])) seen++; position++; }
   return { value, caret: position };
+}
+
+// ---- Gastos F1b: fixed expenses and scheduled payments (docs/expenses-f1b-contract.md). Never added to any total. ----
+export const FREQUENCIES = ["WEEKLY", "MONTHLY", "YEARLY"];
+const FREQUENCY_UNITS = { WEEKLY: ["semana", "semanas"], MONTHLY: ["mes", "meses"], YEARLY: ["año", "años"] };
+/** "Cada mes", "Cada 2 semanas". */
+export function frequencyLabel(frequency, interval) {
+  const [one, many] = FREQUENCY_UNITS[frequency] ?? ["vez", "veces"];
+  return interval === 1 ? `Cada ${one}` : `Cada ${interval} ${many}`;
+}
+export const MAX_SCHEDULE_DAYS_AHEAD = 366;
+/** Adds days to a calendar date "YYYY-MM-DD". */
+export function addDays(date, days) {
+  const d = new Date(`${date}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10);
+}
+/** Last day of "YYYY-MM". */
+export const monthEnd = month => new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
+/** Pesos typed with or without thousands separators → digits, or null. */
+export function amountDigits(value) {
+  const raw = String(value ?? "").trim();
+  const amount = parseMoneyInput(/^\d{1,3}([.\s]\d{3})+$/.test(raw) ? raw.replace(/[.\s]/g, "") : raw);
+  return amount === null || BigInt(amount) <= 0n || BigInt(amount) > MAX_EXPENSE_AMOUNT ? null : amount;
+}
+function methodErrors(form, errors) {
+  if (!PAYMENT_METHODS.includes(form.paymentMethod)) errors.push("Elige un medio de pago.");
+  const note = String(form.paymentMethodNote ?? "").trim();
+  if (form.paymentMethod === "OTHER" && (note.length < 3 || note.length > 80)) errors.push("Con «Otro», describe el medio de pago (3 a 80 caracteres).");
+  return form.paymentMethod === "OTHER" ? { paymentMethodNote: note } : {};
+}
+
+/**
+ * «Programar pago»: one payment, or a fixed expense when «Repetir» is on. The planned amount is optional; the due date
+ * is today or later (up to 366 days). Returns the endpoint and the payload; the server validates again.
+ */
+export function validateScheduleForm(form, today) {
+  const errors = [];
+  const rawAmount = String(form.plannedAmount ?? "").trim(), amount = rawAmount ? amountDigits(rawAmount) : null;
+  if (rawAmount && amount === null) errors.push("El monto previsto es opcional; si lo escribes, debe estar entre $ 1 y $ 1.000.000.000.000, en pesos enteros.");
+  if (!isoDate(form.dueDate)) errors.push("Elige la fecha de vencimiento.");
+  else if (form.dueDate < today) errors.push("El vencimiento debe ser hoy o una fecha futura.");
+  else if (form.dueDate > addDays(today, MAX_SCHEDULE_DAYS_AHEAD)) errors.push("El vencimiento puede estar como máximo a un año.");
+  if (!uuid(form.categoryId)) errors.push("Elige una categoría.");
+  const description = String(form.description ?? "").trim(), supplier = String(form.supplierName ?? "").trim();
+  if (!description || description.length > 300) errors.push("Escribe una descripción de 1 a 300 caracteres.");
+  if (supplier.length > 160) errors.push("El proveedor admite como máximo 160 caracteres.");
+  const note = methodErrors(form, errors);
+  const common = { description, categoryId: form.categoryId, paymentMethod: form.paymentMethod, ...note, ...(supplier ? { supplierName: supplier } : {}) };
+  if (!form.repeat) return { errors, path: "/expenses/scheduled", payload: { ...common, dueDate: form.dueDate, ...(amount ? { plannedAmount: amount } : {}) } };
+  const interval = Number(form.interval);
+  if (!FREQUENCIES.includes(form.frequency)) errors.push("Elige cada cuánto se repite.");
+  if (!Number.isInteger(interval) || interval < 1 || interval > 12) errors.push("Se puede repetir cada 1 a 12 semanas, meses o años.");
+  if (form.endDate && (!isoDate(form.endDate) || form.endDate < form.dueDate)) errors.push("La fecha final debe ser igual o posterior al primer vencimiento.");
+  return { errors, path: "/expenses/recurring", payload: { ...common, anchorDate: form.dueDate, frequency: form.frequency, interval,
+    ...(amount ? { estimatedAmount: amount } : {}), ...(form.endDate ? { endDate: form.endDate } : {}) } };
+}
+/** «Marcar pagado»: the real amount (may differ from the planned one), a payment date that is not future, and the method. */
+export function validatePayForm(form, today) {
+  const errors = [];
+  const amount = amountDigits(form.amount);
+  if (amount === null) errors.push("Escribe el monto pagado, entre $ 1 y $ 1.000.000.000.000, en pesos enteros.");
+  if (!isoDate(form.expenseDate)) errors.push("Elige la fecha de pago.");
+  else if (form.expenseDate > today) errors.push("La fecha de pago no puede ser futura.");
+  else if (form.expenseDate < minExpenseDate(today)) errors.push("La fecha de pago no puede tener más de cinco años.");
+  const note = methodErrors(form, errors);
+  const reference = String(form.paymentReference ?? "").trim();
+  if (reference.length > 100) errors.push("La referencia admite como máximo 100 caracteres.");
+  return { errors, payload: { amount: amount ?? "", expenseDate: form.expenseDate, paymentMethod: form.paymentMethod, ...note, ...(reference ? { paymentReference: reference } : {}) } };
+}
+
+const SCHEDULED_STATUSES = ["PENDING", "PAID", "CANCELLED"];
+const RECURRING_STATUSES = ["ACTIVE", "PAUSED", "ENDED"];
+function validScheduled(s) {
+  return object(s) && uuid(s.id) && SCHEDULED_STATUSES.includes(s.status) && (s.kind === "fixed" || s.kind === "single") && (s.templateId === null || uuid(s.templateId))
+    && isoDate(s.dueDate) && Number.isSafeInteger(s.daysUntilDue) && typeof s.overdue === "boolean" && (s.plannedAmount === null || money(s.plannedAmount))
+    && typeof s.description === "string" && uuid(s.categoryId) && text(s.categoryName) && PAYMENT_METHODS.includes(s.paymentMethod) && text(s.paymentMethodNote)
+    && text(s.supplierName) && (s.paidExpenseId === null || uuid(s.paidExpenseId)) && (s.paidAmount === null || money(s.paidAmount)) && (s.paidDate === null || isoDate(s.paidDate))
+    && Number.isSafeInteger(s.version);
+}
+function validRecurring(t) {
+  return object(t) && uuid(t.id) && RECURRING_STATUSES.includes(t.status) && typeof t.description === "string" && uuid(t.categoryId) && text(t.categoryName)
+    && PAYMENT_METHODS.includes(t.paymentMethod) && text(t.paymentMethodNote) && (t.estimatedAmount === null || money(t.estimatedAmount)) && FREQUENCIES.includes(t.frequency)
+    && Number.isSafeInteger(t.interval) && isoDate(t.anchorDate) && (t.endDate === null || isoDate(t.endDate)) && (t.nextDate === null || isoDate(t.nextDate)) && Number.isSafeInteger(t.version);
+}
+/** GET /expenses/scheduled. */
+export function parseScheduledList(value) {
+  const r = value?.result;
+  if (value?.success !== true || !object(r) || !Array.isArray(r.items) || !r.items.every(validScheduled) || typeof r.truncated !== "boolean" || !isoDate(r.today)) invalid();
+  return r;
+}
+/** GET /expenses/recurring. */
+export function parseRecurringList(value) {
+  const r = value?.result;
+  if (value?.success !== true || !object(r) || !Array.isArray(r.templates) || !r.templates.every(validRecurring)) invalid();
+  return r.templates;
+}
+/** POST /expenses/scheduled/sync → { generated, pendingCount }. */
+export function parseSyncReply(value) {
+  const r = value?.result;
+  if (value?.success !== true || !object(r) || !Number.isSafeInteger(r.generated) || !Number.isSafeInteger(r.pendingCount)) invalid();
+  return r;
+}
+/** Overdue first, then pending by due date, then paid (most recent due date first). */
+export function sortScheduled(items) {
+  const rank = s => s.status === "PAID" ? 2 : s.overdue ? 0 : 1;
+  return [...items].sort((a, b) => rank(a) - rank(b) || (rank(a) === 2 ? b.dueDate.localeCompare(a.dueDate) : a.dueDate.localeCompare(b.dueDate)) || a.id.localeCompare(b.id));
+}
+/**
+ * State pill of a scheduled payment (design: Pagado green-teal, Vence en n días orange, Vencido red, Por pagar grey).
+ * «Vence en n días» covers the 7-day notice (decision F1b-2); farther ones are «Por pagar».
+ */
+export function scheduledState(s) {
+  if (s.status === "PAID") return { key: "paid", label: "Pagado", tone: "bg-[#E3F7EF] text-[#05603A]" };
+  if (s.status === "CANCELLED") return { key: "cancelled", label: "Omitido", tone: "bg-[#F1F4FA] text-[#334155]" };
+  if (s.overdue) return { key: "overdue", label: s.daysUntilDue === -1 ? "Venció ayer" : `Vencido hace ${-s.daysUntilDue} días`, tone: "bg-[#FDECEA] text-[#B42318]" };
+  if (s.daysUntilDue === 0) return { key: "soon", label: "Vence hoy", tone: "bg-[#FFF1E6] text-[#B93815]" };
+  if (s.daysUntilDue <= 7) return { key: "soon", label: s.daysUntilDue === 1 ? "Vence mañana" : `Vence en ${s.daysUntilDue} días`, tone: "bg-[#FFF1E6] text-[#B93815]" };
+  return { key: "pending", label: "Por pagar", tone: "bg-[#F1F4FA] text-[#334155]" };
 }

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { CATEGORY_STYLES, EXPENSE_STATUS_TONES, formatAmountInput, dayHeading, groupByDay, matchesSearch, monthLabel, monthName, parseExpenseOverview, PAYMENT_TONES, shiftMonth } from "../lib/expenses-ui.mjs";
+import { addDays, FREQUENCIES, frequencyLabel, monthEnd, parseRecurringList, parseScheduledList, parseSyncReply, scheduledState, sortScheduled, validatePayForm, validateScheduleForm } from "../lib/expenses-ui.mjs";
 import { bogotaToday, describeExpenseFailure, EXPENSE_STATUS_LABELS, formatCop, formatExpenseDate, minExpenseDate, monthRange, parseCategories, parseExpenseDetail,
   parseExpensePage, parseSummary, PAYMENT_LABELS, PAYMENT_METHODS, possibleDuplicate, previousMonthRange, validateExpenseForm, validRange, yearRange } from "../lib/expenses-ui.mjs";
 
@@ -98,10 +99,16 @@ const lamp = expense({ description: "Energía eléctrica", categoryName: "Servic
 for (const q of ["energia", "ELÉCTRICA", "servicios", "bancolombia", "enel", "  ", ""]) assert.equal(matchesSearch(lamp, q), true, q);
 assert.equal(matchesSearch(lamp, "arriendo"), false);
 const overview = { success: true, result: { month: "2026-11", from: "2026-11-01", to: "2026-11-25", generatedAt: "2026-11-25T20:56:00.000Z", total: "380000", count: 3, voidedCount: 0,
-  previousMonth: { month: "2026-10", total: "0" }, days: [{ date: "2026-11-01", total: "0" }], byCategory: [{ categoryId: id(2), name: "Arriendo", archived: false, total: "150000", count: 1, percent: "39" }] } };
+  previousMonth: { month: "2026-10", total: "0" }, days: [{ date: "2026-11-01", total: "0" }], byCategory: [{ categoryId: id(2), name: "Arriendo", archived: false, total: "150000", count: 1, percent: "39" }],
+  scheduled: { fixed: { due: 5, paid: 3, paidTotal: "720000" }, upcoming: { count: 2, plannedTotal: "310000", withoutAmount: 0 }, overdue: { count: 0, plannedTotal: "0", withoutAmount: 0 } },
+  variable: { total: "260000", count: 14 } } };
+const withScheduled = scheduled => ({ success: true, result: { ...overview.result, scheduled: { ...overview.result.scheduled, ...scheduled } } });
+assert.equal(parseExpenseOverview(withScheduled({ upcoming: null, overdue: null }), "2026-11").scheduled.upcoming, null, "past months have no upcoming/overdue");
 assert.equal(parseExpenseOverview(overview, "2026-11").total, "380000");
 for (const broken of [{ ...overview, success: false }, { success: true, result: { ...overview.result, total: 380000 } }, { success: true, result: { ...overview.result, month: "2026-10" } },
-  { success: true, result: { ...overview.result, days: [{ date: "2026-10-31", total: "0" }] } }, { success: true, result: { ...overview.result, byCategory: [{ ...overview.result.byCategory[0], percent: 39 }] } }])
+  { success: true, result: { ...overview.result, days: [{ date: "2026-10-31", total: "0" }] } }, { success: true, result: { ...overview.result, byCategory: [{ ...overview.result.byCategory[0], percent: 39 }] } },
+  { success: true, result: { ...overview.result, scheduled: undefined } }, { success: true, result: { ...overview.result, variable: { total: 260000, count: 14 } } },
+  withScheduled({ fixed: { due: 2, paid: 3, paidTotal: "0" } }), withScheduled({ upcoming: null }), withScheduled({ overdue: { count: 1, plannedTotal: "0", withoutAmount: 2 } })])
   assert.throws(() => parseExpenseOverview(broken, "2026-11"), /no es válida/);
 const L = h => { const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; };
 const ratio = classes => { const [bg, fg] = [classes.match(/bg-\[(#[0-9A-Fa-f]{6})\]/)[1], classes.match(/text-\[(#[0-9A-Fa-f]{6})\]/)[1]]; const [a, b] = [L(bg), L(fg)]; return (Math.max(a, b) + .05) / (Math.min(a, b) + .05); };
@@ -127,5 +134,44 @@ assert.equal(validateExpenseForm(form({ amount: "1.250.000" }), today).payload.a
 assert.ok(validateExpenseForm(form({ amount: "1.000.000.000.001" }), today).errors.length > 0, "limit kept");
 assert.ok(validateExpenseForm(form({ amount: "1,5" }), today).errors.some(e => e.includes("monto")));
 for (const [status, classes] of Object.entries(EXPENSE_STATUS_TONES)) assert.ok(ratio(classes) >= 4.5, `${status} badge contrast`);
+
+// F1b: «Programar pago» (single or «Repetir»), «Marcar pagado», list validation and the state pills.
+const schedule = (extra = {}) => ({ plannedAmount: "", dueDate: "2026-11-28", categoryId: id(2), paymentMethod: "BANK_TRANSFER", paymentMethodNote: "", description: " Internet ",
+  supplierName: "", repeat: false, frequency: "MONTHLY", interval: "1", endDate: "", ...extra });
+assert.deepEqual(validateScheduleForm(schedule(), today), { errors: [], path: "/expenses/scheduled",
+  payload: { description: "Internet", categoryId: id(2), paymentMethod: "BANK_TRANSFER", dueDate: "2026-11-28" } }, "planned amount is optional");
+assert.equal(validateScheduleForm(schedule({ plannedAmount: "110.000" }), today).payload.plannedAmount, "110000");
+assert.deepEqual(validateScheduleForm(schedule({ repeat: true, plannedAmount: "110.000", interval: "2", endDate: "2027-12-31" }), today), { errors: [], path: "/expenses/recurring",
+  payload: { description: "Internet", categoryId: id(2), paymentMethod: "BANK_TRANSFER", anchorDate: "2026-11-28", frequency: "MONTHLY", interval: 2, estimatedAmount: "110000", endDate: "2027-12-31" } });
+assert.equal(validateScheduleForm(schedule({ dueDate: today }), today).errors.length, 0, "due today is allowed");
+for (const [extra, word] of [[{ dueDate: "2026-11-23" }, "futura"], [{ dueDate: addDays(today, 367) }, "un año"], [{ plannedAmount: "1,5" }, "monto"], [{ categoryId: "" }, "categoría"],
+  [{ description: "  " }, "descripción"], [{ paymentMethod: "OTHER" }, "Otro"], [{ repeat: true, interval: "13" }, "1 a 12"], [{ repeat: true, interval: "0" }, "1 a 12"],
+  [{ repeat: true, frequency: "BIWEEKLY" }, "cada cuánto"], [{ repeat: true, endDate: "2026-11-27" }, "fecha final"]])
+  assert.ok(validateScheduleForm(schedule(extra), today).errors.some(e => e.includes(word)), JSON.stringify(extra));
+assert.equal(validateScheduleForm(schedule({ dueDate: addDays(today, 366) }), today).errors.length, 0);
+assert.deepEqual(FREQUENCIES, ["WEEKLY", "MONTHLY", "YEARLY"], "no «quincenal»: a fortnight is two monthly fixed expenses");
+assert.equal(frequencyLabel("MONTHLY", 1), "Cada mes"); assert.equal(frequencyLabel("WEEKLY", 2), "Cada 2 semanas"); assert.equal(frequencyLabel("YEARLY", 1), "Cada año");
+const pay = (extra = {}) => ({ amount: "115.000", expenseDate: today, paymentMethod: "NEQUI", paymentMethodNote: "", paymentReference: "", ...extra });
+assert.deepEqual(validatePayForm(pay(), today), { errors: [], payload: { amount: "115000", expenseDate: today, paymentMethod: "NEQUI" } });
+for (const [extra, word] of [[{ amount: "" }, "monto"], [{ amount: "0" }, "monto"], [{ expenseDate: "2026-11-25" }, "futura"], [{ expenseDate: "2021-11-23" }, "cinco años"], [{ paymentMethod: "OTHER" }, "Otro"]])
+  assert.ok(validatePayForm(pay(extra), today).errors.some(e => e.includes(word)), JSON.stringify(extra));
+assert.equal(addDays("2026-11-28", 7), "2026-12-05"); assert.equal(monthEnd("2028-02"), "2028-02-29");
+const payment = (extra = {}) => ({ id: id(5), status: "PENDING", kind: "fixed", templateId: id(6), occurrenceDate: "2026-11-28", dueDate: "2026-11-28", daysUntilDue: 4, overdue: false,
+  plannedAmount: "110000", description: "Internet", categoryId: id(2), categoryName: "Internet", categoryArchived: false, paymentMethod: "BANK_TRANSFER", paymentMethodNote: null, supplierName: null,
+  customized: false, paidExpenseId: null, paidAt: null, paidAmount: null, paidDate: null, cancelledAt: null, cancelReason: null, version: 1, ...extra });
+assert.equal(parseScheduledList({ success: true, result: { items: [payment()], truncated: false, today } }).items.length, 1);
+for (const broken of [{ success: true, result: { items: [payment({ plannedAmount: 110000 })], truncated: false, today } }, { success: true, result: { items: [payment({ status: "SKIPPED" })], truncated: false, today } },
+  { success: true, result: { items: [], today } }]) assert.throws(() => parseScheduledList(broken), /no es válida/);
+const template = { id: id(6), status: "ACTIVE", description: "Internet", categoryId: id(2), categoryName: "Internet", categoryArchived: false, paymentMethod: "CASH", paymentMethodNote: null,
+  supplierName: null, estimatedAmount: null, frequency: "MONTHLY", interval: 1, anchorDate: "2026-11-28", endDate: null, nextDate: "2026-11-28", endedAt: null, version: 1 };
+assert.equal(parseRecurringList({ success: true, result: { templates: [template] } }).length, 1);
+assert.throws(() => parseRecurringList({ success: true, result: { templates: [{ ...template, frequency: "BIWEEKLY" }] } }), /no es válida/);
+assert.deepEqual(parseSyncReply({ success: true, result: { generated: 2, pendingCount: 5 } }), { generated: 2, pendingCount: 5 });
+assert.throws(() => parseSyncReply({ success: true, result: {} }), /no es válida/);
+assert.deepEqual([payment({ status: "PAID" }), payment({ daysUntilDue: 0 }), payment({ daysUntilDue: 3 }), payment({ daysUntilDue: 8 }), payment({ daysUntilDue: -2, overdue: true }), payment({ daysUntilDue: -1, overdue: true }), payment({ daysUntilDue: 1 })]
+  .map(p => scheduledState(p).label), ["Pagado", "Vence hoy", "Vence en 3 días", "Por pagar", "Vencido hace 2 días", "Venció ayer", "Vence mañana"]);
+assert.deepEqual(sortScheduled([payment({ id: id(7), status: "PAID", dueDate: "2026-11-01" }), payment({ id: id(8), dueDate: "2026-11-30" }), payment({ id: id(9), overdue: true, dueDate: "2026-11-02" }), payment({ id: id(10), dueDate: "2026-11-26" })])
+  .map(p => p.id), [id(9), id(10), id(8), id(7)], "overdue, then pending by date, then paid");
+for (const key of ["paid", "overdue", "soon", "pending"]) { const p = { paid: payment({ status: "PAID" }), overdue: payment({ overdue: true, daysUntilDue: -1 }), soon: payment(), pending: payment({ daysUntilDue: 20 }) }[key]; assert.ok(ratio(scheduledState(p).tone) >= 4.5, `${key} pill contrast`); }
 
 console.log("verify-expenses-ui: ok");

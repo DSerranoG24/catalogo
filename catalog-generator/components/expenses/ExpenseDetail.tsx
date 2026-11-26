@@ -13,7 +13,7 @@ import { describeExpenseFailure, EXPENSE_STATUS_LABELS, EXPENSE_STATUS_TONES, fo
   type Expense, type ExpenseCategory, type ExpenseEvent } from "@/lib/expenses-ui.mjs";
 import ExpenseForm from "./ExpenseForm";
 
-const EVENT_LABELS: Record<string, string> = { CREATED: "Registrado", RECLASSIFIED: "Reclasificado", VOIDED: "Anulado", REPLACED: "Reemplazado" };
+const EVENT_LABELS: Record<string, string> = { CREATED: "Registrado", PAID: "Pagado desde un pago programado", RECLASSIFIED: "Reclasificado", VOIDED: "Anulado", REPLACED: "Reemplazado" };
 const fieldLabels: Record<string, string> = { categoryName: "Categoría", description: "Descripción", paymentMethodNote: "Nota del medio de pago" };
 
 function EventLine({ event }: { event: ExpenseEvent }) {
@@ -98,6 +98,7 @@ export default function ExpenseDetail({ expenseId, categories, today, onChanged,
     <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
       {rows.filter(([, v]) => v).map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-[var(--vy-text-muted)]">{label}</dt><dd className="break-words font-medium">{value}</dd></div>)}
     </dl>
+    {expense.scheduledPaymentId && <p className="rounded-xl bg-[#E6EEFF] px-3 py-2 text-sm text-[#1D4ED8]">{expense.fixed ? "Pago de un gasto fijo." : "Pago de un pago programado."}{confirmed ? " Si lo anulas sin registrar el correcto, el pago vuelve a quedar pendiente." : ""}</p>}
     {expense.replacedByExpenseId && <Button variant="secondary" onClick={() => onOpen(expense.replacedByExpenseId!)}>Ver el gasto que lo reemplaza</Button>}
     {expense.replacesExpenseId && <Button variant="secondary" onClick={() => onOpen(expense.replacesExpenseId!)}>Ver el gasto anulado que reemplaza</Button>}
     <p role="status" className="text-sm">{message}</p>

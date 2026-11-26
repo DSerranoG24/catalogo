@@ -35,13 +35,20 @@ const zeroAccount = days => summary(days, base => ({ ...base,
   setup: { hasInventoryItems: false, hasPublishedCatalog: false, hasSales: false } }));
 
 let scenario = days => summary(days), catalogs = [{ id: randomUUID() }], failNext = 0, delays = {};
-const requests = [], unknown = [], checks = [];
+const requests = [], unknown = [], checks = [], log = [];
+let syncFails = 0;
 async function api(req, res) {
   const url = new URL(req.url, "https://127.0.0.1:4339");
   req.resume(); await new Promise(resolve => req.on("end", resolve));
   const reply = (body, status = 200) => { res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "private, no-store" }); res.end(JSON.stringify(body)); };
   if (url.pathname === "/api/me") return reply({ user: { email: "fixture@example.invalid", name: null, emailVerifiedAt: new Date().toISOString(), hasLocalPassword: true } });
   if (url.pathname === "/api/catalogs") return reply({ catalogs: catalogs.map(c => ({ ...c, publicId: c.id, name: "Catálogo", slug: c.id, active: true, archivedAt: null })) });
+  log.push(`${req.method} ${url.pathname}`);
+  // F1b correction A: Inicio asks for generation explicitly before reading the (read-only) summary.
+  if (req.method === "POST" && url.pathname === "/api/expenses/scheduled/sync") {
+    if (syncFails > 0) { syncFails--; return reply({ success: false, error: "EXPENSE_RETRY_SAME_OPERATION", message: "x" }, 503); }
+    return reply({ success: true, result: { generated: 0, pendingCount: 3 } });
+  }
   if (url.pathname === "/api/dashboard/summary") {
     const days = Number(url.searchParams.get("days"));
     requests.push(days);
@@ -106,6 +113,32 @@ try {
     assert.equal(await evaluate(`document.querySelectorAll('section[aria-labelledby="figures-title"] article').length`), 3);
     assert.equal(await evaluate(`[...document.querySelectorAll('section[aria-labelledby="quick-actions"] a')].map(a=>a.getAttribute('href')).join()`), "/dashboard/gastos,/dashboard/inventario");
     checks.push("modules.expenses=true with Gastos enabled: violet «Gastos del mes» card ($ 980.000, igual que el mes anterior), three figure cards, «Registrar gasto» quick action");
+
+    // F1b: sync runs before the summary; «Requiere tu atención» shows the scheduled-payment rows with «Ver» → Gastos.
+    const syncs = log.filter(entry => entry === "POST /api/expenses/scheduled/sync").length;
+    assert.ok(syncs >= 1, "Inicio syncs scheduled payments");
+    assert.ok(log.indexOf("POST /api/expenses/scheduled/sync") < log.indexOf("GET /api/dashboard/summary"), "sync before the first summary read");
+    scenario = days => summary(days, base => ({ ...base, modules: { expenses: true, scheduledExpenses: true }, month: { ...base.month, expensesTotal: "980000", previousMonth: { ...base.month.previousMonth, expensesTotal: "980000" } },
+      attention: { ...base.attention, scheduledDueSoonCount: 2, scheduledOverdueCount: 1 } }));
+    const mark = log.length;
+    await open(); await waitText("2 pagos vencen esta semana"); await waitText("1 pago vencido");
+    const afterOpen = log.slice(mark);
+    assert.ok(afterOpen.indexOf("POST /api/expenses/scheduled/sync") >= 0 && afterOpen.indexOf("POST /api/expenses/scheduled/sync") < afterOpen.indexOf("GET /api/dashboard/summary"), "each opening syncs before reading");
+    const scheduledRows = await evaluate(`[...document.querySelectorAll('section[aria-labelledby="attention-title"] a')].filter(a=>a.getAttribute('href')==='/dashboard/gastos').map(a=>a.getAttribute('aria-label'))`);
+    assert.deepEqual(scheduledRows, ["Ver: 1 pago vencido", "Ver: 2 pagos vencen esta semana"]);
+    assert.ok(norm(await text()).includes("$ 980.000"), "scheduled payments never change the expense figure");
+    scenario = days => summary(days, base => ({ ...base, modules: { expenses: true, scheduledExpenses: true }, month: { ...base.month, expensesTotal: "0", previousMonth: { ...base.month.previousMonth, expensesTotal: "0" } },
+      attention: { ...base.attention, scheduledDueSoonCount: 1, scheduledOverdueCount: 0 } }));
+    await open(); await waitText("1 pago vence esta semana"); assert.ok(!norm(await text()).includes("vencido"), "zero rows are hidden");
+    // Correction C: a failed sync never blocks Inicio; a discreet notice explains the rows may be incomplete.
+    syncFails = 1;
+    await open(); await waitText("Ventas hoy"); await waitText("No pudimos actualizar los gastos fijos");
+    assert.equal(await evaluate(`document.querySelectorAll('[role="alert"]').length`), 0, "the notice is discreet (status, not alert)");
+    await open(); await gone("No pudimos actualizar los gastos fijos");
+    await shot("inicio-f1b-1440");
+    checks.push("F1b: POST /expenses/scheduled/sync before every summary read; «1 pago vencido» and «2 pagos vencen esta semana» with «Ver» → /dashboard/gastos (singular forms, zero rows hidden); expense figure unchanged; failed sync → summary still shown with a discreet notice");
+    scenario = days => summary(days, base => ({ ...base, modules: { expenses: true }, month: { ...base.month, expensesTotal: "980000", previousMonth: { ...base.month.previousMonth, expensesTotal: "980000" } } }));
+    await open(); await waitText("Gastos del mes");
 
     // Card grid follows the visible cards: 3 in one row from lg, 2 columns on tablet, 1 on mobile; 2 cards side by side.
     const cardRows = async () => { const tops = await evaluate(`[...document.querySelectorAll('section[aria-labelledby="figures-title"] article')].map(a=>Math.round(a.getBoundingClientRect().top))`); return tops.map(t => tops.filter(x => Math.abs(x - t) <= 2).length); };

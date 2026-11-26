@@ -52,12 +52,17 @@ assert.equal(plural(1, "venta", "ventas"), "1 venta"); assert.equal(plural(2, "v
 assert.equal(parseDashboardSummary(valid(), 7).today.salesTotal, "845000");
 const withExpenses = valid({ modules: { expenses: true }, month: { ...valid().month, expensesTotal: "980000", previousMonth: { salesTotal: "0", expensesTotal: "0", estimatedProfit: "0" } } });
 assert.equal(parseDashboardSummary(withExpenses, 7).month.expensesTotal, "980000");
+const withScheduled = valid({ modules: { expenses: false, scheduledExpenses: true }, attention: { ...valid().attention, scheduledDueSoonCount: 2, scheduledOverdueCount: 1 } });
+assert.equal(parseDashboardSummary(withScheduled, 7).attention.scheduledOverdueCount, 1, "F1b attention counts");
 const broken = [
   valid({ success: false }), { ...valid(), today: undefined }, valid({ today: { ...valid().today, salesTotal: 845000 } }), valid({ today: { ...valid().today, salesTotal: "1.5" } }),
   valid({ month: { ...valid().month, expensesTotal: "10" } }), valid({ modules: { expenses: true } }), valid({ attention: { ...valid().attention, lowStockCount: -1 } }),
   valid({ salesSeries: series(6) }), valid({ salesSeries: series(7, "2026-11-24") }), valid({ salesSeries: [...series(7).slice(0, 6).reverse(), series(7)[6]] }),
   valid({ recent: Array(6).fill(valid().recent[0]) }), valid({ recent: [{ ...valid().recent[0], status: "DRAFT" }] }), valid({ setup: { hasInventoryItems: "yes", hasPublishedCatalog: true, hasSales: true } }),
   valid({ generatedAt: "ayer" }), null, [],
+  valid({ modules: { expenses: false, scheduledExpenses: true } }), valid({ modules: { expenses: false, scheduledExpenses: "yes" } }),
+  valid({ attention: { ...valid().attention, scheduledDueSoonCount: 2, scheduledOverdueCount: 0 } }),
+  valid({ modules: { expenses: false, scheduledExpenses: true }, attention: { ...valid().attention, scheduledDueSoonCount: -1, scheduledOverdueCount: 0 } }),
 ];
 for (const value of broken) assert.throws(() => parseDashboardSummary(value, 7), /no es válida/, JSON.stringify(value)?.slice(0, 80));
 assert.throws(() => parseDashboardSummary(valid(), 30), /no es válida/, "series length must match the requested range");

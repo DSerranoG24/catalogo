@@ -35,14 +35,26 @@ export default function HomePage() {
   const [reply, setReply] = useState<{ key: string; error: string | null } | null>(null);
   const [data, setData] = useState<DashboardSummary | null>(null);
   const lastRequest = useRef(0);
+  // F1b (correction A): the summary is read only. With Gastos enabled, due fixed-expense dates are generated first by
+  // POST /expenses/scheduled/sync (idempotent). If it fails, the summary still loads with a discreet notice (correction C).
+  const scheduling = isEnabled("gastos");
+  const [sync, setSync] = useState<"running" | "ok" | "failed">(scheduling ? "running" : "ok");
   useEffect(() => {
+    if (!scheduling) return;
+    let active = true;
+    apiRequest<unknown>("/expenses/scheduled/sync", { method: "POST" }).then(() => { if (active) setSync("ok"); }, () => { if (active) setSync("failed"); });
+    return () => { active = false; };
+  }, [scheduling]);
+  const ready = sync !== "running";
+  useEffect(() => {
+    if (!ready) return;
     let active = true;
     lastRequest.current = Date.now();
     apiRequest<unknown>(`/dashboard/summary?days=${days}`).then(value => parseDashboardSummary(value, days)).then(
       summary => { if (active) { setData(summary); setReply({ key, error: null }); } },
       cause => { if (active) setReply({ key, error: message(cause) }); });
     return () => { active = false; };
-  }, [key, days]);
+  }, [key, days, ready]);
   // Refresh when the tab regains focus, at most once a minute.
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === "visible" && Date.now() - lastRequest.current >= REFRESH_ON_FOCUS_MS) setRevision(v => v + 1); };
@@ -99,11 +111,12 @@ export default function HomePage() {
         <button type="button" onClick={retry} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#B42318] bg-white px-4 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B42318]"><RefreshCw aria-hidden="true" className="size-4" />Reintentar</button>
       </div>}
 
+      {sync === "failed" && <p role="status" data-sync-notice className="rounded-xl border border-[#F5D9B8] bg-[#FFF8EF] px-4 py-2 text-sm text-[#8A3B0C]">No pudimos actualizar los gastos fijos; los avisos de pagos pueden estar incompletos.</p>}
       {data ? <>
         <FirstSteps setup={data.setup} />
         <SummaryCards data={data} />
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] xl:items-start">
-          <AttentionCard attention={data.attention} ordersHref={ordersHref} />
+          <AttentionCard attention={data.attention} ordersHref={ordersHref} scheduled={data.modules.scheduledExpenses === true} />
           <SalesChart series={seriesForRange} days={days} loading={loading} onDays={setDays} />
         </div>
         <RecentSales recent={data.recent} today={data.today.date} />

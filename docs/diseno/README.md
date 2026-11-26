@@ -55,8 +55,6 @@ Referencia visual: `inicio-escritorio.png`, la maqueta de Inicio. Pendiente de c
 | `/dashboard/catalogos/nuevo`, `/dashboard/catalogos/[id]` | Crear catálogo y espacio de trabajo |
 | `/dashboard/cuenta` | Ajustes (la página de cuenta existente) |
 
-`/dashboard/gastos` solo existe en la rama `f1-expenses`.
-
 **Configuración:** `catalog-generator/lib/panel-navigation.ts`, `PANEL_NAVIGATION`. Cada entrada tiene `id`, `label`, `href`, `icon` (lucide), `group`, `enabled` y `mobileBar`.
 
 | Entrada | Grupo | Ruta | Habilitada | Barra móvil |
@@ -65,7 +63,7 @@ Referencia visual: `inicio-escritorio.png`, la maqueta de Inicio. Pendiente de c
 | Vender | Día a día | `/dashboard/ventas` | Sí | Sí |
 | Inventario | Productos | `/dashboard/inventario` | Sí | Sí |
 | Catálogo | Productos | `/dashboard/catalogos` | Sí | No (va en «Más») |
-| Gastos | Dinero | `/dashboard/gastos` | Sí (F1a) | No (va en «Más») |
+| Gastos | Dinero | `/dashboard/gastos` | Sí (F1a y F1b) | No (va en «Más») |
 | Ajustes | Análisis | `/dashboard/cuenta` | Sí | No (va en «Más») |
 
 - Servicio técnico, Cartera y Reportes no tienen ruta y no figuran en la configuración.
@@ -107,10 +105,12 @@ Las cifras vienen de `GET /api/dashboard/summary` ([contrato y definiciones](../
 | Utilidad del mes (verde) | Siempre | `month.estimatedProfit` frente al mes anterior. Con `salesWithoutCostCount` > 0, enlace «n ventas sin costo» a Inventario. |
 | Gastos del mes (violeta) | `modules.expenses` **y** la entrada Gastos habilitada en `panel-navigation` | Visible con F1a: total de gastos confirmados del mes frente al mes anterior. La utilidad ya los resta. |
 | Te deben | Nunca | Cartera no existe. |
-| Requiere tu atención | Siempre | Filas de stock bajo y agotados (→ Inventario) y de pedidos nuevos («Revisar»: al único catálogo, o a la lista si hay varios). Las filas en 0 se ocultan; si todas son 0, «Todo en orden». Fiados y equipos no existen. «Ver todos» no se implementa. |
+| Requiere tu atención | Siempre | Filas de pagos vencidos («n pagos vencidos») y por vencer en 7 días («n pagos vencen esta semana»), ambas con «Ver» → Gastos, solo con `modules.scheduledExpenses` y la entrada Gastos habilitada (F1b). Después, stock bajo y agotados (→ Inventario) y pedidos nuevos («Revisar»: al único catálogo, o a la lista si hay varios). Las filas en 0 se ocultan; si todas son 0, «Todo en orden». Fiados y equipos no existen. «Ver todos» no se implementa. |
 | Ventas de la semana | Siempre | `salesSeries`. Selector de 7/30/90 días que vuelve a pedir el resumen con `?days=`. Etiquetas por barra solo con 7 días; el valor de cada día aparece al pasar el cursor o con las flechas; hay una tabla oculta como alternativa. |
 | Últimos movimientos | Siempre | `recent` (hasta 5), con insignia de estado, cliente o «Sin cliente», hora o fecha y total. Las filas no son enlaces porque Ventas no tiene enlace directo a una venta; la cabecera lleva «Ver ventas». |
 | Pie | Siempre | «Conectado» o «Sin conexión» según la última petición, y «Última actualización» con la hora de `generatedAt` en Bogotá. |
+
+**Generación de pagos programados (F1b, corrección A):** con la entrada Gastos habilitada, Inicio llama a `POST /api/expenses/scheduled/sync` antes de leer el resumen, que sigue siendo de solo lectura. Si `sync` falla, el resumen se carga igual con un aviso discreto (`role="status"`): «No pudimos actualizar los gastos fijos; los avisos de pagos pueden estar incompletos» (corrección C).
 
 **Estados:**
 - **Carga:** esqueletos del tamaño final.
@@ -125,33 +125,49 @@ Las cifras vienen de `GET /api/dashboard/summary` ([contrato y definiciones](../
 
 ## Página de Gastos (`/dashboard/gastos`)
 
-Referencia visual: [`gastos.png`](gastos.png). Se implementa con lo que F1a permite hoy ([contrato v1.2](../expenses-contract.md)). Las cifras vienen de `GET /api/expenses/overview` ([definiciones](../expenses-overview.md)) y la lista, de `GET /api/expenses`.
+Referencia visual: [`gastos.png`](gastos.png). Se implementa con F1a ([contrato v1.2](../expenses-contract.md)) y F1b, gastos fijos y pagos programados ([contrato F1b](../expenses-f1b-contract.md)). Las cifras vienen de `GET /api/expenses/overview` ([definiciones](../expenses-overview.md)); la lista, de `GET /api/expenses`; la tarjeta «Gastos fijos», de `GET /api/expenses/scheduled`.
+
+**Orden de carga (F1b, correcciones A y C):** la página llama primero a `POST /api/expenses/scheduled/sync` (idempotente) y después lee cifras, lista y pagos. Las lecturas nunca generan. Si `sync` falla, la página muestra lo que ya existe y un aviso discreto con «Reintentar»; reintentar con éxito vuelve a leer.
 
 | Bloque | Qué muestra | Depende de |
 | --- | --- | --- |
-| Cabecera | Icono violeta en mosaico, «Gastos», «Lo que cuesta mantener tu negocio», selector de mes ‹ Mes AAAA › (no deja avanzar a meses futuros), «Categorías» y «Registrar gasto» | F1a |
-| Gastos del mes (violeta) | Total vigente del mes, comparación con el mes anterior y minigráfica por día, con una tabla oculta como alternativa | `overview`: `total`, `previousMonth`, `days` |
-| Registros del mes | Número de gastos vigentes y de anulados (que no suman) | `overview`: `count`, `voidedCount` |
-| Filtros | Chips «Todos» y «Anulados», y buscador «Buscar gasto, categoría o nota» | La búsqueda filtra la lista del mes y carga sus páginas restantes (hasta 20 de 25) para que el resultado sea completo; si no alcanza, lo avisa |
-| Gastos de {mes} | Lista agrupada por día («HOY · MIÉRCOLES 25», «AYER · …», «LUNES 23»), con mosaico de categoría, descripción, categoría, pastilla del medio de pago y monto. Los anulados aparecen atenuados y tachados, con la pastilla «Anulado» y su motivo. «Más gastos» carga la página siguiente | F1a `GET /expenses` |
-| Detalle (diálogo) | Las acciones de F1a sin cambios: reclasificar (categoría, descripción y nota con «Otro»), anular con o sin reemplazo, e historial | F1a |
+| Cabecera | Icono violeta en mosaico, «Gastos», «Lo que cuesta mantener tu negocio», selector de mes ‹ Mes AAAA › (no deja avanzar a meses futuros), «Categorías», «Programar pago» y «Registrar gasto» | F1a, F1b |
+| Gastos del mes (violeta) | Total vigente del mes, comparación con el mes anterior, «n registros · m anulados (no suman)» y minigráfica por día, con una tabla oculta como alternativa | `overview`: `total`, `count`, `voidedCount`, `previousMonth`, `days` |
+| Fijos pagados (azul) | «n de m», «$ X pagados» y barra de progreso (`role="progressbar"`). Sin fijos en el mes: «0 de 0 · Sin gastos fijos este mes» | `overview.scheduled.fixed` |
+| Variables (verde menta, sin el verde antiguo) | Total y número de gastos vigentes del mes que no vienen de un pago programado | `overview.variable` |
+| Próximos pagos (naranja) | Monto previsto de lo que vence entre hoy y hoy + 7, «n en los próximos 7 días» y «n sin monto». Aclara «Previsto: no suma hasta pagarlo». Solo en el mes actual | `overview.scheduled.upcoming` |
+| Vencidos (rojo) | Franja bajo las tarjetas, solo si hay: «Vencidos: n pagos · $ X previstos · n sin monto» y «Ver vencidos», que lleva el foco a la tarjeta «Gastos fijos». Solo en el mes actual | `overview.scheduled.overdue` |
+| Filtros | Chips «Todos», «Fijos» (`origin=fixed`) y «Anulados», y buscador «Buscar gasto, categoría o nota» | La búsqueda filtra la lista del mes y carga sus páginas restantes (hasta 20 de 25) para que el resultado sea completo; si no alcanza, lo avisa |
+| Gastos de {mes} | Lista agrupada por día con mosaico de categoría, descripción, insignia «Fijo» (gasto creado al pagar un gasto fijo), categoría, pastilla del medio de pago y monto. Los anulados aparecen atenuados y tachados, con la pastilla «Anulado» y su motivo. «Más gastos» carga la página siguiente | F1a `GET /expenses` |
+| Detalle (diálogo) | Las acciones de F1a: reclasificar, anular con o sin reemplazo, e historial. Si el gasto viene de un pago programado, lo dice y avisa de que anularlo sin reemplazo devuelve el pago a pendiente | F1a, F1b |
 | ¿En qué se va la plata? | Barras violeta por categoría con monto y porcentaje calculados en el servidor; las archivadas se marcan «(archivada)» | `overview`: `byCategory` |
-| Registrar gasto (diálogo) | El formulario de F1a con monto grande, fecha, categoría, medio de pago, nota con «Otro», descripción, proveedor y referencia. Validaciones y envío seguro sin cambios. Incluye los avisos de que las compras de mercancía no son gastos y de que el IVA no se gestiona | F1a |
+| Gastos fijos (columna derecha) | Ocurrencias de gastos fijos y pagos únicos con vencimiento en el mes (en el mes actual, hasta hoy + 7 si pasa del fin de mes), más todos los vencidos. Primero los vencidos, luego los pendientes por fecha y al final los pagados. Cada fila: mosaico, descripción (insignia «Único» si no es fijo), «Día 28 · $ 110.000» (o «monto por definir»), estado «Pagado» (verde), «Vence hoy / mañana / en n días» (naranja, hasta 7 días), «Vencido hace n días» (rojo) o «Por pagar» (gris), y «Marcar pagado» en los pendientes. «Administrar» abre la gestión de fijos | `GET /expenses/scheduled` |
+| Opciones de un pago (diálogo) | Datos del pago; en pendientes, «Marcar pagado», «Reprogramar» (nueva fecha desde hoy y monto previsto) y «Omitir este pago» (motivo opcional, definitivo); en pagados, «Ver el gasto registrado» | `PATCH /expenses/scheduled/:id`, `/cancel` |
+| Marcar pagado (diálogo) | Monto precargado con el previsto y editable con separador de miles, aviso si difiere del previsto, fecha de pago (hoy por defecto, nunca futura), medio de pago, nota con «Otro» y referencia opcional | `POST /expenses/scheduled/:id/pay` |
+| Programar pago (diálogo) | Monto previsto opcional, vencimiento (hoy o después, hasta un año), categoría, descripción, medio de pago habitual y proveedor. «Repetir» lo convierte en gasto fijo: cada 1 a 12 semanas, meses o años, con fecha final opcional y la nota de que una quincena son dos fijos mensuales | `POST /expenses/scheduled` o `POST /expenses/recurring` |
+| Administrar gastos fijos (diálogo) | Fijos activos y en pausa con frecuencia, monto estimado, categoría y próxima fecha. «Editar» (descripción, monto estimado, categoría y frecuencia; se aplica a las próximas fechas pendientes no editadas a mano), «Pausar», «Reanudar» y «Terminar» (con confirmación) | `/expenses/recurring` |
+| Registrar gasto (diálogo) | El formulario de F1a con monto grande, fecha, categoría, medio de pago, nota con «Otro», descripción, proveedor y referencia | F1a |
 | Categorías (diálogo) | Crear, renombrar, ordenar, archivar y reactivar | F1a |
 | Pie | «Tu negocio está seguro con Vitrinaya», «Conectado» o «Sin conexión», y la hora de `generatedAt` en Bogotá | `overview` |
 
-**Ocultos hasta F1b o F1c:** «Fijos pagados», «Variables», «Próximos pagos», los chips «Fijos» y «Con soporte», la tarjeta «Gastos fijos» («Administrar», «Marcar pagado») y el clip de soporte. «Exportar» llega con Reportes. La campana no se muestra porque no existen notificaciones.
+Los pagos programados nunca suman en «Gastos del mes», «Variables» ni en la utilidad de Inicio: solo cuenta el gasto que se crea al marcarlos pagados.
+
+**Ocultos hasta F1c o después:** el chip «Con soporte» y el clip de soporte (F1c), y el chip «Variables» (la API no filtra por origen variable). «Exportar» llega con Reportes. La campana no se muestra porque no existen notificaciones.
 
 **Diferencias con la maqueta:**
-- Hay 2 tarjetas de cifras en lugar de 4.
-- «Categorías» es un botón de la cabecera, para no quitar la gestión de categorías de F1a.
+- «Variables» y «Próximos pagos» no tienen minigráfica: el resumen no trae su serie diaria.
+- «Vencidos» es una franja roja bajo las tarjetas y no una quinta tarjeta, para no romper la rejilla de 4.
+- El número de registros y de anulados pasa a una línea de «Gastos del mes».
+- «Categorías» y «Programar pago» son botones de la cabecera.
 - La cabecera del panel conserva «Nueva venta».
-- Categoría y medio de pago siguen siendo listas desplegables nativas del formulario de F1a, no fichas.
-- El detalle y el registro se abren en diálogos.
+- Categoría y medio de pago son listas desplegables nativas, no fichas.
+- El detalle, el registro, la programación y el pago se abren en diálogos.
 
-**Móvil:** las cifras se apilan, la lista ocupa todo el ancho y «Registrar gasto» queda fijo sobre la barra inferior, respetando el área segura.
+**Móvil:** las cifras se apilan, la lista ocupa todo el ancho, la tarjeta «Gastos fijos» queda debajo de «¿En qué se va la plata?» con el estado y «Marcar pagado» bajo el texto, y «Registrar gasto» queda fijo sobre la barra inferior, respetando el área segura.
 
-**Pruebas:** `npm.cmd run test:expenses-browser` (flujo completo de F1a sobre la pantalla nueva) y `scripts/verify-expenses-ui.mjs` (helpers, validador de `overview` y contraste de las pastillas).
+**Pruebas:**
+- `npm.cmd run test:expenses-browser`: flujo de F1a y de F1b (programar único y recurrente, marcar pagado con otro monto y respuesta perdida, vencidos, reprogramar, omitir, anular el gasto pagado, administrar, fallo de `sync`), sin verde antiguo y sin desbordes de 320 a 1440 px.
+- `scripts/verify-expenses-ui.mjs`: helpers, validadores de `overview`, de pagos y de fijos, formularios de programar y pagar, y contraste de las pastillas.
 
 ## Tema del panel (`.vy-theme`) y campo de monto
 
