@@ -158,11 +158,21 @@ export function matchesSearch(item, query) {
 }
 const count = v => Number.isSafeInteger(v) && v >= 0;
 const pendingFigure = v => object(v) && count(v.count) && money(v.plannedTotal) && count(v.withoutAmount) && v.withoutAmount <= v.count;
-/** F1b figures: upcoming and overdue only exist for the current month (null otherwise). */
-function validScheduledFigures(s) {
+const FREQUENCY_KEYS = ["WEEKLY", "MONTHLY", "YEARLY"];
+const validProjected = p => object(p) && uuid(p.templateId) && isoDate(p.dueDate) && typeof p.description === "string" && (p.plannedAmount === null || money(p.plannedAmount))
+  && uuid(p.categoryId) && text(p.categoryName) && PAYMENT_METHODS.includes(p.paymentMethod) && FREQUENCY_KEYS.includes(p.frequency) && Number.isSafeInteger(p.interval);
+/**
+ * F1b figures: upcoming and overdue are relative to today in every month. A future month also brings `planned`
+ * (generated pending + projected) and the projected dates, which are informative only; other months: null and [].
+ */
+function validScheduledFigures(s, future, month) {
   return object(s) && object(s.fixed) && count(s.fixed.due) && count(s.fixed.paid) && s.fixed.paid <= s.fixed.due && money(s.fixed.paidTotal)
-    && (s.upcoming === null || pendingFigure(s.upcoming)) && (s.overdue === null || pendingFigure(s.overdue)) && (s.upcoming === null) === (s.overdue === null);
+    && pendingFigure(s.upcoming) && pendingFigure(s.overdue) && Array.isArray(s.projected) && s.projected.every(p => validProjected(p) && p.dueDate.startsWith(month))
+    && (future ? object(s.planned) && count(s.planned.count) && money(s.planned.plannedTotal) && count(s.planned.withoutAmount) && count(s.planned.projectedCount)
+      && s.planned.projectedCount === s.projected.length && s.planned.withoutAmount <= s.planned.count : s.planned === null && s.projected.length === 0);
 }
+/** Months the Gastos page can show: from 2000-01 to 12 months after the current one (Bogotá). */
+export const MAX_FUTURE_MONTHS = 12;
 /** Validates GET /expenses/overview (amounts are decimal strings; percents come from the server). */
 export function parseExpenseOverview(value, month) {
   const r = value?.result;
@@ -170,7 +180,7 @@ export function parseExpenseOverview(value, month) {
     && money(r.total) && Number.isSafeInteger(r.count) && Number.isSafeInteger(r.voidedCount) && object(r.previousMonth) && money(r.previousMonth.total)
     && Array.isArray(r.days) && r.days.length >= 1 && r.days.length <= 31 && r.days.every(d => object(d) && isoDate(d.date) && d.date.startsWith(month) && money(d.total))
     && Array.isArray(r.byCategory) && r.byCategory.every(c => object(c) && uuid(c.categoryId) && typeof c.name === "string" && typeof c.archived === "boolean" && money(c.total) && typeof c.percent === "string" && /^\d{1,3}$/.test(c.percent))
-    && validScheduledFigures(r.scheduled) && object(r.variable) && money(r.variable.total) && Number.isSafeInteger(r.variable.count);
+    && typeof r.future === "boolean" && validScheduledFigures(r.scheduled, r.future, month) && object(r.variable) && money(r.variable.total) && Number.isSafeInteger(r.variable.count);
   if (!ok) invalid();
   return r;
 }

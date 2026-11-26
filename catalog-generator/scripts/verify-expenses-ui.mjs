@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { CATEGORY_STYLES, EXPENSE_STATUS_TONES, formatAmountInput, dayHeading, groupByDay, matchesSearch, monthLabel, monthName, parseExpenseOverview, PAYMENT_TONES, shiftMonth } from "../lib/expenses-ui.mjs";
+import { MAX_FUTURE_MONTHS } from "../lib/expenses-ui.mjs";
 import { addDays, FREQUENCIES, frequencyLabel, monthEnd, parseRecurringList, parseScheduledList, parseSyncReply, scheduledState, sortScheduled, validatePayForm, validateScheduleForm } from "../lib/expenses-ui.mjs";
 import { bogotaToday, describeExpenseFailure, EXPENSE_STATUS_LABELS, formatCop, formatExpenseDate, minExpenseDate, monthRange, parseCategories, parseExpenseDetail,
   parseExpensePage, parseSummary, PAYMENT_LABELS, PAYMENT_METHODS, possibleDuplicate, previousMonthRange, validateExpenseForm, validRange, yearRange } from "../lib/expenses-ui.mjs";
@@ -98,17 +99,26 @@ assert.deepEqual(groupByDay([expense({ id: id(1), expenseDate: "2026-11-25" }), 
 const lamp = expense({ description: "Energía eléctrica", categoryName: "Servicios públicos", categoryNameSnapshot: "Servicios", paymentMethodNote: "Bancolombia App", supplierName: "Enel" });
 for (const q of ["energia", "ELÉCTRICA", "servicios", "bancolombia", "enel", "  ", ""]) assert.equal(matchesSearch(lamp, q), true, q);
 assert.equal(matchesSearch(lamp, "arriendo"), false);
-const overview = { success: true, result: { month: "2026-11", from: "2026-11-01", to: "2026-11-25", generatedAt: "2026-11-25T20:56:00.000Z", total: "380000", count: 3, voidedCount: 0,
+const overview = { success: true, result: { month: "2026-11", from: "2026-11-01", to: "2026-11-25", generatedAt: "2026-11-25T20:56:00.000Z", future: false, total: "380000", count: 3, voidedCount: 0,
   previousMonth: { month: "2026-10", total: "0" }, days: [{ date: "2026-11-01", total: "0" }], byCategory: [{ categoryId: id(2), name: "Arriendo", archived: false, total: "150000", count: 1, percent: "39" }],
-  scheduled: { fixed: { due: 5, paid: 3, paidTotal: "720000" }, upcoming: { count: 2, plannedTotal: "310000", withoutAmount: 0 }, overdue: { count: 0, plannedTotal: "0", withoutAmount: 0 } },
+  scheduled: { fixed: { due: 5, paid: 3, paidTotal: "720000" }, upcoming: { count: 2, plannedTotal: "310000", withoutAmount: 0 }, overdue: { count: 0, plannedTotal: "0", withoutAmount: 0 }, planned: null, projected: [] },
   variable: { total: "260000", count: 14 } } };
 const withScheduled = scheduled => ({ success: true, result: { ...overview.result, scheduled: { ...overview.result.scheduled, ...scheduled } } });
-assert.equal(parseExpenseOverview(withScheduled({ upcoming: null, overdue: null }), "2026-11").scheduled.upcoming, null, "past months have no upcoming/overdue");
+// Future month: zero figures, planned = generated + projected; projected dates are informative.
+const projectedRow = { templateId: id(6), dueDate: "2027-01-10", description: "Arriendo", plannedAmount: "600000", categoryId: id(2), categoryName: "Arriendo", paymentMethod: "CASH", frequency: "MONTHLY", interval: 1 };
+const futureOverview = { success: true, result: { ...overview.result, month: "2027-01", from: "2027-01-01", to: "2027-01-31", future: true, total: "0", count: 0, days: [{ date: "2027-01-01", total: "0" }], byCategory: [],
+  scheduled: { ...overview.result.scheduled, planned: { count: 2, plannedTotal: "710000", withoutAmount: 0, projectedCount: 1 }, projected: [projectedRow] } } };
+assert.equal(parseExpenseOverview(futureOverview, "2027-01").scheduled.projected[0].dueDate, "2027-01-10");
+assert.equal(MAX_FUTURE_MONTHS, 12);
+for (const broken of [{ ...futureOverview.result.scheduled, planned: null }, { ...futureOverview.result.scheduled, projected: [{ ...projectedRow, dueDate: "2027-02-01" }] },
+  { ...futureOverview.result.scheduled, projected: [{ ...projectedRow, plannedAmount: 600000 }] }, { ...futureOverview.result.scheduled, planned: { ...futureOverview.result.scheduled.planned, projectedCount: 3 } }])
+  assert.throws(() => parseExpenseOverview({ success: true, result: { ...futureOverview.result, scheduled: broken } }, "2027-01"), /no es válida/);
+assert.throws(() => parseExpenseOverview({ success: true, result: { ...overview.result, scheduled: { ...overview.result.scheduled, projected: [projectedRow] } } }, "2026-11"), /no es válida/, "only future months project");
 assert.equal(parseExpenseOverview(overview, "2026-11").total, "380000");
 for (const broken of [{ ...overview, success: false }, { success: true, result: { ...overview.result, total: 380000 } }, { success: true, result: { ...overview.result, month: "2026-10" } },
   { success: true, result: { ...overview.result, days: [{ date: "2026-10-31", total: "0" }] } }, { success: true, result: { ...overview.result, byCategory: [{ ...overview.result.byCategory[0], percent: 39 }] } },
   { success: true, result: { ...overview.result, scheduled: undefined } }, { success: true, result: { ...overview.result, variable: { total: 260000, count: 14 } } },
-  withScheduled({ fixed: { due: 2, paid: 3, paidTotal: "0" } }), withScheduled({ upcoming: null }), withScheduled({ overdue: { count: 1, plannedTotal: "0", withoutAmount: 2 } })])
+  withScheduled({ fixed: { due: 2, paid: 3, paidTotal: "0" } }), withScheduled({ upcoming: null }), { success: true, result: { ...overview.result, future: undefined } }, withScheduled({ overdue: { count: 1, plannedTotal: "0", withoutAmount: 2 } })])
   assert.throws(() => parseExpenseOverview(broken, "2026-11"), /no es válida/);
 const L = h => { const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; };
 const ratio = classes => { const [bg, fg] = [classes.match(/bg-\[(#[0-9A-Fa-f]{6})\]/)[1], classes.match(/text-\[(#[0-9A-Fa-f]{6})\]/)[1]]; const [a, b] = [L(bg), L(fg)]; return (Math.max(a, b) + .05) / (Math.min(a, b) + .05); };

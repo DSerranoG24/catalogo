@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { privatePanelFixture } from "./private-panel-browser-fixture.mjs";
-import { addDays, bogotaToday, monthEnd, monthLabel, monthName, previousMonthRange } from "../lib/expenses-ui.mjs";
+import { addDays, bogotaToday, monthEnd, monthLabel, monthName, previousMonthRange, shiftMonth } from "../lib/expenses-ui.mjs";
 
 // Real Chromium, real Next proxy, simulated API with the rules of docs/expenses-contract.md v1.2 (F1a)
 // and docs/expenses-f1b-contract.md (fixed expenses and scheduled payments: never added until paid).
@@ -60,7 +60,7 @@ const scheduledView = x => {
 const templateView = t => {
   let next = null; for (let k = 0; k < 2000 && t.status !== "ENDED"; k++) { const d = nth(t, k); if (t.endDate && d > t.endDate) break; if (d >= today) { next = d; break; } }
   const { generatedThrough, ...rest } = t; void generatedThrough;
-  return { ...rest, categoryName: category(t.categoryId).name, categoryArchived: Boolean(category(t.categoryId).archivedAt), nextDate: next, endedAt: null };
+  return { ...rest, categoryName: category(t.categoryId).name, categoryArchived: Boolean(category(t.categoryId).archivedAt), nextDate: next, endedAt: t.endedAt ?? null };
 };
 const cancelFuture = (t, reason) => { let n = 0; for (const x of payments) if (x.templateId === t.id && x.status === "PENDING" && x.dueDate >= today && !x.customized) { Object.assign(x, { status: "CANCELLED", cancelledAt: now(), cancelReason: reason }); x.version++; n++; } return n; };
 function validSchedule(input, fields) {
@@ -139,7 +139,7 @@ function scheduledMutation(method, p, body) {
       if (!allowed) throw new Fail(409, "INVALID_RECURRING_TRANSITION");
       let cancelled = 0, generated = 0;
       if (kind === "resume") { t.status = "ACTIVE"; t.generatedThrough = addDays(today, -1); generated = generate(t); }
-      else { t.status = kind === "pause" ? "PAUSED" : "ENDED"; cancelled = cancelFuture(t, kind === "pause" ? "Gasto fijo en pausa" : "Gasto fijo terminado"); }
+      else { t.status = kind === "pause" ? "PAUSED" : "ENDED"; if (kind === "end") t.endedAt = now(); cancelled = cancelFuture(t, kind === "pause" ? "Gasto fijo en pausa" : "Gasto fijo terminado"); }
       t.version++; return { template: templateView(t), cancelled, generated };
     });
   }
@@ -256,6 +256,7 @@ function read(url) {
   }
   if (p === "/api/expenses") {
     for (const key of q.keys()) if (!["from", "to", "categoryId", "paymentMethod", "status", "cursor", "origin"].includes(key)) throw invalid();
+    if ((q.get("to") ?? "") > today) throw invalid(); // expense dates are never future
     if (q.has("origin") && q.get("origin") !== "fixed") throw invalid();
     const rows = filtered(q, q.get("status") ?? "CONFIRMED").filter(e => !q.has("origin") || Boolean(payments.find(x => x.id === e.scheduledPaymentId)?.templateId)).sort((a, b) => b.expenseDate.localeCompare(a.expenseDate) || b.recordedAt.localeCompare(a.recordedAt) || b.id.localeCompare(a.id));
     const start = q.get("cursor") ? Number(Buffer.from(q.get("cursor"), "base64url").toString()) : 0, page = rows.slice(start, start + PAGE);
@@ -274,7 +275,7 @@ function read(url) {
     // Same semantics as GET /api/expenses/overview: CONFIRMED add, VOIDED apart, percent half up with BigInt.
     for (const key of q.keys()) if (key !== "month") throw invalid();
     const month = q.get("month") ?? "";
-    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || month > today.slice(0, 7)) throw invalid();
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || month > shiftMonth(today.slice(0, 7), 12)) throw invalid(); // up to 12 months ahead
     const lastDay = m => new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0)).toISOString().slice(0, 10);
     const from = `${month}-01`, to = month === today.slice(0, 7) ? today : lastDay(month);
     const prevMonth = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 2, 1)).toISOString().slice(0, 7);
@@ -289,13 +290,28 @@ function read(url) {
       const rows = confirmed.filter(e => e.categoryId === id), t = sum(rows);
       return { categoryId: id, name: category(id).name, archived: Boolean(category(id).archivedAt), total: t.toString(), count: rows.length, percent: total === 0n ? "0" : ((t * 200n + total) / (total * 2n)).toString() };
     }).sort((a, b) => BigInt(b.total) > BigInt(a.total) ? 1 : BigInt(b.total) < BigInt(a.total) ? -1 : a.name.localeCompare(b.name, "es"));
-    const current = month === today.slice(0, 7), pending = payments.filter(x => x.status === "PENDING");
+    const future = month > today.slice(0, 7), pending = payments.filter(x => x.status === "PENDING");
     const fixed = payments.filter(x => x.templateId && ["PENDING", "PAID"].includes(x.status) && x.dueDate >= from && x.dueDate <= lastDay(month)), paidFixed = fixed.filter(x => x.status === "PAID");
     const figureOf = rows => ({ count: rows.length, plannedTotal: rows.reduce((t, x) => t + BigInt(x.plannedAmount ?? 0), 0n).toString(), withoutAmount: rows.filter(x => !x.plannedAmount).length });
     const scheduled = { fixed: { due: fixed.length, paid: paidFixed.length, paidTotal: sum(paidFixed.map(x => expense(x.paidExpenseId))).toString() },
-      upcoming: current ? figureOf(pending.filter(x => x.dueDate >= today && x.dueDate <= addDays(today, 7))) : null, overdue: current ? figureOf(pending.filter(x => x.dueDate < today)) : null };
+      upcoming: figureOf(pending.filter(x => x.dueDate >= today && x.dueDate <= addDays(today, 7))), overdue: figureOf(pending.filter(x => x.dueDate < today)), planned: null, projected: [] };
+    if (future) {
+      // Projection (never stored): dates of ACTIVE fixed expenses after generatedThrough inside the month, minus existing ones.
+      const end = lastDay(month), projected = [];
+      for (const t of templates.filter(x => x.status === "ACTIVE")) for (let k = 0; k < 2000; k++) {
+        const date = nth(t, k); if (date > end || (t.endDate && date > t.endDate)) break;
+        if (date < from || date <= (t.generatedThrough ?? addDays(today, -1))) continue;
+        if (payments.some(x => x.templateId === t.id && x.occurrenceDate === date && x.status !== "CANCELLED")) continue;
+        projected.push({ templateId: t.id, dueDate: date, description: t.description, plannedAmount: t.estimatedAmount, categoryId: t.categoryId, categoryName: category(t.categoryId).name,
+          paymentMethod: t.paymentMethod, frequency: t.frequency, interval: t.interval });
+      }
+      projected.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+      const generated = pending.filter(x => x.dueDate >= from && x.dueDate <= end), withAmount = figureOf([...generated, ...projected]);
+      scheduled.planned = { count: withAmount.count, plannedTotal: withAmount.plannedTotal, withoutAmount: withAmount.withoutAmount, projectedCount: projected.length };
+      scheduled.projected = projected;
+    }
     const variable = confirmed.filter(e => !e.scheduledPaymentId);
-    return { success: true, result: { month, from, to, generatedAt: now(), total: total.toString(), count: confirmed.length, scheduled, variable: { total: sum(variable).toString(), count: variable.length },
+    return { success: true, result: { month, from, to, generatedAt: now(), future, total: total.toString(), count: confirmed.length, scheduled, variable: { total: sum(variable).toString(), count: variable.length },
       voidedCount: expenses.filter(e => e.status === "VOIDED" && inRange(e, from, to)).length,
       previousMonth: { month: prevMonth, total: sum(expenses.filter(e => e.status === "CONFIRMED" && inRange(e, `${prevMonth}-01`, lastDay(prevMonth)))).toString() }, days, byCategory } };
   }
@@ -405,7 +421,7 @@ try {
     // (sync before any read: correction A), F1b blocks present, F1c blocks absent.
     await viewport(1440);
     await command("Page.navigate", { url: "http://localhost:4338/dashboard/gastos" });
-    await waitText("No hay gastos registrados este mes."); await waitTotal("$ 0");
+    await waitText("No hay gastos registrados este mes."); await waitTotal("$ 0"); await waitText("No hay gastos fijos ni pagos programados en este mes.");
     const gastosEnabled = /id: "gastos"[^\n]*enabled: true/.test(fs.readFileSync(new URL("../lib/panel-navigation.ts", import.meta.url), "utf8"));
     const gastosLink = `document.querySelector('aside nav[aria-label="Principal"] a[href="/dashboard/gastos"]')`;
     if (gastosEnabled) assert.equal(await evaluate(`${gastosLink}?.getAttribute('aria-current')`), "page");
@@ -417,7 +433,7 @@ try {
     for (const absent of ["Con soporte", "Exportar", "Marcar pagado", "Vencidos"]) assert.ok(!page.includes(absent), `${absent} must not appear (F1c, or nothing to pay)`);
     assert.deepEqual(await evaluate(`[...document.querySelectorAll('[aria-label="Filtrar gastos"] button')].map(b=>b.textContent.trim())`), ["Todos", "Fijos", "Anulados"]);
     assert.equal(await evaluate(`document.querySelector('#expense-search').placeholder`), "Buscar gasto, categoría o nota");
-    assert.equal(await evaluate(`[...document.querySelectorAll('[aria-label="Mes"] button')].find(b=>b.getAttribute('aria-label')==='Mes siguiente').disabled`), true, "no future months");
+    assert.equal(await evaluate(`[...document.querySelectorAll('[aria-label="Mes"] button')].find(b=>b.getAttribute('aria-label')==='Mes siguiente').disabled`), false, "future months can be shown");
     assert.deepEqual(mutations.map(m => m.path).sort(), ["/api/expense-categories/seed", "/api/expenses/scheduled/sync"], "opening the page only seeds categories and syncs");
     const seedBody = mutations.find(m => m.path === "/api/expense-categories/seed").body;
     assert.ok(uuid.test(seedBody.operationId) && uuid.test(seedBody.requestId));
@@ -698,9 +714,11 @@ try {
     // Overdue (created elsewhere): red figure and row; it stays overdue until paid, rescheduled or skipped.
     payments.push({ id: randomUUID(), status: "PENDING", templateId: null, occurrenceDate: null, dueDate: addDays(today, -3), plannedAmount: null, description: "Revisión del extintor",
       categoryId: categories.find(c => c.seedKey === "maintenance").id, paymentMethod: "CASH", paymentMethodNote: null, supplierName: null, customized: false, paidExpenseId: null, paidAt: null, cancelledAt: null, cancelReason: null, version: 1 });
+    const upcomingNow = await figureText("upcoming");
     await evaluate(`document.querySelector('[aria-label="Mes anterior"]').click()`);
     await poll(async () => (await figureText("fixed")) !== null && (await total()) === "$ 99.000"); // previous month loaded
-    assert.equal(await figureText("upcoming"), null, "past months have no Próximos pagos"); assert.equal(await figureText("overdue"), null);
+    await poll(async () => ((await figureText("overdue")) ?? "").includes("Vencidos: 1 pago"));
+    assert.equal((await figureText("upcoming")).replace("Desde hoy, sin importar el mes que veas. ", ""), upcomingNow, "Próximos pagos: the next 7 days from today in any month");
     await evaluate(`document.querySelector('[aria-label="Mes siguiente"]').click()`);
     await poll(async () => ((await figureText("overdue")) ?? "").includes("Vencidos: 1 pago"));
     assert.ok((await figureText("overdue")).includes("1 sin monto"));
@@ -708,7 +726,7 @@ try {
     assert.equal(await evaluate(`[...document.querySelectorAll('[data-scheduled-id]')][0].innerText.includes('Revisión del extintor')`), true, "overdue first");
     await click("Ver vencidos"); assert.equal(await evaluate(`document.activeElement?.id`), "scheduled-title", "«Ver vencidos» moves focus to the card");
     await noOldGreen("the Gastos page with F1b blocks");
-    checks.push("Vencidos: red banner with count and «sin monto», overdue row first «Vencido hace 3 días», «Ver vencidos» focuses the card; past months hide Próximos pagos");
+    checks.push("Vencidos: red banner with count and «sin monto», overdue row first «Vencido hace 3 días», «Ver vencidos» focuses the card; Próximos pagos and Vencidos stay relative to today in a past month");
 
     // Mark paid with a different amount; reply lost → Reintentar replays the same operation: one expense.
     assert.equal(await rowButton("Internet del local", "Marcar pagado"), true);
@@ -772,6 +790,55 @@ try {
     await poll(async () => (await card()).includes("Internet del local") && (await card()).includes("$ 120.000"));
     checks.push("Administrar: edit estimated amount (PATCH with only the changed field; pending dates follow), pause and resume");
 
+    // Future months: zero figures with «Mes futuro», generated pending payments with their actions, projected dates of
+    // ACTIVE fixed expenses without actions (computed by the read, never stored), planned total; up to 12 months ahead.
+    const nextMonth = shiftMonth(today.slice(0, 7), 1);
+    payments.push({ id: randomUUID(), status: "PENDING", templateId: null, occurrenceDate: null, dueDate: `${nextMonth}-15`, plannedAmount: "70000", description: "Seguro del local",
+      categoryId: categories.find(c => c.seedKey === "taxes-procedures").id, paymentMethod: "CASH", paymentMethodNote: null, supplierName: null, customized: false, paidExpenseId: null, paidAt: null, cancelledAt: null, cancelReason: null, version: 1 });
+    const pausedTemplate = { id: randomUUID(), status: "PAUSED", description: "Fijo en pausa", categoryId: categories.find(c => c.seedKey === "utilities").id, paymentMethod: "CASH", paymentMethodNote: null,
+      supplierName: null, estimatedAmount: "5000", frequency: "MONTHLY", interval: 1, anchorDate: today, endDate: null, generatedThrough: addDays(today, 7), version: 1 };
+    templates.push(pausedTemplate, { ...pausedTemplate, id: randomUUID(), status: "ENDED", description: "Alarma vieja", estimatedAmount: "45000", endedAt: `${addDays(today, -2)}T15:00:00.000Z` });
+    const rowsBefore = payments.length, listReads = log.filter(entry => entry === "GET /api/expenses").length;
+    await evaluate(`document.querySelector('[aria-label="Mes siguiente"]').click()`);
+    await waitText(monthLabel(nextMonth));
+    await poll(async () => (await total()) === "$ 0" && await evaluate(`Boolean(document.querySelector('[data-future-note]'))`));
+    for (const name of ["fixed", "variable"]) assert.match(await figureText(name), /\$ 0 Mes futuro/, `${name}: $ 0 and «Mes futuro»`);
+    await poll(async () => (await card()).includes("Proyectado") && (await card()).includes("Seguro del local"));
+    const internetProjected = await evaluate(`(()=>{const li=document.querySelector('[data-projected]');return li?{text:li.innerText.replace(/\\s+/g,' '),buttons:li.querySelectorAll('button,a').length}:null})()`);
+    assert.ok(internetProjected && internetProjected.text.includes("Internet del local") && internetProjected.text.includes("$ 120.000") && internetProjected.text.includes("cada mes"), JSON.stringify(internetProjected));
+    assert.equal(internetProjected.buttons, 0, "a projected date has no actions (no pay, skip or edit)");
+    assert.equal(await stateOf("Seguro del local"), "pending", "a generated payment of that month keeps its actions");
+    assert.equal(await rowButton("Seguro del local", "Marcar pagado"), true); await poll(() => evaluate(`Boolean(document.querySelector('#pay-amount'))`)); await closeDialogs();
+    assert.ok(!(await card()).includes("Fijo en pausa") && !(await card()).includes("Alarma vieja"), "paused and ended fixed expenses are not projected");
+    // Generated pending of that month (70.000, plus the rescheduled one if today + 5 falls in it) + projected 120.000.
+    const generatedNext = payments.filter(x => x.status === "PENDING" && x.dueDate.startsWith(nextMonth));
+    const plannedNext = generatedNext.reduce((t, x) => t + BigInt(x.plannedAmount ?? 0), 120000n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    assert.equal(await evaluate(`document.querySelector('[data-planned-total]').innerText.replace(/\\s+/g,' ')`), `Previsto del mes: $ ${plannedNext} · ${generatedNext.length + 1} pagos`,
+      "planned = generated pending + projected with amount");
+    assert.equal(payments.length, rowsBefore, "showing a future month stores nothing");
+    assert.equal(log.filter(entry => entry === "GET /api/expenses").length, listReads, "no expense list is requested for a future month");
+    await waitText("Mes futuro: todavía no hay gastos.");
+    await shot("gastos-futuro-1440");
+    for (let i = 1; i < 12; i++) await evaluate(`document.querySelector('[aria-label="Mes siguiente"]').click()`);
+    await waitText(monthLabel(shiftMonth(today.slice(0, 7), 12)));
+    assert.equal(await evaluate(`document.querySelector('[aria-label="Mes siguiente"]').disabled`), true, "12 months ahead is the limit");
+    for (let i = 0; i < 12; i++) await evaluate(`document.querySelector('[aria-label="Mes anterior"]').click()`);
+    await waitText(monthLabel(today.slice(0, 7))); await waitTotal(totalBefore);
+    assert.equal(await evaluate(`Boolean(document.querySelector('[data-future-note]'))`), false);
+    checks.push("Future months: «Mes siguiente» up to 12 months ahead; $ 0 with «Mes futuro»; generated payment with its actions plus «Proyectado» dates without actions; paused/ended not projected; «Previsto del mes»; no list request and nothing stored; back to the current month");
+
+    // Administrar: ended fixed expenses in a folded, read-only «Terminados (n)».
+    await click("Administrar"); await poll(() => evaluate(`Boolean(document.querySelector('[data-recurring-ended]'))`));
+    assert.equal(await evaluate(`document.querySelector('[data-recurring-ended]').open`), false, "folded by default");
+    assert.match(await evaluate(`document.querySelector('[data-recurring-ended] summary').innerText`), /Terminados \(1\)/);
+    await evaluate(`document.querySelector('[data-recurring-ended] summary').click()`);
+    const endedText = norm(await evaluate(`document.querySelector('[data-recurring-ended]').innerText`));
+    for (const part of ["Alarma vieja", "Cada mes", "$ 45.000", "Servicios públicos", "Terminó el"]) assert.ok(endedText.includes(part), part);
+    assert.equal(await evaluate(`document.querySelectorAll('[data-recurring-ended] li button').length`), 0, "read only");
+    assert.ok(!norm(await evaluate(`document.querySelector('ul[aria-label="Gastos fijos"]').innerText`)).includes("Alarma vieja"), "ended ones are not in the managed list");
+    await noOldGreen("the manager with ended ones"); await closeDialogs();
+    checks.push("Administrar: «Terminados (n)» folded, with name, frequency, amount, category and end date, read only");
+
     // Correction C: a failed sync shows what exists with a discreet notice, never blocks; Reintentar syncs again.
     syncFails = 1;
     await command("Page.navigate", { url: "http://localhost:4338/dashboard/gastos" });
@@ -792,8 +859,18 @@ try {
     checks.push("Amount field: «1.250.000» while typing, caret kept when deleting or typing in the middle, paste with or without dots, 13 digits, empty; API still receives digits only");
 
     // Responsive: stacked figures and a register button above the bottom bar on mobile; no overflow.
-    for (const width of [320, 375, 390, 768, 1024, 1440]) {
+    for (const width of [320, 375, 390, 768, 1024, 1132, 1280, 1440]) {
       await viewport(width);
+      // Header: from 1024 px the month selector and «Registrar gasto» share one row (the primary action never drops
+      // alone); the secondary actions stay together in their own row.
+      const header = await evaluate(`(()=>{const r=e=>e&&e.getClientRects().length?e.getBoundingClientRect():null;const reg=r(${button("Registrar gasto")}&&document.querySelector('[data-header-primary]').contains(${button("Registrar gasto")})?${button("Registrar gasto")}:null);const m=r(document.querySelector('[aria-label="Mes"]'));const t=r(document.querySelector('main h1'));const s=[...document.querySelectorAll('[data-header-secondary] button')].map(r);return {reg:reg&&{top:Math.round(reg.top),bottom:Math.round(reg.bottom)},month:{top:Math.round(m.top),bottom:Math.round(m.bottom)},title:Math.round(t.top),secondary:s.map(b=>Math.round(b.top))}})()`);
+      if (width >= 375) assert.equal(new Set(header.secondary).size, 1, `secondary actions in one row at ${width}px`); // at 320 they stack, without overflow
+      if (width >= 1024) {
+        assert.ok(header.reg && Math.abs((header.reg.top + header.reg.bottom) - (header.month.top + header.month.bottom)) <= 4, `month and «Registrar gasto» in one row at ${width}px: ${JSON.stringify(header)}`);
+        assert.ok(header.month.top < header.secondary[0], `secondary row below at ${width}px`);
+        if ([1132, 1440].includes(width)) { await evaluate(`window.scrollTo(0,0)`); await shot(`gastos-cabecera-${width}`); }
+      }
+      if (width === 375) { await evaluate(`window.scrollTo(0,0)`); await shot("gastos-cabecera-375"); }
       const overflow = await evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
       const wide = overflow > 0 ? await evaluate(`[...document.querySelectorAll('main *')].filter(e=>e.getBoundingClientRect().right>document.documentElement.clientWidth+1).slice(-4).map(e=>e.tagName+'.'+String(e.className).slice(0,60)+' '+Math.round(e.getBoundingClientRect().right))`) : [];
       assert.ok(overflow <= 0, `horizontal overflow of ${overflow}px at ${width}px: ${JSON.stringify(wide)}`);

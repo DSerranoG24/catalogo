@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarClock, Check, ChevronRight, Repeat, Tag } from "lucide-react";
+import { CalendarClock, CalendarRange, Check, ChevronRight, Repeat, Tag } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import FailureNotice from "@/components/sales/FailureNotice";
 import { useSafeCommand } from "@/components/common/useSafeCommand";
 import { addDays, CATEGORY_STYLES, DEFAULT_CATEGORY_STYLE, describeExpenseFailure, formatAmountInput, formatCop, formatExpenseDate, MAX_SCHEDULE_DAYS_AHEAD, minExpenseDate,
-  PAYMENT_LABELS, PAYMENT_METHODS, scheduledState, validatePayForm, amountDigits, type ExpenseCategory, type PayForm, type ScheduledPayment } from "@/lib/expenses-ui.mjs";
+  PAYMENT_LABELS, PAYMENT_METHODS, scheduledState, validatePayForm, amountDigits, frequencyLabel, type ExpenseCategory, type PayForm, type ProjectedPayment, type ScheduledFigures,
+  type ScheduledPayment } from "@/lib/expenses-ui.mjs";
 import { AmountInput, focusRing, panelSelect, Sheet } from "./Sheet";
 import { CATEGORY_ICONS } from "./icons";
 
@@ -63,8 +64,8 @@ type Mode = "menu" | "pay" | "reschedule" | "omit";
  * Right-column card «Gastos fijos» (design: gastos.png): this month's fixed-expense occurrences, single scheduled payments
  * and every overdue one, with their state and «Marcar pagado». Nothing here adds to any total until it is paid.
  */
-export default function ScheduledPayments({ month, today, items, truncated, error, categories, onReload, onChanged, onManage, onSchedule, onOpenExpense }: {
-  month: string; today: string; items: ScheduledPayment[] | null; truncated: boolean; error: Failure | null; categories: ExpenseCategory[];
+export default function ScheduledPayments({ month, today, items, projected = [], planned = null, truncated, error, categories, onReload, onChanged, onManage, onSchedule, onOpenExpense }: {
+  month: string; today: string; items: ScheduledPayment[] | null; projected?: ProjectedPayment[]; planned?: ScheduledFigures["planned"]; truncated: boolean; error: Failure | null; categories: ExpenseCategory[];
   onReload: () => void; onChanged: (message: string) => void; onManage: () => void; onSchedule: () => void; onOpenExpense: (id: string) => void;
 }) {
   const [selected, setSelected] = useState<{ payment: ScheduledPayment; mode: Mode } | null>(null);
@@ -106,6 +107,14 @@ export default function ScheduledPayments({ month, today, items, truncated, erro
   }
 
   const current = selected?.payment;
+  // Future months: generated payments and projected dates (informative only) in one list by due date.
+  const rows: ({ kind: "real"; payment: ScheduledPayment } | { kind: "projected"; payment: ProjectedPayment })[] = items ? [
+    ...items.map(payment => ({ kind: "real" as const, payment })), ...projected.map(payment => ({ kind: "projected" as const, payment }))] : [];
+  if (projected.length) rows.sort((a, b) => a.payment.dueDate.localeCompare(b.payment.dueDate));
+  const tileOf = (categoryId: string) => {
+    const seed = categoryOf(categoryId)?.seedKey, style = (seed && CATEGORY_STYLES[seed]) || DEFAULT_CATEGORY_STYLE;
+    return { style, Icon: CATEGORY_ICONS[style.icon] ?? Tag };
+  };
   const titles: Record<Mode, string> = { menu: "Pago programado", pay: "Marcar pagado", reschedule: "Reprogramar pago", omit: "Omitir este pago" };
   return <section aria-labelledby="scheduled-title" className={card} data-scheduled-card>
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -114,13 +123,29 @@ export default function ScheduledPayments({ month, today, items, truncated, erro
     </div>
     {error && <div className="mt-3"><FailureNotice failure={{ ...error, action: error.action === "login" ? "login" : "reload" }} busy={false} onReload={onReload} reloadLabel="Reintentar pagos programados" /></div>}
     {!items && !error && <div aria-hidden="true" className="mt-4 space-y-3">{[0, 1].map(i => <div key={i} className="h-14 animate-pulse rounded-xl bg-[var(--vy-surface-soft)]" />)}</div>}
-    {items && !items.length && <div className="mt-4 space-y-3">
+    {planned && <p className="mt-3 rounded-xl bg-[var(--vy-surface-soft)] px-3 py-2 text-sm" data-planned-total>
+      <span className="font-semibold text-[var(--vy-text)]">Previsto del mes: {formatCop(planned.plannedTotal)}</span>
+      <span className="text-[var(--vy-text-muted)]"> · {planned.count} {planned.count === 1 ? "pago" : "pagos"}{planned.withoutAmount ? ` · ${planned.withoutAmount} sin monto` : ""}</span></p>}
+    {items && !rows.length && <div className="mt-4 space-y-3">
       <p className="text-[var(--vy-text-muted)]">No hay gastos fijos ni pagos programados en este mes.</p>
       <Button variant="secondary" onClick={onSchedule}>Programar pago</Button>
     </div>}
-    {items && items.length > 0 && <ul aria-label="Pagos programados" className="mt-2 divide-y divide-[var(--vy-border)]">{items.map(p => {
-      const state = scheduledState(p), style = (categoryOf(p.categoryId)?.seedKey && CATEGORY_STYLES[categoryOf(p.categoryId)!.seedKey!]) || DEFAULT_CATEGORY_STYLE;
-      const Icon = CATEGORY_ICONS[style.icon] ?? Tag;
+    {rows.length > 0 && <ul aria-label="Pagos programados" className="mt-2 divide-y divide-[var(--vy-border)]">{rows.map(row => {
+      if (row.kind === "projected") {
+        const p = row.payment, { style, Icon } = tileOf(p.categoryId);
+        return <li key={`${p.templateId}:${p.dueDate}`} data-projected={p.templateId} data-scheduled-state="projected" className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
+          <span className="flex min-w-0 flex-1 basis-48 items-center gap-3">
+            <span aria-hidden="true" className={`grid size-11 shrink-0 place-items-center rounded-2xl opacity-70 ${style.tone}`}><Icon className="size-5" /></span>
+            <span className="min-w-0">
+              <span className="block break-words font-semibold text-[var(--vy-text)]">{p.description}</span>
+              <span className="block text-sm text-[var(--vy-text-muted)]">Día {Number(p.dueDate.slice(8))} · {p.plannedAmount ? formatCop(p.plannedAmount) : "monto por definir"} · {frequencyLabel(p.frequency, p.interval).toLocaleLowerCase("es-CO")}</span>
+            </span>
+          </span>
+          <span className="ml-auto inline-flex min-h-8 shrink-0 items-center gap-1 rounded-full border border-dashed border-[#8592AD] bg-white px-3 text-sm font-semibold text-[#334155]"
+            title="Fecha prevista de un gasto fijo. Se podrá pagar cuando se acerque."><CalendarRange aria-hidden="true" className="size-4" />Proyectado</span>
+        </li>;
+      }
+      const p = row.payment, state = scheduledState(p), { style, Icon } = tileOf(p.categoryId);
       return <li key={p.id} data-scheduled-id={p.id} data-scheduled-state={state.key} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
         <button type="button" onClick={() => open(p, "menu")} aria-label={`Opciones de ${p.description}, ${state.label}`} className={`flex min-w-0 flex-1 basis-48 items-center gap-3 rounded-xl text-left hover:bg-[var(--vy-surface-soft)] ${focusRing}`}>
           <span aria-hidden="true" className={`grid size-11 shrink-0 place-items-center rounded-2xl ${style.tone}`}><Icon className="size-5" /></span>
@@ -137,7 +162,7 @@ export default function ScheduledPayments({ month, today, items, truncated, erro
       </li>;
     })}</ul>}
     {truncated && <p className="mt-2 text-sm text-[#7a4f0b]">Se muestran los primeros 500 pagos.</p>}
-    <p className="mt-3 flex items-start gap-2 text-xs text-[var(--vy-text-muted)]"><CalendarClock aria-hidden="true" className="mt-0.5 size-4 shrink-0" />Los pagos programados no suman en tus gastos hasta que los marcas pagados.</p>
+    <p className="mt-3 flex items-start gap-2 text-xs text-[var(--vy-text-muted)]"><CalendarClock aria-hidden="true" className="mt-0.5 size-4 shrink-0" />Los pagos programados no suman en tus gastos hasta que los marcas pagados.{projected.length > 0 && " «Proyectado» es una fecha prevista de un gasto fijo: solo informa y se podrá pagar cuando se acerque."}</p>
 
     <Sheet open={selected !== null} onOpenChange={value => { if (!value && !busy) setSelected(null); }} title={titles[selected?.mode ?? "menu"]}
       description={current ? `${current.description} · ${current.kind === "fixed" ? "gasto fijo" : "pago único"} · vence el ${formatExpenseDate(current.dueDate)}` : undefined}>

@@ -9,7 +9,10 @@ import FailureNotice from "@/components/sales/FailureNotice";
 import { useSafeCommand } from "@/components/common/useSafeCommand";
 import { amountDigits, describeExpenseFailure, formatAmountInput, formatCop, formatExpenseDate, FREQUENCIES, frequencyLabel, parseRecurringList,
   type ExpenseCategory, type Frequency, type RecurringExpense } from "@/lib/expenses-ui.mjs";
-import { AmountInput, panelSelect } from "./Sheet";
+import { ChevronDown } from "lucide-react";
+import { AmountInput, focusRing, panelSelect } from "./Sheet";
+
+const endedDate = new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", dateStyle: "medium" });
 
 type Failure = ReturnType<typeof describeExpenseFailure>;
 const STATUS: Record<RecurringExpense["status"], { label: string; tone: string }> = {
@@ -27,13 +30,15 @@ export default function RecurringManager({ categories, onChanged }: { categories
   const [loaded, setLoaded] = useState<{ revision: number; items: RecurringExpense[] | null; error: Failure | null } | null>(null);
   useEffect(() => {
     let active = true;
-    apiRequest<unknown>("/expenses/recurring?status=current").then(parseRecurringList).then(
+    apiRequest<unknown>("/expenses/recurring?status=all").then(parseRecurringList).then(
       items => { if (active) setLoaded({ revision, items, error: null }); },
       cause => { if (active) setLoaded({ revision, items: null, error: describeExpenseFailure(cause) }); });
     return () => { active = false; };
   }, [revision]);
   const current = loaded?.revision === revision ? loaded : null;
-  const items = current?.items ?? (loaded?.items ?? null);
+  const all = current?.items ?? (loaded?.items ?? null);
+  // Active and paused can be managed; ended ones are listed apart, read only.
+  const items = all?.filter(t => t.status !== "ENDED") ?? null, ended = all?.filter(t => t.status === "ENDED") ?? [];
   const [editing, setEditing] = useState<{ template: RecurringExpense; draft: Draft } | null>(null);
   const [ending, setEnding] = useState<RecurringExpense | null>(null);
   const [message, setMessage] = useState("");
@@ -72,7 +77,7 @@ export default function RecurringManager({ categories, onChanged }: { categories
     <p role="status" className="text-sm font-medium text-[#1D4ED8] empty:hidden">{message}</p>
     {current?.error && <FailureNotice failure={{ ...current.error, action: current.error.action === "login" ? "login" : "reload" }} busy={false} onReload={() => setRevision(v => v + 1)} reloadLabel="Reintentar" />}
     {!items && !current?.error && <p role="status" className="text-sm text-[var(--vy-text-muted)]">Cargando gastos fijos…</p>}
-    {items && !items.length && <p className="text-[var(--vy-text-muted)]">Aún no tienes gastos fijos. Usa «Programar pago» y marca «Repetir».</p>}
+    {items && !items.length && <p className="text-[var(--vy-text-muted)]">{ended.length ? "No tienes gastos fijos activos." : "Aún no tienes gastos fijos."} Usa «Programar pago» y marca «Repetir».</p>}
     {items && items.length > 0 && <ul aria-label="Gastos fijos" className="space-y-3">{items.map(t => {
       const isEditing = editing?.template.id === t.id;
       return <li key={t.id} data-recurring-id={t.id} className="space-y-3 rounded-2xl border border-[var(--vy-border)] p-4">
@@ -116,6 +121,16 @@ export default function RecurringManager({ categories, onChanged }: { categories
         </div>}
       </li>;
     })}</ul>}
+    {ended.length > 0 && <details className="group rounded-2xl border border-[var(--vy-border)] p-4" data-recurring-ended>
+      <summary className={`flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-xl font-semibold ${focusRing}`}>
+        <span>Terminados ({ended.length})</span><ChevronDown aria-hidden="true" className="size-5 transition group-open:rotate-180" /></summary>
+      <ul aria-label="Gastos fijos terminados" className="mt-2 divide-y divide-[var(--vy-border)]">{ended.map(t => <li key={t.id} data-recurring-id={t.id} className="py-3 text-sm">
+        <p className="break-words font-semibold">{t.description}</p>
+        <p className="text-[var(--vy-text-muted)]">{frequencyLabel(t.frequency, t.interval)} · {t.estimatedAmount ? formatCop(t.estimatedAmount) : "monto por definir"} · {t.categoryName ?? "—"}{t.categoryArchived ? " (archivada)" : ""}</p>
+        <p className="text-[var(--vy-text-muted)]">{t.endedAt ? `Terminó el ${endedDate.format(new Date(t.endedAt))}` : "Terminado"}</p>
+      </li>)}</ul>
+      <p className="mt-2 text-xs text-[var(--vy-text-muted)]">Solo lectura: los pagos ya registrados siguen en tus gastos.</p>
+    </details>}
     <p role="status" className="text-sm empty:hidden">{command.busy}</p>
     {command.failure && <FailureNotice failure={command.failure} busy={busy} onRetry={() => void command.retry()} onReload={() => { command.clearFailure(); setEditing(null); setRevision(v => v + 1); }} reloadLabel="Recargar gastos fijos" />}
 

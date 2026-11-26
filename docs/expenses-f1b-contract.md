@@ -1,6 +1,6 @@
 # Contrato de Gastos F1b — Gastos fijos y pagos programados
 
-**Estado:** aprobado por el dueño el 25/11/2026, con las correcciones del planificador A, B y C ([sección 15](#15-correcciones-del-planificador)). Las decisiones están en la [sección 14](#14-decisiones-del-dueño). Amplía el [contrato de Gastos v1.2](expenses-contract.md) y **sustituye su diseño de F1b**, que preveía ocurrencias `PENDING_CONFIRMATION` dentro de `expenses`. Este documento no incluye código ni migraciones, y no autoriza despliegues.
+**Estado:** aprobado por el dueño el 25/11/2026, con las correcciones del planificador A, B y C ([sección 15](#15-correcciones-del-planificador)). Las decisiones están en la [sección 14](#14-decisiones-del-dueño). Ampliado el 26/11/2026 con los meses futuros y la proyección de gastos fijos ([sección 16](#16-meses-futuros-y-proyección-cierre-de-f1b)). Amplía el [contrato de Gastos v1.2](expenses-contract.md) y **sustituye su diseño de F1b**, que preveía ocurrencias `PENDING_CONFIRMATION` dentro de `expenses`. Este documento no incluye código ni migraciones, y no autoriza despliegues.
 
 ## 1. Decisiones del dueño que guían el diseño
 
@@ -157,8 +157,9 @@ Se añade el bloque `scheduled`:
 ```
 scheduled: {
   fixed: { due: m, paid: n, paidTotal },           // ocurrencias de gastos fijos con dueDate en el mes (sin CANCELLED)
-  upcoming: { count, plannedTotal, withoutAmount }, // PENDING con dueDate entre hoy y hoy + 7 (solo en el mes actual; si no, null)
-  overdue: { count, plannedTotal, withoutAmount },  // PENDING con dueDate < hoy (solo en el mes actual; si no, null)
+  upcoming: { count, plannedTotal, withoutAmount }, // PENDING con dueDate entre hoy y hoy + 7, en cualquier mes consultado (sección 16)
+  overdue: { count, plannedTotal, withoutAmount },  // PENDING con dueDate < hoy, en cualquier mes consultado (sección 16)
+  planned, projected                                // solo en meses futuros (sección 16); en otros meses, null y []
   variable: { total, count }                        // gastos CONFIRMED del mes sin scheduledPaymentId (tarjeta «Variables»)
 }
 ```
@@ -335,3 +336,40 @@ Incorporadas el 25/11/2026. Prevalecen sobre cualquier texto anterior de este do
 | `PATCH /api/expenses/recurring/:id` | Editar (sección 6); solo `ACTIVE` o `PAUSED`. |
 | `POST /api/expenses/recurring/:id/pause`, `…/resume`, `…/end` | Cambios de estado. |
 | `GET /api/expenses?…&origin=fixed` (F1a, parámetro opcional nuevo) | Solo los gastos creados al pagar ocurrencias de gastos fijos (chip «Fijos»). La vista de cada gasto añade `scheduledPaymentId` y `fixed`. |
+
+## 16. Meses futuros y proyección (cierre de F1b)
+
+Añadido el 26/11/2026. Sin cambios de esquema ni migraciones. Prevalece sobre la sección 8 donde difiera.
+
+**Navegación.** `overview` acepta meses desde `2000-01` hasta **12 meses después del mes actual** en Bogotá; más allá responde 400 `INVALID_EXPENSE_INPUT`. La página habilita «Mes siguiente» hasta ese límite.
+
+**Mes futuro.** Ningún gasto puede tener fecha futura, así que `total`, `count`, `variable` y los días valen 0 y la respuesta trae `future: true`. La página muestra «$ 0 · Mes futuro» en «Gastos del mes», «Fijos pagados» y «Variables», y no pide la lista de gastos.
+
+**Próximos pagos y vencidos.** Siempre son relativos a hoy, sea cual sea el mes consultado: ya no son `null` fuera del mes actual.
+
+**Proyección.** Hasta qué fecha genera `sync`: hasta el horizonte, el mayor entre el fin del mes actual y hoy + 7, con un máximo de 24 fechas por fijo y llamada (sección 5). Las fechas posteriores de un mes futuro todavía no existen. `overview` las calcula **en memoria, dentro de su transacción de solo lectura**, sin guardar nada ni llamar a `sync`:
+- solo gastos fijos `ACTIVE` del dueño de la sesión; los pausados y terminados no se proyectan;
+- fechas del mes posteriores a `generatedThrough` (si nunca se generó, posteriores a ayer), con las mismas reglas de `syncPlan`: `endDate` incluido como límite y el día 31 en el último día de los meses cortos;
+- se descartan las fechas que ya existen como ocurrencia no cancelada (`templateId`, `occurrenceDate`), como haría el índice único parcial.
+
+```
+future: true,
+scheduled: {
+  ...,
+  planned: { count, plannedTotal, withoutAmount, projectedCount },  // generados PENDING del mes + proyectados
+  projected: [{ templateId, dueDate, description, plannedAmount, categoryId, categoryName, paymentMethod, frequency, interval }]
+}
+```
+
+| Campo | Definición |
+| --- | --- |
+| `planned.count` | Pagos `PENDING` (fijos y únicos) con `dueDate` en el mes, más las fechas proyectadas. |
+| `planned.plannedTotal` | Suma de los montos previstos conocidos de ambos (BigInt, como texto). |
+| `planned.withoutAmount` | Cuántos de ellos no tienen monto. |
+| `projected` | Las fechas proyectadas, por fecha. Solo informan: no se pueden pagar, omitir ni editar. Se podrán pagar cuando `sync` las genere al acercarse. |
+
+En meses que no son futuros, `planned` es `null` y `projected` es `[]`. Nada de esto suma en ninguna cifra de gastos.
+
+**Gastos fijos terminados.** «Administrar» lista aparte, plegados y de solo lectura, los fijos `ENDED` (`GET /api/expenses/recurring?status=all`): nombre, frecuencia, monto, categoría y fecha en que terminaron (`endedAt`).
+
+**Fuera de alcance:** pagar por adelantado una fecha proyectada.

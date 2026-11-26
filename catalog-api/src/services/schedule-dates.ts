@@ -68,3 +68,12 @@ export function syncPlan(rule: ScheduleRule, generatedThrough: string | null, to
   }
   return { dates, through: generatedThrough && generatedThrough > until ? generatedThrough : until };
 }
+
+/**
+ * Read-only projection (never stored): the dates a later sync would generate inside [from, through]. Mirrors syncPlan:
+ * only dates after generatedThrough (or after yesterday when the fixed expense was never generated), up to endDate.
+ */
+export function projectedDates(rule: ScheduleRule, generatedThrough: string | null, today: string, from: string, through: string) {
+  const floor = generatedThrough ?? addDays(today, -1), before = addDays(from, -1);
+  return occurrencesBetween(rule, floor > before ? floor : before, through);
+}

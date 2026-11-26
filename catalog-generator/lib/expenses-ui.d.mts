@@ -36,7 +36,7 @@ export function parseSummary(value: unknown): ExpenseSummary;
 export function parseExpenseDetail(value: unknown): { expense: Expense; events: ExpenseEvent[] };
 export function describeExpenseFailure(error: unknown): Failure;
 export type ExpenseOverview = {
-  month: string; from: string; to: string; generatedAt: string; total: string; count: number; voidedCount: number;
+  month: string; from: string; to: string; generatedAt: string; future: boolean; total: string; count: number; voidedCount: number;
   previousMonth: { month: string; total: string }; days: { date: string; total: string }[];
   byCategory: { categoryId: string; name: string; archived: boolean; total: string; count: number; percent: string }[];
   scheduled: ScheduledFigures; variable: { total: string; count: number };
@@ -54,9 +54,15 @@ export const PAYMENT_TONES: Record<PaymentMethod, string>;
 export function formatAmountInput(raw: string, caret: number, previous?: string, inputType?: string): { value: string; caret: number };
 export type ScheduledFigures = {
   fixed: { due: number; paid: number; paidTotal: string };
-  upcoming: { count: number; plannedTotal: string; withoutAmount: number } | null;
-  overdue: { count: number; plannedTotal: string; withoutAmount: number } | null;
+  upcoming: { count: number; plannedTotal: string; withoutAmount: number };
+  overdue: { count: number; plannedTotal: string; withoutAmount: number };
+  planned: { count: number; plannedTotal: string; withoutAmount: number; projectedCount: number } | null;
+  projected: ProjectedPayment[];
 };
+/** A date a fixed expense will have that is not generated yet (future months): informative, never stored. */
+export type ProjectedPayment = { templateId: string; dueDate: string; description: string; plannedAmount: string | null; categoryId: string; categoryName: string | null;
+  paymentMethod: PaymentMethod; frequency: Frequency; interval: number };
+export const MAX_FUTURE_MONTHS: number;
 export type Frequency = "WEEKLY" | "MONTHLY" | "YEARLY";
 export type ScheduledPayment = {
   id: string; status: "PENDING" | "PAID" | "CANCELLED"; kind: "fixed" | "single"; templateId: string | null; occurrenceDate: string | null; dueDate: string;

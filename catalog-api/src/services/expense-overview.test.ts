@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import test from "node:test";
 import express from "express";
-import { expenseOverviewSchema, expenseOverviewSql, monthBounds, percentOf, presentOverview } from "../repositories/expense-overview.repository";
+import { expenseOverviewSchema, expenseOverviewSql, monthBounds, percentOf, presentOverview, shiftMonth } from "../repositories/expense-overview.repository";
 import { bogotaToday } from "./expense-dates";
 import { makeExpenseController } from "../controllers/expense.controller";
 import { makeExpenseRouter } from "../routes/expense.routes";
@@ -10,22 +10,25 @@ import type { ExpenseService } from "./expense.service";
 
 const at = new Date("2026-11-25T20:56:00.000Z");
 const raw = (extra = {}) => ({ total: "0", count: 0, voidedCount: 0, previousTotal: "0", days: [], byCategory: [], fixedDue: 0, fixedPaid: 0, fixedPaidTotal: "0",
-  variableTotal: "0", variableCount: 0, upcomingCount: 0, upcomingTotal: "0", upcomingWithout: 0, overdueCount: 0, overdueTotal: "0", overdueWithout: 0, ...extra });
+  variableTotal: "0", variableCount: 0, upcomingCount: 0, upcomingTotal: "0", upcomingWithout: 0, overdueCount: 0, overdueTotal: "0", overdueWithout: 0,
+  monthPendingCount: 0, monthPendingTotal: "0", monthPendingWithout: 0, ...extra });
 
-test("overview query: strict month YYYY-MM between 2000-01 and the current Bogotá month", () => {
+test("overview query: strict month YYYY-MM between 2000-01 and 12 months after the current Bogotá month", () => {
   const current = bogotaToday().slice(0, 7);
   assert.equal(expenseOverviewSchema.parse({ month: current }).month, current);
   assert.equal(expenseOverviewSchema.parse({ month: "2000-01" }).month, "2000-01");
-  const [y, m] = current.split("-").map(Number) as [number, number];
-  const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
-  for (const query of [{}, { month: next }, { month: "1999-12" }, { month: "2026-13" }, { month: "2026-1" }, { month: "2026-11-01" }, { month: ["2026-11", "2026-10"] }, { month: "2026-11", ownerId: "x" }])
+  assert.equal(expenseOverviewSchema.parse({ month: shiftMonth(current, 1) }).month, shiftMonth(current, 1));
+  assert.equal(expenseOverviewSchema.parse({ month: shiftMonth(current, 12) }).month, shiftMonth(current, 12), "12 months ahead");
+  assert.equal(shiftMonth("2026-11", 12), "2027-11"); assert.equal(shiftMonth("2026-12", 1), "2027-01");
+  for (const query of [{}, { month: shiftMonth(current, 13) }, { month: "1999-12" }, { month: "2026-13" }, { month: "2026-1" }, { month: "2026-11-01" }, { month: ["2026-11", "2026-10"] }, { month: "2026-11", ownerId: "x" }])
     assert.equal(expenseOverviewSchema.safeParse(query).success, false, JSON.stringify(query));
 });
 
 test("month bounds: current month runs to today; past months complete; 28/29/30/31 days; January's previous is December", () => {
-  assert.deepEqual(monthBounds("2026-11", "2026-11-25"), { from: "2026-11-01", to: "2026-11-25", previous: "2026-10", monthEnd: "2026-11-30", today: "2026-11-25", current: true });
-  assert.deepEqual(monthBounds("2026-02", "2026-11-25"), { from: "2026-02-01", to: "2026-02-28", previous: "2026-01", monthEnd: "2026-02-28", today: "2026-11-25", current: false });
-  assert.deepEqual(monthBounds("2028-02", "2028-11-01"), { from: "2028-02-01", to: "2028-02-29", previous: "2028-01", monthEnd: "2028-02-29", today: "2028-11-01", current: false });
+  assert.deepEqual(monthBounds("2026-11", "2026-11-25"), { from: "2026-11-01", to: "2026-11-25", previous: "2026-10", monthEnd: "2026-11-30", today: "2026-11-25", current: true, future: false });
+  assert.deepEqual(monthBounds("2026-02", "2026-11-25"), { from: "2026-02-01", to: "2026-02-28", previous: "2026-01", monthEnd: "2026-02-28", today: "2026-11-25", current: false, future: false });
+  assert.deepEqual(monthBounds("2028-02", "2028-11-01"), { from: "2028-02-01", to: "2028-02-29", previous: "2028-01", monthEnd: "2028-02-29", today: "2028-11-01", current: false, future: false });
+  assert.deepEqual(monthBounds("2027-01", "2026-11-25"), { from: "2027-01-01", to: "2027-01-31", previous: "2026-12", monthEnd: "2027-01-31", today: "2026-11-25", current: false, future: true });
   assert.equal(monthBounds("2026-04", "2026-11-25").to, "2026-04-30");
   assert.equal(monthBounds("2026-01", "2026-11-25").previous, "2025-12");
 });
@@ -42,6 +45,15 @@ test("percent with BigInt, half up; categories sorted by total; amounts beyond 2
   assert.equal(overview.total, "9007199254740994000");
   assert.deepEqual(overview.previousMonth, { month: "2026-10", total: "500" });
   assert.equal(overview.generatedAt, "2026-11-25T20:56:00.000Z");
+  // Upcoming and overdue are relative to today in every month; planned and projected only exist for future months.
+  const past = presentOverview(raw({ upcomingCount: 2, upcomingTotal: "50" }), "2026-10", monthBounds("2026-10", "2026-11-25"), at);
+  assert.deepEqual([past.future, past.scheduled.upcoming, past.scheduled.planned, past.scheduled.projected], [false, { count: 2, plannedTotal: "50", withoutAmount: 0 }, null, []]);
+  const projected = [{ templateId: "t1", dueDate: "2027-01-10", description: "Arriendo", plannedAmount: "600000", categoryId: "c1", categoryName: "Arriendo", paymentMethod: "CASH", frequency: "MONTHLY" as const, interval: 1 },
+    { templateId: "t2", dueDate: "2027-01-12", description: "Aseo", plannedAmount: null, categoryId: "c1", categoryName: "Arriendo", paymentMethod: "CASH", frequency: "WEEKLY" as const, interval: 1 }];
+  const future = presentOverview(raw({ monthPendingCount: 1, monthPendingTotal: "110000", monthPendingWithout: 0 }), "2027-01", monthBounds("2027-01", "2026-11-25"), at, projected);
+  assert.equal(future.future, true); assert.equal(future.total, "0");
+  assert.deepEqual(future.scheduled.planned, { count: 3, plannedTotal: "710000", withoutAmount: 1, projectedCount: 2 }, "generated pending + projected with amount; one without");
+  assert.deepEqual(future.scheduled.projected, projected);
   assert.throws(() => presentOverview(raw({ total: 5 }), "2026-11", monthBounds("2026-11", "2026-11-25"), at));
   assert.throws(() => presentOverview(raw({ total: "-5" }), "2026-11", monthBounds("2026-11", "2026-11-25"), at));
   assert.throws(() => presentOverview(raw({ extra: 1 }), "2026-11", monthBounds("2026-11", "2026-11-25"), at));

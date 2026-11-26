@@ -10,7 +10,7 @@ import { Sparkline } from "@/components/dashboard/SummaryCards";
 import { HomeFooter } from "@/components/dashboard/HomeBlocks";
 import { compare } from "@/lib/dashboard-ui.mjs";
 import { addDays, bogotaToday, CATEGORY_STYLES, DEFAULT_CATEGORY_STYLE, dayHeading, describeExpenseFailure, formatCop, formatExpenseDate, groupByDay, matchesSearch,
-  monthEnd, monthLabel, monthName, parseCategories, parseExpenseOverview, parseExpensePage, parseScheduledList, parseSyncReply, PAYMENT_LABELS, PAYMENT_TONES, shiftMonth, sortScheduled,
+  MAX_FUTURE_MONTHS, monthEnd, monthLabel, monthName, parseCategories, parseExpenseOverview, parseExpensePage, parseScheduledList, parseSyncReply, PAYMENT_LABELS, PAYMENT_TONES, shiftMonth, sortScheduled,
   type Expense, type ExpenseCategory, type ExpenseOverview, type ScheduledPayment } from "@/lib/expenses-ui.mjs";
 import ExpenseForm from "./ExpenseForm";
 import ExpenseDetail from "./ExpenseDetail";
@@ -45,6 +45,8 @@ export default function ExpensesPanel() {
   const [today] = useState(() => bogotaToday());
   const currentMonth = today.slice(0, 7);
   const [month, setMonth] = useState(currentMonth);
+  // Future months (up to MAX_FUTURE_MONTHS ahead) show what is scheduled; no expense can have a future date.
+  const lastMonth = shiftMonth(currentMonth, MAX_FUTURE_MONTHS), future = month > currentMonth;
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   const [revision, setRevision] = useState(0);
@@ -106,6 +108,7 @@ export default function ExpensesPanel() {
     ...(filter === "fixed" ? { origin: "fixed" } : {}), ...(cursor ? { cursor } : {}) }).toString();
   const [list, setList] = useState<{ key: string; items: Expense[]; nextCursor: string | null; pages: number; error: Failure | null } | null>(null);
   useEffect(() => {
+    if (future) return; // a future month has no expenses: nothing to ask for
     let active = true;
     apiRequest<unknown>(`/expenses?${listQuery()}`).then(parseExpensePage).then(
       page => { if (active) setList({ key: listKey, items: page.items, nextCursor: page.nextCursor, pages: 1, error: null }); },
@@ -113,8 +116,8 @@ export default function ExpensesPanel() {
     return () => { active = false; };
     // listQuery depends only on month/filter, which are part of listKey.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listKey]);
-  const current = list?.key === listKey ? list : null;
+  }, [listKey, future]);
+  const current = future ? { key: listKey, items: [] as Expense[], nextCursor: null, pages: 1, error: null } : list?.key === listKey ? list : null;
   const [loadingMore, setLoadingMore] = useState(false);
   const searching = search.trim().length > 0;
   const wantMore = Boolean(current?.nextCursor) && searching && (current?.pages ?? 0) < SEARCH_PAGE_LIMIT;
@@ -182,20 +185,27 @@ export default function ExpensesPanel() {
     <Plus aria-hidden="true" className="size-5" />Registrar gasto</button>;
 
   return <main className="vy-theme mx-auto w-full max-w-6xl space-y-6 px-5 pb-28 pt-6 sm:px-8 lg:pb-8 lg:pt-4">
-    <div className="flex flex-wrap items-center justify-between gap-4">
-      <div className="flex items-center gap-4">
-        <span aria-hidden="true" className="grid size-16 place-items-center rounded-2xl bg-[linear-gradient(135deg,#F3EEFF,#E4DAFE)] text-[#6D28D9] shadow-[0_12px_24px_-16px_rgba(109,40,217,0.7)]"><ReceiptText className="size-8" /></span>
-        <div><h1 className="text-3xl font-bold tracking-tight text-[var(--vy-text)] sm:text-4xl">Gastos</h1><p className="text-base text-[var(--vy-text-muted)] sm:text-lg">Lo que cuesta mantener tu negocio</p></div>
-      </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <div role="group" aria-label="Mes" className="flex items-center rounded-2xl border border-[var(--vy-border)] bg-white">
-          <button type="button" aria-label="Mes anterior" onClick={() => setMonth(m => shiftMonth(m, -1))} className={`grid size-11 place-items-center rounded-l-2xl hover:bg-[var(--vy-surface-soft)] ${focus}`}><ChevronLeft aria-hidden="true" className="size-5" /></button>
-          <span aria-live="polite" className="flex min-w-44 items-center justify-center gap-2 px-2 font-semibold text-[var(--vy-text)]"><Calendar aria-hidden="true" className="size-5 text-[var(--vy-blue-600)]" />{monthLabel(month)}</span>
-          <button type="button" aria-label="Mes siguiente" disabled={month >= currentMonth} onClick={() => setMonth(m => shiftMonth(m, 1))} className={`grid size-11 place-items-center rounded-r-2xl hover:bg-[var(--vy-surface-soft)] disabled:opacity-40 ${focus}`}><ChevronRight aria-hidden="true" className="size-5" /></button>
+    {/* Header (gastos.png): title on the left; month selector and «Registrar gasto» on the right, never split, so the
+        primary action never drops alone to another line (1024–1280 px). «Categorías» and «Programar pago» are compact
+        secondary actions in a second row, right-aligned on desktop and side by side on mobile. */}
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-4" data-expenses-header>
+        <div className="flex min-w-0 flex-1 basis-64 items-center gap-4">
+          <span aria-hidden="true" className="grid size-14 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(135deg,#F3EEFF,#E4DAFE)] text-[#6D28D9] shadow-[0_12px_24px_-16px_rgba(109,40,217,0.7)] sm:size-16"><ReceiptText className="size-7 sm:size-8" /></span>
+          <div className="min-w-0"><h1 className="text-3xl font-bold tracking-tight text-[var(--vy-text)] sm:text-4xl">Gastos</h1><p className="text-base text-[var(--vy-text-muted)] sm:text-lg">Lo que cuesta mantener tu negocio</p></div>
         </div>
-        <button type="button" onClick={() => setCategoriesOpen(true)} disabled={categories.length === 0} className={`inline-flex min-h-12 items-center gap-2 rounded-xl border border-[var(--vy-border)] bg-white px-4 font-semibold text-[var(--vy-text)] hover:bg-[var(--vy-surface-soft)] disabled:opacity-60 ${focus}`}><Tags aria-hidden="true" className="size-5" />Categorías</button>
-        <button type="button" onClick={openSchedule} disabled={categories.length === 0} className={`inline-flex min-h-12 items-center gap-2 rounded-xl border border-[var(--vy-border)] bg-white px-4 font-semibold text-[var(--vy-blue-600)] hover:bg-[var(--vy-surface-soft)] disabled:opacity-60 ${focus}`}><CalendarClock aria-hidden="true" className="size-5" />Programar pago</button>
-        {registerButton("hidden lg:inline-flex")}
+        <div className="flex shrink-0 items-center gap-3" data-header-primary>
+          <div role="group" aria-label="Mes" className="flex items-center rounded-2xl border border-[var(--vy-border)] bg-white">
+            <button type="button" aria-label="Mes anterior" onClick={() => setMonth(m => shiftMonth(m, -1))} className={`grid size-11 place-items-center rounded-l-2xl hover:bg-[var(--vy-surface-soft)] ${focus}`}><ChevronLeft aria-hidden="true" className="size-5" /></button>
+            <span aria-live="polite" className="flex min-w-40 items-center justify-center gap-2 px-2 font-semibold text-[var(--vy-text)]"><Calendar aria-hidden="true" className="size-5 text-[var(--vy-blue-600)]" />{monthLabel(month)}</span>
+            <button type="button" aria-label="Mes siguiente" disabled={month >= lastMonth} onClick={() => setMonth(m => shiftMonth(m, 1))} className={`grid size-11 place-items-center rounded-r-2xl hover:bg-[var(--vy-surface-soft)] disabled:opacity-40 ${focus}`}><ChevronRight aria-hidden="true" className="size-5" /></button>
+          </div>
+          {registerButton("hidden lg:inline-flex shrink-0 whitespace-nowrap")}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 lg:justify-end" data-header-secondary>
+        <button type="button" onClick={openSchedule} disabled={categories.length === 0} className={`inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-xl border border-[var(--vy-border)] bg-white px-3 text-sm font-semibold text-[var(--vy-blue-600)] hover:bg-[var(--vy-surface-soft)] disabled:opacity-60 ${focus}`}><CalendarClock aria-hidden="true" className="size-4" />Programar pago</button>
+        <button type="button" onClick={() => setCategoriesOpen(true)} disabled={categories.length === 0} className={`inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-xl border border-[var(--vy-border)] bg-white px-3 text-sm font-semibold text-[var(--vy-text)] hover:bg-[var(--vy-surface-soft)] disabled:opacity-60 ${focus}`}><Tags aria-hidden="true" className="size-4" />Categorías</button>
       </div>
     </div>
 
@@ -209,16 +219,17 @@ export default function ExpensesPanel() {
     <section aria-labelledby="expense-figures" aria-busy={!currentOverview}>
       <h2 id="expense-figures" className="sr-only">Cifras de {monthName(month)}</h2>
       {currentOverview?.error && <FailureNotice failure={{ ...currentOverview.error, action: currentOverview.error.action === "login" ? "login" : "reload" }} busy={false} onReload={refresh} reloadLabel="Reintentar cifras" />}
-      {shown ? <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${shown.scheduled.upcoming ? "xl:grid-cols-4" : "xl:grid-cols-3"}`} data-figure-cards>
+      {shown ? <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" data-figure-cards>
         <article className={`${figure} border-[#E1DAFE] bg-[linear-gradient(135deg,#F7F5FF,#EDE8FF)]`}>
           <div className="flex items-center gap-3"><span aria-hidden="true" className={`${figureIcon} text-[#6D28D9]`}><CircleDollarSign className="size-5" /></span><h3 className="font-medium">Gastos del mes</h3></div>
           <div className="flex flex-1 flex-col gap-2">
             <div className="min-w-0 space-y-1">
               <p className="break-words text-3xl font-bold tracking-tight text-[var(--vy-text)]" data-expense-total>{formatCop(shown.total)}</p>
-              {change === null ? <p className="text-sm text-[var(--vy-text-muted)]">Sin gastos registrados en {previousName}</p>
+              {shown.future ? <p className="text-sm font-medium text-[#5B21B6]" data-future-note>Mes futuro</p>
+                : change === null ? <p className="text-sm text-[var(--vy-text-muted)]">Sin gastos registrados en {previousName}</p>
                 : change.direction === "equal" ? <p className="text-sm text-[var(--vy-text-muted)]">Igual que en {previousName}</p>
                 : <p className="flex items-center gap-1 text-sm font-medium text-[#5B21B6]">{change.direction === "up" ? <ArrowUp aria-hidden="true" className="size-4" /> : <ArrowDown aria-hidden="true" className="size-4" />}{change.text} vs {previousName}</p>}
-              <p className="text-sm text-[var(--vy-text-muted)]"><span data-expense-count>{shown.count}</span> {shown.count === 1 ? "registro" : "registros"} · {shown.voidedCount === 0 ? "sin anulados" : `${shown.voidedCount} anulado${shown.voidedCount === 1 ? "" : "s"} (no suman)`}</p>
+              {!shown.future && <p className="text-sm text-[var(--vy-text-muted)]"><span data-expense-count>{shown.count}</span> {shown.count === 1 ? "registro" : "registros"} · {shown.voidedCount === 0 ? "sin anulados" : `${shown.voidedCount} anulado${shown.voidedCount === 1 ? "" : "s"} (no suman)`}</p>}
             </div>
             <div className="mt-auto self-end"><Sparkline values={shown.days.map(d => d.total)} color="#6D28D9" /></div>
           </div>
@@ -226,26 +237,27 @@ export default function ExpensesPanel() {
         </article>
         <article className={`${figure} border-[#D6E2FF] bg-[linear-gradient(135deg,#F3F7FF,#E6EEFF)]`} data-figure="fixed">
           <div className="flex items-center gap-3"><span aria-hidden="true" className={`${figureIcon} text-[var(--vy-blue-600)]`}><Repeat className="size-5" /></span><h3 className="font-medium">Fijos pagados</h3></div>
+          {shown.future ? <><p className="text-3xl font-bold tracking-tight text-[var(--vy-text)]">{formatCop("0")}</p><p className="text-sm font-medium text-[#1D4ED8]">Mes futuro</p></> : <>
           <p className="text-3xl font-bold tracking-tight text-[var(--vy-text)]">{shown.scheduled.fixed.paid} de {shown.scheduled.fixed.due}</p>
-          <p className="text-sm font-medium text-[#1D4ED8]">{shown.scheduled.fixed.due === 0 ? "Sin gastos fijos este mes" : `${formatCop(shown.scheduled.fixed.paidTotal)} pagados`}</p>
-          {shown.scheduled.fixed.due > 0 && <div role="progressbar" aria-label="Gastos fijos pagados" aria-valuemin={0} aria-valuemax={shown.scheduled.fixed.due} aria-valuenow={shown.scheduled.fixed.paid}
+          <p className="text-sm font-medium text-[#1D4ED8]">{shown.scheduled.fixed.due === 0 ? "Sin gastos fijos este mes" : `${formatCop(shown.scheduled.fixed.paidTotal)} pagados`}</p></>}
+          {!shown.future && shown.scheduled.fixed.due > 0 && <div role="progressbar" aria-label="Gastos fijos pagados" aria-valuemin={0} aria-valuemax={shown.scheduled.fixed.due} aria-valuenow={shown.scheduled.fixed.paid}
             aria-valuetext={`${shown.scheduled.fixed.paid} de ${shown.scheduled.fixed.due}`} className="h-2.5 rounded-full bg-[#D6E2FF]">
             <div className="h-2.5 rounded-full bg-[var(--vy-blue-600)]" style={{ width: `${Math.round(shown.scheduled.fixed.paid * 100 / shown.scheduled.fixed.due)}%` }} /></div>}
         </article>
         <article className={`${figure} border-[#C9EEDD] bg-[linear-gradient(135deg,#F2FCF8,#DDF6EB)]`} data-figure="variable">
           <div className="flex items-center gap-3"><span aria-hidden="true" className={`${figureIcon} text-[#047857]`}><Wallet className="size-5" /></span><h3 className="font-medium">Variables</h3></div>
           <p className="break-words text-3xl font-bold tracking-tight text-[var(--vy-text)]">{formatCop(shown.variable.total)}</p>
-          <p className="text-sm font-medium text-[#05603A]">{shown.variable.count} {shown.variable.count === 1 ? "registro" : "registros"} sin gastos fijos</p>
+          <p className="text-sm font-medium text-[#05603A]">{shown.future ? "Mes futuro" : `${shown.variable.count} ${shown.variable.count === 1 ? "registro" : "registros"} sin gastos fijos`}</p>
         </article>
-        {shown.scheduled.upcoming && <article className={`${figure} border-[#FAD9BF] bg-[linear-gradient(135deg,#FFF8F1,#FFE8D6)]`} data-figure="upcoming">
+        <article className={`${figure} border-[#FAD9BF] bg-[linear-gradient(135deg,#FFF8F1,#FFE8D6)]`} data-figure="upcoming">
           <div className="flex items-center gap-3"><span aria-hidden="true" className={`${figureIcon} text-[#C2410C]`}><Clock className="size-5" /></span><h3 className="font-medium">Próximos pagos</h3></div>
           <p className="break-words text-3xl font-bold tracking-tight text-[var(--vy-text)]">{formatCop(shown.scheduled.upcoming.plannedTotal)}</p>
           <p className="text-sm font-medium text-[#B93815]">{shown.scheduled.upcoming.count === 0 ? "Nada vence en los próximos 7 días"
             : `${shown.scheduled.upcoming.count} en los próximos 7 días${shown.scheduled.upcoming.withoutAmount ? ` · ${shown.scheduled.upcoming.withoutAmount} sin monto` : ""}`}</p>
-          <p className="text-xs text-[var(--vy-text-muted)]">Previsto: no suma hasta pagarlo.</p>
-        </article>}
+          <p className="text-xs text-[var(--vy-text-muted)]">{month !== currentMonth && "Desde hoy, sin importar el mes que veas. "}Previsto: no suma hasta pagarlo.</p>
+        </article>
       </div> : !currentOverview?.error && <div aria-hidden="true" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{["#EDE8FF", "#E6EEFF", "#DDF6EB", "#FFE8D6"].map(c => <div key={c} className="h-40 animate-pulse rounded-2xl" style={{ background: c }} />)}</div>}
-      {shown?.scheduled.overdue && shown.scheduled.overdue.count > 0 && <div role="alert" data-figure="overdue" className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-[#F4C7C2] bg-[#FEF3F2] px-5 py-3 text-[#B42318]">
+      {shown && shown.scheduled.overdue.count > 0 && <div role="alert" data-figure="overdue" className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-[#F4C7C2] bg-[#FEF3F2] px-5 py-3 text-[#B42318]">
         <AlertOctagon aria-hidden="true" className="size-6 shrink-0" />
         <p className="min-w-0 flex-1"><span className="font-semibold">Vencidos: {shown.scheduled.overdue.count} {shown.scheduled.overdue.count === 1 ? "pago" : "pagos"}</span>
           {shown.scheduled.overdue.plannedTotal !== "0" && ` · ${formatCop(shown.scheduled.overdue.plannedTotal)} previstos`}{shown.scheduled.overdue.withoutAmount ? ` · ${shown.scheduled.overdue.withoutAmount} sin monto` : ""}. Siguen pendientes hasta que los pagues, reprogrames u omitas.</p>
@@ -272,7 +284,7 @@ export default function ExpensesPanel() {
         {!current && <div aria-hidden="true" className="mt-4 space-y-3">{[0, 1, 2].map(i => <div key={i} className="h-16 animate-pulse rounded-xl bg-[var(--vy-surface-soft)]" />)}</div>}
         {current?.error && <div className="mt-3"><FailureNotice failure={{ ...current.error, action: current.error.action === "login" ? "login" : "reload" }} busy={false} onReload={refresh} reloadLabel="Reintentar cargar gastos" /></div>}
         {current && !current.error && <>
-          {!visible.length && <p className="mt-4 text-[var(--vy-text-muted)]">{searching ? `Ningún gasto coincide con «${search.trim()}».` : filter === "VOIDED" ? "No hay gastos anulados este mes." : filter === "fixed" ? "Aún no hay gastos fijos pagados este mes." : "No hay gastos registrados este mes."}</p>}
+          {!visible.length && <p className="mt-4 text-[var(--vy-text-muted)]">{searching ? `Ningún gasto coincide con «${search.trim()}».` : filter === "VOIDED" ? "No hay gastos anulados este mes." : filter === "fixed" ? "Aún no hay gastos fijos pagados este mes." : future ? "Mes futuro: todavía no hay gastos. Los pagos previstos están en «Gastos fijos»." : "No hay gastos registrados este mes."}</p>}
           {searching && current.nextCursor && !wantMore && <p className="mt-3 text-sm text-[#7a4f0b]">La búsqueda revisó los primeros {current.items.length} gastos del mes.</p>}
           <ul aria-label="Gastos" className="mt-2 space-y-3">{groupByDay(visible).map(group => <li key={group.date}>
             <h3 className="pb-1 pt-2 text-xs font-semibold tracking-wide text-[var(--vy-text-muted)]">{dayHeading(group.date, today)}</h3>
@@ -308,7 +320,7 @@ export default function ExpensesPanel() {
             <div aria-hidden="true" className="mt-1.5 h-3 rounded-full bg-[#EDE8FF]"><div className="h-3 rounded-full bg-[linear-gradient(90deg,#7C3AED,#5B21B6)]" style={{ width: `${Math.max(Number(c.percent), 1)}%` }} /></div>
           </li>)}</ul> : <p className="mt-4 text-[var(--vy-text-muted)]">Aún no hay gastos vigentes este mes.</p>}
       </section>
-      <ScheduledPayments month={month} today={today} items={scheduledItems} truncated={currentScheduled?.truncated ?? false} error={currentScheduled?.error ?? null} categories={categories}
+      <ScheduledPayments month={month} today={today} items={scheduledItems} projected={shown?.month === month ? shown.scheduled.projected : []} planned={shown?.month === month ? shown.scheduled.planned : null} truncated={currentScheduled?.truncated ?? false} error={currentScheduled?.error ?? null} categories={categories}
         onReload={refresh} onChanged={scheduledChanged} onManage={() => setManageOpen(true)} onSchedule={openSchedule} onOpenExpense={setSelectedId} />
       </div>
     </div>

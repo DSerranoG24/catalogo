@@ -295,13 +295,15 @@ async function figureStages({ db }: Context) {
   const [row] = await db.$queryRaw<{ data: unknown }[]>(expenseOverviewSql(c.id, bounds));
   const march = presentOverview(row?.data, "2026-03", bounds, asOf);
   assert.equal(march.total, "180000", "only real expenses add: 110000 paid + 70000 variable; planned amounts never add");
-  assert.deepEqual(march.scheduled, { fixed: { due: 3, paid: 1, paidTotal: "110000" }, upcoming: { count: 2, plannedTotal: "250000", withoutAmount: 0 }, overdue: { count: 1, plannedTotal: "0", withoutAmount: 1 } });
+  assert.deepEqual(march.scheduled, { fixed: { due: 3, paid: 1, paidTotal: "110000" }, upcoming: { count: 2, plannedTotal: "250000", withoutAmount: 0 }, overdue: { count: 1, plannedTotal: "0", withoutAmount: 1 }, planned: null, projected: [] });
   assert.deepEqual(march.variable, { total: "70000", count: 1 });
   const febBounds = monthBounds("2026-02", "2026-03-10");
   const [febRow] = await db.$queryRaw<{ data: unknown }[]>(expenseOverviewSql(c.id, febBounds));
   const february = presentOverview(febRow?.data, "2026-02", febBounds, asOf);
-  assert.equal(february.scheduled.upcoming, null); assert.equal(february.scheduled.overdue, null); assert.equal(february.scheduled.fixed.due, 0);
-  passed("Overview: total ignores scheduled payments; Fijos pagados 1 de 3 ($ 110.000); Variables $ 70.000; Próximos 2 ($ 250.000); Vencidos 1 sin monto; past months without upcoming/overdue");
+  assert.deepEqual(february.scheduled.upcoming, march.scheduled.upcoming, "upcoming is relative to today whatever month is shown");
+  assert.deepEqual(february.scheduled.overdue, march.scheduled.overdue); assert.equal(february.scheduled.fixed.due, 0);
+  assert.equal(february.scheduled.planned, null); assert.deepEqual(february.scheduled.projected, []);
+  passed("Overview: total ignores scheduled payments; Fijos pagados 1 de 3 ($ 110.000); Variables $ 70.000; Próximos 2 ($ 250.000); Vencidos 1 sin monto; upcoming/overdue relative to today in any month");
 
   stage = "FIGURES_SUMMARY";
   const [summaryRow] = await db.$queryRaw<{ data: unknown }[]>(dashboardSummarySql(c.id, asOf, 7));
@@ -319,6 +321,66 @@ async function figureStages({ db }: Context) {
   passed("Summary: 2 payments due this week, 1 overdue; expenses and profit unaffected by scheduled payments; READ ONLY and never generates");
 }
 
+/**
+ * Future months: generated PENDING payments plus the in-memory projection of ACTIVE fixed expenses, without repeating
+ * generated dates; paused/ended not projected; endDate respected; day 31 → 30; owner-scoped; the read writes nothing.
+ */
+async function futureStages({ db }: Context) {
+  const { makeScheduledExpenseRepository } = await import("../repositories/scheduled-expense.repository.js");
+  const { expenseOverviewSql, monthBounds, presentOverview, projectMonth, readExpenseOverview, shiftMonth } = await import("../repositories/expense-overview.repository.js");
+  const { bogotaToday } = await import("../services/expense-dates.js");
+  const asOf = new Date("2026-03-28T15:00:00.000Z"); // 28 Mar 2026 in Bogotá: sync horizon = 2026-04-04
+  const scheduled = makeScheduledExpenseRepository(db, () => asOf);
+  const keys = () => ({ operationId: randomUUID(), requestId: randomUUID() });
+
+  stage = "FUTURE_FIXTURES";
+  const [d, e] = await Promise.all(["d", "e"].map(tag => db.user.create({ data: { email: `${runId}-${tag}@example.invalid` }, select: { id: true } })));
+  const category = async (ownerId: string) => (await db.expenseCategory.create({ data: { ownerId, name: "Fijos", normalizedKey: "fijos" }, select: { id: true } })).id;
+  const [catD, catE] = [await category(d!.id), await category(e!.id)];
+  const fixed = async (ownerId: string, categoryId: string, description: string, frequency: "WEEKLY" | "MONTHLY", anchorDate: string, extra: { estimatedAmount?: string; endDate?: string } = {}) =>
+    (await scheduled.createRecurring(ownerId, { ...keys(), description, categoryId, paymentMethod: "CASH", frequency, interval: 1, anchorDate, ...extra }) as unknown as { template: { id: string; version: number } }).template;
+  await fixed(d!.id, catD, "Arriendo 31", "MONTHLY", "2026-03-31", { estimatedAmount: "600000" });
+  await fixed(d!.id, catD, "Aseo semanal", "WEEKLY", "2026-03-02", { endDate: "2026-04-15" });
+  const internet = await fixed(d!.id, catD, "Internet", "MONTHLY", "2026-04-03", { estimatedAmount: "110000" });
+  const paused = await fixed(d!.id, catD, "Pausado", "MONTHLY", "2026-04-10", { estimatedAmount: "1000" });
+  await scheduled.setRecurringState(d!.id, paused.id, "pause", { ...keys(), expectedVersion: paused.version });
+  const ended = await fixed(d!.id, catD, "Terminado", "MONTHLY", "2026-04-12", { estimatedAmount: "2000" });
+  await scheduled.setRecurringState(d!.id, ended.id, "end", { ...keys(), expectedVersion: ended.version });
+  await fixed(e!.id, catE, "De otra cuenta", "MONTHLY", "2026-04-20", { estimatedAmount: "5000" });
+  // Simulate a lagging generatedThrough: April 3 is already generated, so it must not be projected again.
+  await db.recurringExpenseTemplate.update({ where: { id: internet.id }, data: { generatedThrough: new Date("2026-03-31T00:00:00Z") } });
+  assert.equal(await db.scheduledExpensePayment.count({ where: { templateId: internet.id, occurrenceDate: new Date("2026-04-03T00:00:00Z"), status: "PENDING" } }), 1);
+  passed("Future fixtures: monthly on the 31st, weekly ending mid-April, an April date already generated, one paused, one ended, another owner");
+
+  stage = "FUTURE_PROJECTION";
+  const bounds = monthBounds("2026-04", "2026-03-28");
+  const before = await db.scheduledExpensePayment.count();
+  const april = await db.$transaction(async tx => {
+    await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+    const projected = await projectMonth(tx, d!.id, bounds);
+    const [row] = await tx.$queryRaw<{ data: unknown }[]>(expenseOverviewSql(d!.id, bounds));
+    return presentOverview(row?.data, "2026-04", bounds, asOf, projected);
+  });
+  assert.deepEqual(april.scheduled.projected.map(p => [p.description, p.dueDate, p.plannedAmount]),
+    [["Aseo semanal", "2026-04-06", null], ["Aseo semanal", "2026-04-13", null], ["Arriendo 31", "2026-04-30", "600000"]],
+    "weekly stops at its end date, the 31st falls on the 30th, generated April 3 and paused/ended/other owner are not projected");
+  assert.equal(april.future, true); assert.equal(april.total, "0"); assert.deepEqual(april.variable, { total: "0", count: 0 });
+  assert.deepEqual(april.scheduled.planned, { count: 4, plannedTotal: "710000", withoutAmount: 2, projectedCount: 3 }, "generated pending (110000) + projected with amount (600000); 2 without amount");
+  assert.equal(await db.scheduledExpensePayment.count(), before, "the projection writes nothing");
+  const otherOwner = await db.$transaction(tx => projectMonth(tx, e!.id, bounds));
+  assert.deepEqual(otherOwner.map(p => [p.description, p.dueDate]), [["De otra cuenta", "2026-04-20"]], "E sees only its own projection");
+  passed("Projection: generated + projected without duplicates, endDate and month-end rules, paused/ended excluded, owner-scoped, READ ONLY without new rows");
+
+  stage = "FUTURE_LIVE_READ";
+  const next = shiftMonth(bogotaToday().slice(0, 7), 1), rows = await db.scheduledExpensePayment.count(), templates = await db.recurringExpenseTemplate.findMany({ select: { generatedThrough: true, version: true } });
+  const live = await readExpenseOverview(d!.id, next, db);
+  assert.equal(live.future, true); assert.equal(live.total, "0");
+  assert.ok(live.scheduled.projected.every(p => p.dueDate.startsWith(next)), "projected dates belong to the month");
+  assert.equal(await db.scheduledExpensePayment.count(), rows, "reading a future month creates no rows");
+  assert.deepEqual(await db.recurringExpenseTemplate.findMany({ select: { generatedThrough: true, version: true } }), templates, "nor moves generatedThrough");
+  passed("readExpenseOverview of next month: future, zero totals, projection inside the month, row counts and generatedThrough unchanged");
+}
+
 /** Stages appended by later F1b commits (API and figures). */
 export const laterStages: ((context: Context) => Promise<void>)[] = [];
 
@@ -327,6 +389,7 @@ async function main() {
   await schemaStages(context);
   await apiStages(context);
   await figureStages(context);
+  await futureStages(context);
   for (const run of laterStages) await run(context);
 }
 

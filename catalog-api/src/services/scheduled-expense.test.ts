@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import test from "node:test";
 import express from "express";
-import { addDays, horizon, MAX_OCCURRENCES_PER_SYNC, nextOccurrence, nthOccurrence, occurrencesBetween, syncPlan, type ScheduleRule } from "./schedule-dates";
+import { addDays, horizon, MAX_OCCURRENCES_PER_SYNC, nextOccurrence, nthOccurrence, occurrencesBetween, projectedDates, syncPlan, type ScheduleRule } from "./schedule-dates";
+import { monthBounds, projectMonth } from "../repositories/expense-overview.repository";
 import { cancelScheduledSchema, createRecurringSchema, createScheduledSchema, payScheduledSchema, scheduledListSchema, updateRecurringSchema } from "../schemas/scheduled-expense.schema";
 import { expenseListSchema } from "../schemas/expense.schema";
 import { makeExpenseController } from "../controllers/expense.controller";
@@ -99,4 +100,28 @@ test("routes: F1b paths are not read as expense ids; owner from the session; err
     assert.equal((await fetch(`${base}/expenses/scheduled/${uuid(5)}/cancel`, { method: "POST", headers, body: "{}" })).status, 404);
     assert.deepEqual(calls, ["sync:owner-a", "listScheduled:owner-a", "listRecurring:owner-a", "createScheduled:owner-a", "pay:owner-a", "cancel:owner-a"], "never the expense detail route");
   } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+});
+
+test("projection of future months: only dates after generatedThrough, endDate respected, day 31 in 30-day months, never stored", async () => {
+  // Generated through 2026-12-03 (sync on 2026-11-26): January is entirely projected; December only after the 3rd.
+  assert.deepEqual(projectedDates(rule("WEEKLY", "2026-11-02"), "2026-12-03", "2026-11-26", "2026-12-01", "2026-12-31"), ["2026-12-07", "2026-12-14", "2026-12-21", "2026-12-28"]);
+  assert.deepEqual(projectedDates(rule("MONTHLY", "2026-01-31"), "2026-12-03", "2026-11-26", "2027-04-01", "2027-04-30"), ["2027-04-30"], "day 31 falls on the 30th");
+  assert.deepEqual(projectedDates(rule("WEEKLY", "2026-11-02", 1, "2027-01-15"), "2026-12-03", "2026-11-26", "2027-01-01", "2027-01-31"), ["2027-01-04", "2027-01-11"], "nothing after endDate");
+  assert.deepEqual(projectedDates(rule("MONTHLY", "2026-03-10", 1, "2026-12-20"), "2026-12-03", "2026-11-26", "2027-01-01", "2027-01-31"), [], "ended before the month");
+  assert.deepEqual(projectedDates(rule("MONTHLY", "2026-12-15"), null, "2026-11-26", "2026-12-01", "2026-12-31"), ["2026-12-15"], "never generated: from today on");
+  assert.deepEqual(projectedDates(rule("MONTHLY", "2026-11-05"), "2027-02-28", "2026-11-26", "2027-01-01", "2027-01-31"), [], "already generated");
+  // projectMonth: only ACTIVE templates are asked for, existing (not cancelled) occurrences are not repeated, and only reads happen.
+  const calls: string[] = [];
+  const template = { id: uuid(7), status: "ACTIVE", frequency: "MONTHLY", interval: 1, anchorDate: new Date("2026-11-10T00:00:00Z"), endDate: null, generatedThrough: new Date("2026-12-03T00:00:00Z"),
+    description: "Arriendo", estimatedAmount: BigInt(600000), categoryId: uuid(8), category: { name: "Arriendo" }, paymentMethod: "BANK_TRANSFER" };
+  const weekly = { ...template, id: uuid(9), frequency: "WEEKLY", anchorDate: new Date("2026-11-02T00:00:00Z"), description: "Aseo", estimatedAmount: null };
+  const tx = {
+    recurringExpenseTemplate: { findMany: async (args: { where: { ownerId: string; status: string } }) => { calls.push(`templates:${args.where.ownerId}:${args.where.status}`); return [template, weekly]; } },
+    scheduledExpensePayment: { findMany: async (args: { where: { ownerId: string; status: { not: string } } }) => { calls.push(`payments:${args.where.ownerId}:not-${args.where.status.not}`);
+      return [{ templateId: weekly.id, occurrenceDate: new Date("2027-01-04T00:00:00Z") }]; } },
+  } as unknown as Parameters<typeof projectMonth>[0];
+  const projected = await projectMonth(tx, "owner-a", monthBounds("2027-01", "2026-11-26"));
+  assert.deepEqual(projected.map(p => [p.description, p.dueDate, p.plannedAmount]), [["Aseo", "2027-01-11", null], ["Arriendo", "2027-01-10", "600000"], ["Aseo", "2027-01-18", null], ["Aseo", "2027-01-25", null]]
+    .sort((a, b) => String(a[1]).localeCompare(String(b[1]))), "Jan 4 already exists and is not projected again");
+  assert.deepEqual(calls, ["templates:owner-a:ACTIVE", "payments:owner-a:not-CANCELLED"], "owner-scoped reads only");
 });
