@@ -104,6 +104,10 @@ model User {
   scheduledExpensePayments ScheduledExpensePayment[]
   expenseOperations ExpenseOperation[]
   expenseEvents ExpenseEvent[]
+  salePaymentEntries SalePaymentEntry[]
+  customerCreditEntries CustomerCreditEntry[]
+  saleMoneyOperations SaleMoneyOperation[]
+  receivableSettings ReceivableSettings?
 
   @@index([createdAt])
 
@@ -125,6 +129,7 @@ model Customer {
   sales Sale[]
   orders Order[]
   orderOperations OrderCustomerOperation[]
+  creditEntries CustomerCreditEntry[]
 
   @@unique([id, ownerId])
   @@index([ownerId, phone])
@@ -280,12 +285,22 @@ model Sale {
   deliveredAt DateTime?
   cancelledAt DateTime?
   returnedAt DateTime?
+  /// F2a (docs/sales-payments-cartera-contract.md): LEGACY = no payments recorded (every sale before F2a-2 and any
+  /// sale confirmed by an older API). The F2a-2 API switches a DRAFT to TRACKED when confirming it. Guarded by sale_payment_columns_guard.
+  paymentMode SalePaymentMode @default(LEGACY)
+  /// Agreed credit term in days (0-365), fixed on confirm; editable while CONFIRMED. NULL for LEGACY.
+  paymentTermDays Int?
+  /// Bogotá date: delivery date + paymentTermDays, set on delivery. NULL for LEGACY.
+  paymentDueDate DateTime? @db.Date
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
   sourceOrder Order? @relation("OrderToSale", fields: [sourceOrderId], references: [id], onDelete: Restrict)
   lines SaleLine[]
   operations SaleOperation[]
   returns SaleReturn[]
   movements InventoryMovement[]
+  paymentEntries SalePaymentEntry[]
+  creditEntries CustomerCreditEntry[]
+  @@unique([id, userId])
   @@index([userId, createdAt, id])
   @@index([userId, status, createdAt])
   @@index([customerId, userId])
@@ -1103,4 +1118,130 @@ model ScheduledExpensePayment {
   @@index([ownerId, status, dueDate])
   @@index([ownerId, templateId, dueDate])
   @@map("scheduled_expense_payments")
+}
+
+// ---- F2a: payments of a sale (docs/sales-payments-cartera-contract.md). Migration 20261126100000_sale_payments_ledger. ----
+
+enum SalePaymentMode {
+  TRACKED
+  LEGACY
+}
+
+/// Real payment methods. Fiado is not a method: it is the unpaid balance.
+enum SalePaymentMethod {
+  CASH
+  NEQUI
+  DAVIPLATA
+  BANK_TRANSFER
+  CARD
+  OTHER
+}
+
+/// RECEIPT_ALLOCATION (abonos) is added in F2-1.
+enum SalePaymentEntryKind {
+  PAYMENT
+  CREDIT_USE
+  EXCESS_TO_CREDIT
+  SALE_REFUND
+  REVERSAL
+}
+
+enum CustomerCreditEntryKind {
+  FROM_SALE
+  USED
+  REFUND
+  REVERSAL
+}
+
+/// Append-only money ledger of one sale. UPDATE, DELETE and TRUNCATE are rejected by triggers; a REVERSAL undoes an entry.
+model SalePaymentEntry {
+  id              String               @id @default(uuid())
+  ownerId         String
+  saleId          String
+  kind            SalePaymentEntryKind
+  amount          BigInt
+  method          SalePaymentMethod?
+  methodNote      String?              @db.VarChar(80)
+  reference       String?              @db.VarChar(100)
+  /// Cash handed over by the customer (CASH payments only). Informative: change = cashReceived - amount, never stored.
+  cashReceived    BigInt?
+  creditEntryId   String?
+  reversesEntryId String?              @unique
+  reason          String?              @db.VarChar(300)
+  operationId     String
+  /// Ordinal of the entry inside its operation and sale: a repeated operation cannot write it twice.
+  position        Int
+  createdAt       DateTime             @default(now())
+  owner           User                 @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  sale            Sale                 @relation(fields: [saleId, ownerId], references: [id, userId], onDelete: Restrict, onUpdate: Restrict)
+  creditEntry     CustomerCreditEntry? @relation(fields: [creditEntryId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  reverses        SalePaymentEntry?    @relation("SalePaymentReversal", fields: [reversesEntryId, saleId], references: [id, saleId], onDelete: Restrict, onUpdate: Restrict)
+  reversedBy      SalePaymentEntry[]   @relation("SalePaymentReversal")
+
+  @@unique([id, ownerId])
+  @@unique([id, saleId])
+  @@unique([ownerId, operationId, saleId, position])
+  @@index([ownerId, saleId, createdAt])
+  @@index([creditEntryId, ownerId])
+  @@map("sale_payment_entries")
+}
+
+/// Append-only ledger of a customer's credit balance (saldo a favor). Balance = signed sum, never negative.
+model CustomerCreditEntry {
+  id              String                  @id @default(uuid())
+  ownerId         String
+  customerId      String
+  kind            CustomerCreditEntryKind
+  amount          BigInt
+  saleId          String?
+  method          SalePaymentMethod?
+  methodNote      String?                 @db.VarChar(80)
+  reference       String?                 @db.VarChar(100)
+  reversesEntryId String?                 @unique
+  reason          String?                 @db.VarChar(300)
+  operationId     String
+  position        Int
+  createdAt       DateTime                @default(now())
+  owner           User                    @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  customer        Customer                @relation(fields: [customerId, ownerId], references: [id, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  sale            Sale?                   @relation(fields: [saleId, ownerId], references: [id, userId], onDelete: Restrict, onUpdate: Restrict)
+  reverses        CustomerCreditEntry?    @relation("CustomerCreditReversal", fields: [reversesEntryId, customerId], references: [id, customerId], onDelete: Restrict, onUpdate: Restrict)
+  reversedBy      CustomerCreditEntry[]   @relation("CustomerCreditReversal")
+  saleEntries     SalePaymentEntry[]
+
+  @@unique([id, ownerId])
+  @@unique([id, customerId])
+  @@unique([ownerId, operationId, position])
+  @@index([ownerId, customerId, createdAt])
+  @@index([saleId, ownerId])
+  @@map("customer_credit_entries")
+}
+
+/// Idempotency receipts of money operations that are not a single "SaleOperation" (anticipos, voids, refunds; abonos in F2).
+model SaleMoneyOperation {
+  ownerId          String
+  operationId      String
+  requestId        String
+  kind             String   @db.VarChar(40)
+  resourceId       String
+  requestHash      String   @db.VarChar(64)
+  responseSnapshot Json
+  createdAt        DateTime @default(now())
+  owner            User     @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+
+  @@id([ownerId, operationId])
+  @@unique([ownerId, requestId])
+  @@map("sale_money_operations")
+}
+
+/// Business-level receivable settings. No row = defaults (a read never creates it).
+model ReceivableSettings {
+  ownerId         String   @id
+  defaultTermDays Int      @default(30)
+  version         Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  owner           User     @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+
+  @@map("receivable_settings")
 }

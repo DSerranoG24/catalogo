@@ -18,6 +18,7 @@
     "test:sales-postgres": "node dist/scripts/verify-sale-integrity-postgres.js",
     "test:expenses-postgres": "node dist/scripts/verify-expenses-postgres.js",
     "test:scheduled-postgres": "node dist/scripts/verify-scheduled-postgres.js",
+    "test:sale-payments-postgres": "node dist/scripts/verify-sale-payments-postgres.js",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

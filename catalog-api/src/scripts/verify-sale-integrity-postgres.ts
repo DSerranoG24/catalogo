@@ -55,12 +55,17 @@ async function main() {
   const folder = await mkdtemp(path.join(tmpdir(), "sale-integrity-migrations-"));
   const migrationRoot = path.resolve("prisma/migrations");
   const names = (await readdir(migrationRoot, { withFileTypes: true })).filter(v => v.isDirectory()).map(v => v.name).sort();
-  assert.deepEqual(names.slice(-3), [SALE_INTEGRITY, SALE_ORIGIN, SALE_RULES], "the three sales migrations must be the latest ones, in this order");
+  // The three sales migrations are rehearsed in order over the ones before them; later migrations (Gastos F1a/F1b,
+  // payments F2a-1...) are applied right after the rules migration, so the service stages run on the current schema.
+  const firstSale = names.indexOf(SALE_INTEGRITY);
+  assert.ok(firstSale > 0, "SALE_MIGRATION_MISSING");
+  assert.deepEqual(names.slice(firstSale, firstSale + 3), [SALE_INTEGRITY, SALE_ORIGIN, SALE_RULES], "the three sales migrations must be consecutive, in this order");
+  const later = names.slice(firstSale + 3);
   await mkdir(path.join(folder, "migrations"));
   await cp("prisma/schema.prisma", path.join(folder, "schema.prisma"));
   await cp(path.join(migrationRoot, "migration_lock.toml"), path.join(folder, "migrations/migration_lock.toml"));
   const add = (name: string) => cp(path.join(migrationRoot, name), path.join(folder, "migrations", name), { recursive: true });
-  for (const name of names.slice(0, -3)) await add(name);
+  for (const name of names.slice(0, firstSale)) await add(name);
   const prismaCli = (...args: string[]) => spawnSync(process.execPath, [requireModule.resolve("prisma/build/index.js"), ...args, "--schema", path.join(folder, "schema.prisma")], {
     cwd: folder, env: { ...process.env, DATABASE_URL: target.toString() }, encoding: "utf8", timeout: 60000, windowsHide: true,
   });
@@ -77,8 +82,19 @@ async function main() {
     opening.set(row.id, stock); return row;
   }
   const legacyItem = await item(10, "LEGACY");
-  const valid = await database.sale.create({ data: { userId: owner.id, status: "DELIVERED", subtotal: 200n, discountTotal: 20n, total: 180n,
-    lines: { create: { inventoryItemId: legacyItem.id, quantity: 2, itemName: "Legacy", sku: "LEGACY", unitPrice: 100n, unitDiscount: 10n, lineTotal: 180n, commercialTermsVersion: 1 } } }, include: { lines: true } });
+  // Sales written before the later migrations use plain SQL: the Prisma client of the current schema always names
+  // newer "Sale" columns (it sends their defaults explicitly), which do not exist yet at this point of the chain.
+  type LegacyLine = { inventoryItemId: string; quantity: number; itemName: string; sku: string; unitPrice: bigint; unitDiscount?: bigint; lineTotal: bigint };
+  async function legacySale(sale: { status?: "DRAFT" | "DELIVERED"; subtotal: bigint; discountTotal?: bigint; total: bigint; delivered?: boolean }, line: LegacyLine) {
+    const id = randomUUID(), lineId = randomUUID(), at = sale.delivered ? new Date() : null;
+    await database.$executeRaw`INSERT INTO "Sale" (id, "userId", status, subtotal, "discountTotal", total, "confirmedAt", "deliveredAt", "updatedAt")
+      VALUES (${id}, ${owner.id}, ${sale.status ?? "DRAFT"}::"SaleStatus", ${sale.subtotal}, ${sale.discountTotal ?? 0n}, ${sale.total}, ${at}, ${at}, now())`;
+    await database.$executeRaw`INSERT INTO "SaleLine" (id, "saleId", "inventoryItemId", quantity, "itemName", sku, "unitPrice", "unitDiscount", "lineTotal", "commercialTermsVersion")
+      VALUES (${lineId}, ${id}, ${line.inventoryItemId}, ${line.quantity}, ${line.itemName}, ${line.sku}, ${line.unitPrice}, ${line.unitDiscount ?? 0n}, ${line.lineTotal}, 1)`;
+    return { id, lines: [{ id: lineId }] as [{ id: string }] };
+  }
+  const valid = await legacySale({ status: "DELIVERED", subtotal: 200n, discountTotal: 20n, total: 180n },
+    { inventoryItemId: legacyItem.id, quantity: 2, itemName: "Legacy", sku: "LEGACY", unitPrice: 100n, unitDiscount: 10n, lineTotal: 180n });
   // Raw movement rows on purpose: these probe the database constraints, not the service.
   const saleMovement = (extra: Record<string, unknown> = {}) => ({ itemId: legacyItem.id, key: randomUUID(), type: "OUT", quantity: 1, previousStock: 10, resultingStock: 9, reason: "Synthetic",
     origin: "SALE", saleId: valid.id, saleLineId: valid.lines[0].id, saleMovementRole: "SALE_CONFIRMATION", actorUserId: owner.id, ...extra }) as unknown as Prisma.InventoryMovementUncheckedCreateInput;
@@ -99,8 +115,8 @@ async function main() {
     throw new Rollback();
   }), Rollback);
   assert.equal(await database.inventoryMovement.count({ where: { itemId: legacyItem.id } }), 0);
-  const corrupt = await database.sale.create({ data: { userId: owner.id, subtotal: 100n, discountTotal: 0n, total: 999n,
-    lines: { create: { inventoryItemId: legacyItem.id, quantity: 1, itemName: "Bad", sku: "LEGACY", unitPrice: 100n, unitDiscount: 0n, lineTotal: 7n, commercialTermsVersion: 1 } } } });
+  const corrupt = await legacySale({ subtotal: 100n, total: 999n },
+    { inventoryItemId: legacyItem.id, quantity: 1, itemName: "Bad", sku: "LEGACY", unitPrice: 100n, lineTotal: 7n });
   report = await count();
   assert.equal(report.Sale_total_equation_check, 1); assert.equal(report.SaleLine_total_equation_check, 1); pass(stage);
 
@@ -124,12 +140,12 @@ async function main() {
   // test sale 29b2435… found on 2026-11-24). Written directly because the service now refuses it.
   stage = "LEGACY_DELIVERED_THEN_CANCELLED_BEFORE_RULES";
   const legacy = await item(5, "LEGACY-CANCELLED");
-  const cancelledAfterDelivery = await database.sale.create({ data: { userId: owner.id, status: "DELIVERED", subtotal: 100n, total: 100n, confirmedAt: new Date(), deliveredAt: new Date(),
-    lines: { create: { inventoryItemId: legacy.id, quantity: 1, itemName: "Legacy", sku: "LEGACY-CANCELLED", unitPrice: 100n, lineTotal: 100n, commercialTermsVersion: 1 } } }, include: { lines: true } });
+  const cancelledAfterDelivery = await legacySale({ status: "DELIVERED", subtotal: 100n, total: 100n, delivered: true },
+    { inventoryItemId: legacy.id, quantity: 1, itemName: "Legacy", sku: "LEGACY-CANCELLED", unitPrice: 100n, lineTotal: 100n });
   const legacyRefs = { itemId: legacy.id, saleId: cancelledAfterDelivery.id, saleLineId: cancelledAfterDelivery.lines[0].id, actorUserId: owner.id, origin: "SALE", reason: "Legacy" };
   await database.inventoryMovement.create({ data: { ...legacyRefs, key: randomUUID(), type: "OUT", quantity: 1, previousStock: 5, resultingStock: 4, saleMovementRole: "SALE_CONFIRMATION" } });
   await database.inventoryMovement.create({ data: { ...legacyRefs, key: randomUUID(), type: "IN", quantity: 1, previousStock: 4, resultingStock: 5, saleMovementRole: "SALE_CANCELLATION" } });
-  await database.sale.update({ where: { id: cancelledAfterDelivery.id }, data: { status: "CANCELLED", cancelledAt: new Date(), version: { increment: 2 } } });
+  await database.$executeRaw`UPDATE "Sale" SET status = 'CANCELLED', "cancelledAt" = now(), version = version + 2, "updatedAt" = now() WHERE id = ${cancelledAfterDelivery.id}`;
   // A damaged-return movement would block the new CHECK; probe it inside a rollback.
   await assert.rejects(database.$transaction(async tx => {
     await tx.inventoryMovement.create({ data: { ...legacyRefs, key: randomUUID(), type: "IN", quantity: 1, previousStock: 5, resultingStock: 6, saleMovementRole: "SALE_RETURN_DAMAGED" } as Prisma.InventoryMovementUncheckedCreateInput });
@@ -149,6 +165,8 @@ async function main() {
   for (const name of ORIGIN_CHECKS) assert.match(constraints.find(c => c.conname === name)!.definition, /'SALE'/);
   const triggers = await database.$queryRaw<{ tgname: string }[]>`SELECT t.tgname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid WHERE c.relnamespace = ${schema}::regnamespace AND t.tgname IN ('sale_return_line_guard', 'sale_status_transition_guard')`;
   assert.deepEqual(triggers.map(t => t.tgname).sort(), ["sale_return_line_guard", "sale_status_transition_guard"]);
+  for (const name of later) await add(name);
+  assert.equal(deploy(), 0, "later migrations apply over the sales rehearsal data");
   const kept = await database.sale.findUniqueOrThrow({ where: { id: cancelledAfterDelivery.id } });
   assert.equal(kept.status, "CANCELLED"); assert.ok(kept.deliveredAt, "historical rows are not rewritten");
   assert.equal((await database.sale.findUniqueOrThrow({ where: { id: valid.id } })).total, 180n);

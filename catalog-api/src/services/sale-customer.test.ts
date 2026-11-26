@@ -52,7 +52,8 @@ function fixture() {
         const sale: Sale = { id: randomUUID(), userId: data.userId, sourceOrderId: null, status: "DRAFT", version: 1, currency: "COP",
           customerId: data.customerId ?? null, customerName: data.customerName ?? null, customerPhone: data.customerPhone ?? null,
           customerNameSnapshot: data.customerNameSnapshot ?? null, customerPhoneSnapshot: data.customerPhoneSnapshot ?? null, customerEmailSnapshot: data.customerEmailSnapshot ?? null,
-          subtotal: 0n, discountTotal: 0n, total: 0n, createdAt: new Date(0), updatedAt: new Date(0), confirmedAt: null, deliveredAt: null, cancelledAt: null, returnedAt: null };
+          subtotal: 0n, discountTotal: 0n, total: 0n, createdAt: new Date(0), updatedAt: new Date(0), confirmedAt: null, deliveredAt: null, cancelledAt: null, returnedAt: null,
+          paymentMode: "LEGACY", paymentTermDays: null, paymentDueDate: null };
         sales.push(sale); return view(sale);
       },
       findFirst: async (args: Prisma.SaleFindFirstArgs) => {

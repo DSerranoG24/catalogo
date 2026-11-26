@@ -62,11 +62,13 @@ async function prepare(): Promise<Context> {
   assert.equal(deploy.status, 0, `MIGRATION_DEPLOY_FAILED ${`${deploy.stdout}${deploy.stderr}`.match(/\bP\d{4}\b/)?.[0] ?? ""}`);
   const [applied] = await db.$queryRawUnsafe<{ n: bigint; last: string }[]>(`SELECT count(*) AS n, max(migration_name) AS last FROM "${schema}"._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`);
   observations.migrations = Number(applied?.n); observations.lastMigration = applied?.last;
-  assert.equal(applied?.last, "20261126000000_scheduled_expense_payments");
+  // F1b must be applied; later migrations (payments F2a-1...) may follow it.
+  const [f1b] = await db.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*) AS n FROM "${schema}"._prisma_migrations WHERE migration_name = '20261126000000_scheduled_expense_payments' AND finished_at IS NOT NULL AND rolled_back_at IS NULL`);
+  assert.equal(Number(f1b?.n), 1, "F1b applied");
   // No drift between the migrated database and schema.prisma (exit code 0 = no difference).
   const drift = cli(["migrate", "diff", "--from-url", target.toString(), "--to-schema-datamodel", path.join(folder, "schema.prisma"), "--exit-code"]);
   assert.equal(drift.status, 0, "schema.prisma and the migrated database differ");
-  passed(`${observations.migrations} migrations applied, the last one is F1b; no drift against schema.prisma`);
+  passed(`${observations.migrations} migrations applied, F1b among them; no drift against schema.prisma`);
   return { db, url: target.toString(), ids: {} };
 }
 
