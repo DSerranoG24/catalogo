@@ -2,7 +2,7 @@
 
 Versión 1.2, 24 de noviembre de 2026. Cambio respecto a la 1.1: la reclasificación también puede cambiar la nota del medio de pago (`paymentMethodNote`); ver la [sección 17](#17-decisiones-tomadas).
 
-**Estado:** aprobado para implementar **F1a** (categorías y gastos puntuales). Las decisiones del responsable están en la [sección 17](#17-decisiones-tomadas) y el plan de F1a en la [sección 18](#18-plan-de-implementación-de-f1a). F1b (recurrentes) se implementa después, con este mismo contrato. Este documento no autoriza push, despliegues ni operaciones en producción.
+**Estado:** aprobado para implementar **F1a** (categorías y gastos puntuales). Las decisiones del responsable están en la [sección 17](#17-decisiones-tomadas) y el plan de F1a en la [sección 18](#18-plan-de-implementación-de-f1a). F1b (gastos fijos y pagos programados) se rediseñó en la **[ampliación de F1b](expenses-f1b-contract.md)** (aprobada el 25/11/2026), que sustituye el diseño de F1b de este documento (ocurrencias `PENDING_CONFIRMATION` en `expenses`). Este documento no autoriza push, despliegues ni operaciones en producción.
 
 ## 1. Alcance y base existente
 
@@ -181,6 +181,8 @@ En `Expense`:
 - **Cuota:** como máximo 100 categorías por cuenta, incluidas las archivadas.
 
 ## 7. Gastos recurrentes (F1b)
+
+> **Sustituida** por la [ampliación de F1b](expenses-f1b-contract.md): los pagos programados viven en una tabla propia y marcarlos pagados crea el gasto. Se conserva el texto como referencia histórica.
 
 - **Fechas:** `frequency` (`WEEKLY`, `MONTHLY`, `YEARLY`) × `interval` (1–12) desde `anchorDate`. Quincenal es semanal cada 2. En mensual y anual se conserva el día del ancla; si el mes no tiene ese día (29–31), se usa el último día del mes, sin desplazar los siguientes.
 - **Arranque en el pasado:** `anchorDate` puede ser anterior a hoy. En la primera materialización, de todas las fechas ya vencidas **solo se genera la más reciente**; las anteriores se registran, si hacen falta, como gastos puntuales. `generatedThrough` queda en esa fecha.
