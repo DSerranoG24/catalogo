@@ -71,6 +71,9 @@ export function makeSaleService(database = prisma) {
       await tx.$queryRaw`SELECT o.id FROM orders o JOIN catalogs c ON c.id=o."catalogId" WHERE o.id=${orderId} AND c."userId"=${userId} FOR UPDATE`;
       const existingOperation = await tx.saleOperation.findFirst({ where: { userId, id: input.operationId }, include: { sale: { include: saleResultInclude } } });
       if (existingOperation) { if (existingOperation.type !== "ORDER_CONVERSION" || existingOperation.sale?.userId !== userId || existingOperation.sale?.sourceOrderId !== orderId || !isSameSaleCommand(existingOperation.requestHash, input)) throw new Error("IDEMPOTENCY_CONFLICT"); return { sale: existingOperation.sale, idempotent: true }; }
+      // F2a-3c (owner's decision): a converted order becomes a CONFIRMED sale that is charged and delivered from its
+      // detail in Historial; delivering in the same call is no longer offered. Earlier receipts still replay above.
+      if (input.mode === "DELIVERED") throw new Error("ORDER_CONVERSION_DELIVERY_REMOVED");
       const order = await tx.order.findFirst({ where: { id: orderId, catalog: { userId } }, include: { items: { include: { product: { include: { inventoryItem: { include: { commercialTerms: true } } } } } }, catalog: true } });
       if (!order) throw new Error("ORDER_NOT_FOUND");
       // A second key for an already converted order: the order lock serializes them; answer with a conflict, not a unique-index 500.
@@ -82,7 +85,8 @@ export function makeSaleService(database = prisma) {
       const locked = input.mode === "DRAFT" ? null : await lockItems(tx, userId, bases.map(row => row.item.id));
       const lines = bases.map(({ line, item: base }) => { const item = locked ? locked.get(base.id) : base; if (!item) throw new Error("ORDER_ITEM_NOT_INVENTORY"); if (!item.commercialTerms) throw new Error("PRICE_REQUIRED"); const currentPrice = Number(item.commercialTerms.unitSalePrice); if (currentPrice !== line.unitPrice && !input.acceptPriceDifference) throw new Error("PRICE_DIFFERENCE_REQUIRES_CONFIRMATION"); const orderPrice = BigInt(line.unitPrice); const discount = 0n; return { line, item, orderPrice, discount, total: orderPrice * BigInt(line.quantity) }; }).sort((a, b) => compare(a.item.id, b.item.id));
       if (locked) for (const row of lines) if (row.item.stock < row.line.quantity) throw new Error("STOCK_INSUFFICIENT");
-      const tracked = tracks(input);
+      // Every confirmed conversion records its payments (TRACKED); without payments it is an advance of 0.
+      const tracked = input.mode !== "DRAFT";
       if (tracked && input.customerCreditAmount !== undefined && !customer) throw new Error("CUSTOMER_REQUIRED_FOR_CREDIT");
       const subtotal = lines.reduce((sum: bigint, row: any) => sum + row.total, 0n);
       const sale = await tx.sale.create({ data: { userId, sourceOrderId: order.id, customerId: customer?.id ?? null, ...orderBuyerSnapshots(order), customerName: order.customerName, customerPhone: order.customerPhone, subtotal, discountTotal: 0n, total: subtotal, status: "DRAFT" } });
@@ -93,8 +97,7 @@ export function makeSaleService(database = prisma) {
         for (const row of lines) { await tx.inventoryItem.update({ where: { id: row.item.id }, data: { stock: { decrement: row.line.quantity }, stockVersion: { increment: 1 } } }); await tx.inventoryMovement.create({ data: { itemId: row.item.id, saleId: sale.id, saleLineId: saleLines.get(row.item.id).id, saleMovementRole: "SALE_CONFIRMATION", key: input.operationId, type: "OUT", quantity: row.line.quantity, previousStock: row.item.stock, resultingStock: row.item.stock - row.line.quantity, delta: -row.line.quantity, reason: "Conversión de pedido", actorUserId: userId, origin: "SALE" } }); }
         await tx.sale.update({ where: { id: sale.id }, data: { status: input.mode, confirmedAt: new Date(), deliveredAt: input.mode === "DELIVERED" ? new Date() : null, version: { increment: 1 }, ...(tracked ? { paymentMode: "TRACKED" } : {}) } });
         if (tracked) {
-          await recordPayments(tx, ledgerWriter(tx, userId, input.operationId), userId, sale.id, input.payments, input.customerCreditAmount);
-          if (input.mode === "DELIVERED") await requirePaid(tx, userId, sale.id);
+          await recordPayments(tx, ledgerWriter(tx, userId, input.operationId), userId, sale.id, input.payments ?? [], input.customerCreditAmount);
         }
       }
       const result = tracked ? await trackedResult(tx, userId, sale.id) : await tx.sale.findUniqueOrThrow({ where: { id: sale.id }, include: saleResultInclude });
@@ -107,14 +110,16 @@ export function makeSaleService(database = prisma) {
     updateDraft: (userId: string, saleId: string, input: z.infer<typeof updateDraftSaleSchema>) => updateInternalSaleDraft(userId, saleId, input, database),
     async confirm(userId: string, saleId: string, input: z.input<typeof confirmSaleSchema>) { return database.$transaction(async tx => {
       const { sale, replayed } = await begin(tx, userId, saleId, input, "CONFIRM"); if (replayed !== undefined) return replayed;
+      // F2a-3c: every new confirmation records how it was paid (TRACKED). An advance of 0 is payments: [].
+      // Receipts of earlier confirmations without payments still replay above.
+      if (!tracks(input)) throw new Error("PAYMENTS_REQUIRED");
       if (sale.status !== "DRAFT" || sale.version !== input.expectedVersion) throw new Error("VERSION_CONFLICT");
       const op = await operation(tx, userId, saleId, input, "CONFIRM");
       const lines = byItem(sale.lines); const items = await lockItems(tx, userId, lines.map(line => line.inventoryItemId));
       for (const line of lines) { const item = items.get(line.inventoryItemId); if (!item || item.stock < line.quantity) throw new Error("STOCK_INSUFFICIENT"); if (!item.commercialTerms || item.commercialTerms.version !== line.commercialTermsVersion) throw new Error("PRICE_CHANGED"); }
       for (const line of lines) { const item = items.get(line.inventoryItemId); await tx.inventoryItem.update({ where: { id: item.id }, data: { stock: { decrement: line.quantity }, stockVersion: { increment: 1 } } }); await tx.inventoryMovement.create({ data: { itemId: item.id, saleId, saleLineId: line.id, saleMovementRole: "SALE_CONFIRMATION", key: input.operationId, type: "OUT", quantity: line.quantity, previousStock: item.stock, resultingStock: item.stock - line.quantity, delta: -line.quantity, reason: "Confirmación de venta", actorUserId: userId, origin: "SALE" } }); }
-      const tracked = tracks(input);
-      const status = input.deliverImmediately ? "DELIVERED" : "CONFIRMED"; const updated = await tx.sale.update({ where: { id: saleId }, data: { status, confirmedAt: new Date(), deliveredAt: input.deliverImmediately ? new Date() : null, version: { increment: 1 }, ...(tracked ? { paymentMode: "TRACKED" } : {}) }, include: saleResultInclude });
-      if (!tracked) { await succeed(tx, op, updated); return updated; }
+      const status = input.deliverImmediately ? "DELIVERED" : "CONFIRMED";
+      await tx.sale.update({ where: { id: saleId }, data: { status, confirmedAt: new Date(), deliveredAt: input.deliverImmediately ? new Date() : null, version: { increment: 1 }, paymentMode: "TRACKED" }, include: saleResultInclude });
       await recordPayments(tx, ledgerWriter(tx, userId, input.operationId), userId, saleId, input.payments, input.customerCreditAmount);
       if (input.deliverImmediately) await requirePaid(tx, userId, saleId);
       const result = await trackedResult(tx, userId, saleId);

@@ -18,6 +18,7 @@ const PAYMENT_CONFLICTS = ["PAYMENT_EXCEEDS_BALANCE", "SALE_BALANCE_DUE", "LEGAC
 const SPANISH: Record<string, [number, string]> = {
   VOID_REQUIRES_REPLACEMENT: [409, "En una venta entregada, anula el pago y registra el pago correcto (anular y reemplazar)."],
   REPLACEMENT_AMOUNT_MISMATCH: [409, "El pago que reemplaza debe ser por el mismo monto que el pago anulado."],
+  PAYMENTS_REQUIRED: [400, "Indica cómo se pagó la venta: envía los pagos (un anticipo de 0 es payments: [])."],
 };
 
 export function makeSalesRouter(service = makeSaleService(), authentication = authenticate, money = makeSaleMoneyService()) {

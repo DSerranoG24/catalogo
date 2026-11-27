@@ -544,7 +544,7 @@
             "description": "ORDER_NOT_FOUND o CUSTOMER_NOT_FOUND"
           },
           "409": {
-            "description": "CUSTOMER_ARCHIVED, ORDER_BUYER_PHONE_TOO_LONG o conflictos existentes de stock, estado, precio o idempotencia"
+            "description": "CUSTOMER_ARCHIVED, ORDER_BUYER_PHONE_TOO_LONG o conflictos existentes de stock, estado, precio o idempotencia, ORDER_CONVERSION_DELIVERY_REMOVED"
           },
           "500": {
             "description": "CONVERSION_FAILED"
@@ -570,7 +570,7 @@
             }
           }
         },
-        "description": "Los snapshots proceden exclusivamente del pedido. customerId opcional enlaza un cliente activo propio sin sustituir los snapshots ni crear clientes. Conserva precios, stock e idempotencia del flujo anterior. En CONFIRMED/DELIVERED acepta payments y customerCreditAmount como confirmar (TRACKED); DELIVERED exige pagar todo (SALE_BALANCE_DUE). Un borrador no admite pagos."
+        "description": "Los snapshots proceden exclusivamente del pedido. customerId opcional enlaza un cliente activo propio sin sustituir los snapshots ni crear clientes. Conserva precios, stock e idempotencia del flujo anterior. En CONFIRMED/DELIVERED acepta payments y customerCreditAmount como confirmar (TRACKED); DELIVERED exige pagar todo (SALE_BALANCE_DUE). Un borrador no admite pagos. Desde F2a-3c, mode CONFIRMED crea una venta TRACKED (sin pagos: anticipo de 0) y mode DELIVERED responde 409 ORDER_CONVERSION_DELIVERY_REMOVED: la venta se cobra y entrega desde su detalle."
       }
     },
     "/api/sales": {
@@ -2543,7 +2543,7 @@
             "description": "{result: Sale}; TRACKED incluye payments"
           },
           "400": {
-            "description": "INVALID_SALE_INPUT o INVALID_PAYMENT_INPUT"
+            "description": "INVALID_SALE_INPUT o INVALID_PAYMENT_INPUT, PAYMENTS_REQUIRED"
           },
           "401": {
             "description": "Sesión requerida"
@@ -2575,7 +2575,7 @@
             }
           }
         },
-        "description": "Sin payments ni customerCreditAmount: flujo LEGACY de siempre, mismas respuestas y errores. Con ellos (payments: [] incluido): TRACKED; los pagos nunca superan el total. Con deliverImmediately y saldo pendiente: SALE_BALANCE_DUE (fiado apagado hasta F2). Pagos: método CASH, NEQUI, DAVIPLATA, BANK_TRANSFER, CARD u OTHER (con nota); cashReceived solo en CASH, informativo (el cambio se muestra, no se guarda). Importes COP enteros como cadenas."
+        "description": "Sin payments ni customerCreditAmount: flujo LEGACY de siempre, mismas respuestas y errores. Con ellos (payments: [] incluido): TRACKED; los pagos nunca superan el total. Con deliverImmediately y saldo pendiente: SALE_BALANCE_DUE (fiado apagado hasta F2). Pagos: método CASH, NEQUI, DAVIPLATA, BANK_TRANSFER, CARD u OTHER (con nota); cashReceived solo en CASH, informativo (el cambio se muestra, no se guarda). Importes COP enteros como cadenas. Desde F2a-3c los pagos son obligatorios: sin payments ni customerCreditAmount responde 400 PAYMENTS_REQUIRED (un anticipo de 0 es payments: []). Toda venta confirmada queda TRACKED."
       }
     },
     "/api/sales/{id}/deliver": {

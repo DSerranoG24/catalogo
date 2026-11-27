@@ -7,7 +7,7 @@ import { makeSaleService } from "./sale.service";
 type Setup = { status?: string; stock?: number; orderPrice?: number; currentPrice?: number; inventory?: boolean; owner?: boolean };
 function setup(options: Setup = {}) {
   const ids = { order: randomUUID(), product: randomUUID(), item: randomUUID(), sale: randomUUID(), line: randomUUID(), customer: randomUUID() };
-  const state: any = { stock: options.stock ?? 5, sales: [], lines: [], operations: [], movements: [], order: { id: ids.order, status: options.status ?? "PENDING", customerName: "Cliente", customerPhone: "300", customerEmail: "buyer@example.invalid", catalogId: "catalog", items: [] } };
+  const state: any = { stock: options.stock ?? 5, sales: [], lines: [], operations: [], movements: [], entries: [], order: { id: ids.order, status: options.status ?? "PENDING", customerName: "Cliente", customerPhone: "300", customerEmail: "buyer@example.invalid", catalogId: "catalog", items: [] } };
   const item = options.inventory === false ? null : { id: ids.item, name: "Producto", sku: "SKU", stock: state.stock, commercialTerms: { unitSalePrice: BigInt(options.currentPrice ?? options.orderPrice ?? 100), referenceUnitCost: 20n, version: 1 } };
   state.order.items = [{ id: randomUUID(), productId: options.inventory === false ? null : ids.product, product: options.owner === false ? null : { id: ids.product, catalogId: "catalog", inventoryItem: item }, productName: "Nombre pedido", quantity: 2, unitPrice: options.orderPrice ?? 100, subtotal: 200 }];
   state.customer = { id: ids.customer, ownerId: "owner", fullName: "Ficha interna", phone: "3110000000", email: "internal@example.invalid", archivedAt: null };
@@ -27,7 +27,12 @@ function setup(options: Setup = {}) {
       update: async ({ where, data }: any) => { const op = state.operations.find((x: any) => x.id === where.id); Object.assign(op, data); return op; },
     },
     sale: {
-      findFirst: async ({ where }: any) => { assert.equal(where.userId, "owner"); return state.sales.find((sale: any) => sale.sourceOrderId === where.sourceOrderId && sale.userId === where.userId) ?? null; },
+      findFirst: async ({ where }: any) => {
+        assert.equal(where.userId, "owner");
+        // By id: the payments state of the sale (saleMoneyState); otherwise the sale of an order.
+        if (where.id) { const sale = state.sales.find((x: any) => x.id === where.id && x.userId === where.userId); return sale ? { ...sale, lines: state.lines.filter((line: any) => line.saleId === sale.id), returns: [] } : null; }
+        return state.sales.find((sale: any) => sale.sourceOrderId === where.sourceOrderId && sale.userId === where.userId) ?? null;
+      },
       create: async ({ data }: any) => { const sale = { id: ids.sale, version: 1, lines: [], customerId: null, customerNameSnapshot: null, customerPhoneSnapshot: null, customerEmailSnapshot: null, ...data }; state.sales.push(sale); return sale; },
       update: async ({ where, data }: any) => { const sale = state.sales.find((x: any) => x.id === where.id); Object.assign(sale, data, { version: (sale.version ?? 1) + (data.version?.increment ?? 0) }); return sale; },
       findUniqueOrThrow: async ({ where }: any) => ({ ...state.sales.find((sale: any) => sale.id === where.id), lines: state.lines.filter((line: any) => line.saleId === where.id), returns: [] }),
@@ -42,13 +47,30 @@ function setup(options: Setup = {}) {
       update: async ({ data }: any) => { state.stock += Number(data.stock.decrement ? -data.stock.decrement : data.stock.increment); return item; },
     },
     inventoryMovement: { create: async ({ data }: any) => { state.movements.push(data); return data; } },
+    // Payments book of the sale (F2a-2b/F2a-3c): a confirmed conversion is TRACKED, with its payments or none.
+    customerCreditEntry: { findMany: async () => [] },
+    salePaymentEntry: {
+      findMany: async ({ where }: any) => state.entries.filter((e: any) => e.ownerId === where.ownerId && (where.saleId?.in ? where.saleId.in.includes(e.saleId) : e.saleId === where.saleId)),
+      create: async ({ data }: any) => { const entry = { id: randomUUID(), createdAt: new Date(), reversesEntryId: null, creditEntryId: null, ...data }; state.entries.push(entry); return entry; },
+    },
   };
   const database = { $transaction: async (fn: (client: any) => unknown) => { const before = structuredClone(state); try { return await fn(tx); } catch (error) { Object.keys(state).forEach(key => { state[key] = before[key]; }); throw error; } } } as any;
   return { ids, state, locks, service: makeSaleService(database), input: { operationId: randomUUID(), requestId: randomUUID(), mode: "DRAFT", acceptPriceDifference: false } as any };
 }
 
 test("order conversion creates draft snapshots at the frozen order price without stock movement", async () => { const f = setup(); const result = await f.service.convertOrderToSale("owner", f.ids.order, f.input); assert.equal(result.sale.status, "DRAFT"); assert.equal(result.sale.customerId, null); assert.equal(result.sale.customerNameSnapshot, "Cliente"); assert.equal(result.sale.customerPhoneSnapshot, "300"); assert.equal(result.sale.customerEmailSnapshot, "buyer@example.invalid"); assert.equal(result.sale.customerName, "Cliente"); assert.equal(result.sale.subtotal, 200n); assert.equal(result.sale.total, 200n); assert.equal(f.state.lines[0].unitPrice, 100n); assert.equal(f.state.lines[0].lineTotal, 200n); assert.equal(f.state.stock, 5); assert.equal(f.state.movements.length, 0); assert.equal(f.state.lines[0].itemName, "Producto"); assert.equal(f.state.order.items[0].productName, "Nombre pedido"); });
-test("confirmed and delivered conversion deducts stock and records sale movement", async () => { for (const mode of ["CONFIRMED", "DELIVERED"]) { const f = setup(); const result = await f.service.convertOrderToSale("owner", f.ids.order, { ...f.input, mode }); assert.equal(result.sale.status, mode); assert.equal(result.sale.lines[0].unitPrice, 100n); assert.equal(f.state.stock, 3); assert.equal(f.state.movements.length, 1); assert.equal(f.state.movements[0].saleMovementRole, "SALE_CONFIRMATION"); } });
+test("confirmed conversion deducts stock, records the sale movement and is TRACKED with an advance of 0", async () => {
+  const f = setup(); const result: any = await f.service.convertOrderToSale("owner", f.ids.order, { ...f.input, mode: "CONFIRMED" });
+  assert.equal(result.sale.status, "CONFIRMED"); assert.equal(result.sale.lines[0].unitPrice, 100n); assert.equal(f.state.stock, 3); assert.equal(f.state.movements.length, 1); assert.equal(f.state.movements[0].saleMovementRole, "SALE_CONFIRMATION");
+  assert.equal(f.state.sales[0].paymentMode, "TRACKED", "every confirmed conversion records its payments");
+  assert.deepEqual([result.sale.payments.mode, result.sale.payments.paid, result.sale.payments.balance], ["TRACKED", 0n, 200n]);
+  assert.equal(f.state.entries.length, 0, "no payment: an advance of 0");
+});
+test("F2a-3c: converting and delivering in one call is no longer offered; nothing is written", async () => {
+  const f = setup();
+  await assert.rejects(f.service.convertOrderToSale("owner", f.ids.order, { ...f.input, mode: "DELIVERED", payments: [{ method: "CASH", amount: "200" }] }), /ORDER_CONVERSION_DELIVERY_REMOVED/);
+  assert.deepEqual([f.state.sales.length, f.state.movements.length, f.state.operations.length, f.state.stock], [0, 0, 0, 5]);
+});
 test("conversion rejects foreign, cancelled, missing-inventory and insufficient-stock orders atomically", async () => { const foreign = setup({ owner: false }); await assert.rejects(() => foreign.service.convertOrderToSale("owner", foreign.ids.order, foreign.input), /ORDER_NOT_FOUND/); assert.equal(foreign.state.sales.length, 0); const cancelled = setup({ status: "CANCELLED" }); await assert.rejects(() => cancelled.service.convertOrderToSale("owner", cancelled.ids.order, cancelled.input), /ORDER_STATUS_NOT_CONVERTIBLE/); const noItem = setup({ inventory: false }); await assert.rejects(() => noItem.service.convertOrderToSale("owner", noItem.ids.order, noItem.input), /ORDER_ITEM_NOT_INVENTORY/); const low = setup({ stock: 1 }); await assert.rejects(() => low.service.convertOrderToSale("owner", low.ids.order, { ...low.input, mode: "CONFIRMED" }), /STOCK_INSUFFICIENT/); assert.equal(low.state.sales.length, 0); assert.equal(low.state.movements.length, 0); });
 test("conversion requires explicit acceptance but preserves the order price after an inventory price increase", async () => { const rejected = setup({ orderPrice: 100, currentPrice: 120 }); await assert.rejects(() => rejected.service.convertOrderToSale("owner", rejected.ids.order, rejected.input), /PRICE_DIFFERENCE_REQUIRES_CONFIRMATION/); const accepted = setup({ orderPrice: 100, currentPrice: 120 }); const result = await accepted.service.convertOrderToSale("owner", accepted.ids.order, { ...accepted.input, mode: "CONFIRMED", acceptPriceDifference: true }); assert.equal(result.sale.total, 200n); assert.equal(result.sale.lines[0].unitPrice, 100n); assert.equal(result.sale.lines[0].lineTotal, 200n); assert.equal(accepted.state.stock, 3); assert.equal(accepted.state.order.items[0].product.inventoryItem.commercialTerms.unitSalePrice, 120n); });
 test("conversion preserves the order price after an inventory price decrease", async () => { const f = setup({ orderPrice: 100, currentPrice: 80 }); const result = await f.service.convertOrderToSale("owner", f.ids.order, { ...f.input, mode: "CONFIRMED", acceptPriceDifference: true }); assert.equal(result.sale.subtotal, 200n); assert.equal(result.sale.total, 200n); assert.equal(result.sale.lines[0].unitPrice, 100n); assert.equal(result.sale.lines[0].lineTotal, 200n); assert.equal(f.state.stock, 3); assert.equal(f.state.order.items[0].product.inventoryItem.commercialTerms.unitSalePrice, 80n); });
@@ -83,7 +105,7 @@ test("a legacy order without buyer fields preserves null snapshots instead of us
 });
 
 test("an authorized explicit Customer is only an operational link; snapshots always come from Order", async () => {
-  for (const mode of ["DRAFT", "CONFIRMED", "DELIVERED"]) {
+  for (const mode of ["DRAFT", "CONFIRMED"]) {
     const f = setup(); const result = await f.service.convertOrderToSale("owner", f.ids.order, { ...f.input, mode, customerId: f.ids.customer });
     assert.equal(result.sale.customerId, f.ids.customer);
     assert.equal(result.sale.customerNameSnapshot, "Cliente"); assert.equal(result.sale.customerPhoneSnapshot, "300");
@@ -102,7 +124,7 @@ test("missing, foreign and archived customers reject conversion atomically befor
     if (condition === "foreign") f.state.customer.ownerId = "other-owner";
     if (condition === "archived") f.state.customer.archivedAt = new Date();
     const before = structuredClone(f.state.order);
-    await assert.rejects(f.service.convertOrderToSale("owner", f.ids.order, { ...f.input, customerId: condition === "missing" ? randomUUID() : f.ids.customer, mode: "DELIVERED" }), condition === "archived" ? /CUSTOMER_ARCHIVED/ : /CUSTOMER_NOT_FOUND/);
+    await assert.rejects(f.service.convertOrderToSale("owner", f.ids.order, { ...f.input, customerId: condition === "missing" ? randomUUID() : f.ids.customer, mode: "CONFIRMED" }), condition === "archived" ? /CUSTOMER_ARCHIVED/ : /CUSTOMER_NOT_FOUND/);
     assert.equal(f.state.sales.length, 0); assert.equal(f.state.lines.length, 0); assert.equal(f.state.operations.length, 0);
     assert.equal(f.state.movements.length, 0); assert.equal(f.state.stock, 5); assert.deepEqual(f.state.order, before);
   }

@@ -11,7 +11,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 type Row = Record<string, any>;
 
 function fixture() {
-  const state = { sales: [] as Row[], lines: [] as Row[], items: [] as Row[], operations: [] as Row[], movements: [] as Row[], returns: [] as Row[], returnLines: [] as Row[] };
+  const state = { sales: [] as Row[], lines: [] as Row[], items: [] as Row[], operations: [] as Row[], movements: [] as Row[], returns: [] as Row[], returnLines: [] as Row[], entries: [] as Row[] };
   const holders = new Map<string, number>(), waiters = new Map<string, (() => void)[]>();
   const events: string[] = [];
   let nextTx = 0;
@@ -47,6 +47,7 @@ function fixture() {
       },
       sale: {
         async findFirst({ where, include }: any) { assert.ok(where.userId); await tick(); const sale = state.sales.find(s => s.id === where.id && s.userId === where.userId); return sale ? (include?.returns ? result(sale) : view(sale)) : null; },
+        async findUniqueOrThrow({ where }: any) { const sale = state.sales.find(s => s.id === where.id); if (!sale) throw new Error("NotFound"); return result(sale); },
         async update({ where, data, include }: any) {
           const sale = state.sales.find(s => s.id === where.id); assert.ok(sale); const { version, ...rest } = data;
           // Mirrors sale_status_transition_guard.
@@ -75,6 +76,11 @@ function fixture() {
       },
       inventoryMovement: { async create({ data }: any) { assert.equal(data.resultingStock, data.previousStock + data.delta); return push(state.movements, { ...data, at: state.movements.length }); } },
       saleReturn: { async create({ data }: any) { return push(state.returns, { id: randomUUID(), ...data }); } },
+      // Payments book (F2a-3c: every confirmation is TRACKED). No customers here, so no credit entries.
+      salePaymentEntry: {
+        async findMany({ where }: any) { await tick(); return structuredClone(state.entries.filter(e => e.ownerId === where.ownerId && (where.saleId?.in ? where.saleId.in.includes(e.saleId) : e.saleId === where.saleId))); },
+        async create({ data }: any) { return structuredClone(push(state.entries, { id: randomUUID(), createdAt: new Date(), reversesEntryId: null, creditEntryId: null, ...data })); },
+      },
       saleReturnLine: {
         async findMany({ where }: any) { await tick(); return structuredClone(state.returnLines.filter(l => where.saleLineId.in.includes(l.saleLineId))); },
         async create({ data }: any) {
@@ -108,9 +114,14 @@ function fixture() {
     Object.assign(state.sales.at(-1)!, { subtotal: total, total });
     return id;
   }
-  return { state, events, service: makeSaleService(database), item, draft };
+  /** Delivering a confirmed sale pays what is left of it (fiado is off): the total of the sale in cash. */
+  const pay = (saleId: string) => ({ payments: [{ method: "CASH" as const, amount: String(state.sales.find(s => s.id === saleId)!.total) }] });
+  return { state, events, service: makeSaleService(database), item, draft, pay };
 }
-const confirmInput = (version = 2) => ({ operationId: randomUUID(), requestId: randomUUID(), expectedVersion: version, deliverImmediately: false });
+// F2a-3c: every confirmation sends its payments; an advance of 0 is payments: [].
+const confirmInput = (version = 2) => ({ operationId: randomUUID(), requestId: randomUUID(), expectedVersion: version, deliverImmediately: false, payments: [] as { method: "CASH"; amount: string }[] });
+/** Confirm and deliver at once: paid in full in cash (fiado is off). Lines cost 100 each in this double. */
+const paidNow = (units: number) => ({ ...confirmInput(), deliverImmediately: true, payments: [{ method: "CASH" as const, amount: String(100 * units) }] });
 const keys = () => ({ operationId: randomUUID(), requestId: randomUUID() });
 
 test("two concurrent confirmations on the same item serialize on the item lock: ledger stays chained", { timeout: 5000 }, async () => {
@@ -161,7 +172,7 @@ test("items are locked in id order after the sale; crossed multi-item sales do n
 test("cancel and return also lock items before writing and keep the ledger chained", { timeout: 5000 }, async () => {
   const f = fixture(); const itemId = f.item(10);
   const a = f.draft([{ itemId, quantity: 2 }]), b = f.draft([{ itemId, quantity: 3 }]);
-  const ca = await f.service.confirm(owner, a, { ...confirmInput(), deliverImmediately: true });
+  const ca = await f.service.confirm(owner, a, paidNow(2));
   const cb = await f.service.confirm(owner, b, confirmInput());
   const lineA = f.state.lines.find(l => l.saleId === a)!;
   await Promise.all([
@@ -183,7 +194,7 @@ test("a retried confirm with a key that already succeeded returns the stored rec
   assert.equal(retry.total, "200", "the stored receipt is JSON-safe: BigInt saved as a decimal string");
   assert.equal(f.state.movements.length, 1); assert.equal(f.state.items[0].stock, 3); assert.equal(f.state.operations.length, 1);
   // Even after the sale moved on, the original key still replays the original receipt.
-  await f.service.transition(owner, sale, { ...keys(), expectedVersion: first.version });
+  await f.service.transition(owner, sale, { ...keys(), expectedVersion: first.version, ...f.pay(sale) });
   const later: any = await f.service.confirm(owner, sale, input);
   assert.equal(later.status, "CONFIRMED"); assert.equal(f.state.sales[0].status, "DELIVERED"); assert.equal(f.state.movements.length, 1);
   // Same key with another payload, another sale or another account never replays.
@@ -197,7 +208,7 @@ test("deliver, cancel and return retries replay their receipts without repeating
   const f = fixture(); const itemId = f.item(6);
   const a = f.draft([{ itemId, quantity: 2 }]), b = f.draft([{ itemId, quantity: 1 }]);
   const ca = await f.service.confirm(owner, a, confirmInput()), cb = await f.service.confirm(owner, b, confirmInput());
-  const deliver = { ...keys(), expectedVersion: ca.version };
+  const deliver = { ...keys(), expectedVersion: ca.version, ...f.pay(a) };
   const delivered = await f.service.transition(owner, a, deliver);
   assert.equal((await f.service.transition(owner, a, deliver) as any).version, delivered.version);
   const cancel = { ...keys(), expectedVersion: cb.version, reason: "Error de captura" };
@@ -225,7 +236,7 @@ test("a fresh key on a stale version still fails, and a failed attempt leaves no
 // ---- Sales rules fixed after the 2026-11-24 production test ----
 
 async function delivered(f: ReturnType<typeof fixture>, lines: { itemId: string; quantity: number }[]) {
-  const id = f.draft(lines); const sale: any = await f.service.confirm(owner, id, { ...confirmInput(), deliverImmediately: true });
+  const id = f.draft(lines); const sale: any = await f.service.confirm(owner, id, paidNow(lines.reduce((sum, line) => sum + line.quantity, 0)));
   return { id, sale, lines: f.state.lines.filter(l => l.saleId === id) };
 }
 
@@ -246,7 +257,7 @@ test("same operationId + same content + new requestId replays the receipt; other
   const again: any = await f.service.confirm(owner, sale, { ...confirm, requestId: randomUUID() });
   assert.equal(again.version, first.version); assert.equal(f.state.movements.length, 1); assert.equal(f.state.operations.length, 2 - 1);
   await assert.rejects(f.service.confirm(owner, sale, { ...confirm, requestId: randomUUID(), deliverImmediately: true }), /IDEMPOTENCY_CONFLICT/);
-  const deliver = { ...keys(), expectedVersion: first.version }; const d: any = await f.service.transition(owner, sale, deliver);
+  const deliver = { ...keys(), expectedVersion: first.version, ...f.pay(sale) }; const d: any = await f.service.transition(owner, sale, deliver);
   assert.equal(((await f.service.transition(owner, sale, { ...deliver, requestId: randomUUID() })) as any).version, d.version);
   const line = f.state.lines.find(l => l.saleId === sale)!;
   const ret = { ...keys(), expectedVersion: d.version, reason: "Devolución parcial", lines: [{ saleLineId: line.id, receivedQuantity: 1, resellableQuantity: 1, damagedQuantity: 0 }] };
@@ -310,7 +321,7 @@ test("confirm, deliver, cancel and return responses (and their replays) include 
   const c: any = await f.service.confirm(owner, s, input); const replay: any = await f.service.confirm(owner, s, { ...input, requestId: randomUUID() });
   for (const body of [c, replay]) { assert.equal(body.lines.length, 1); assert.ok(Array.isArray(body.returns)); }
   assert.equal(replay.lines[0].unitPrice, "100", "receipt amounts are decimal strings");
-  const d: any = await f.service.transition(owner, s, { ...keys(), expectedVersion: c.version }); assert.equal(d.lines.length, 1);
+  const d: any = await f.service.transition(owner, s, { ...keys(), expectedVersion: c.version, ...f.pay(s) }); assert.equal(d.lines.length, 1);
   const s2 = f.draft([{ itemId: a, quantity: 1 }]); const c2: any = await f.service.confirm(owner, s2, confirmInput());
   const x: any = await f.service.cancel(owner, s2, { ...keys(), expectedVersion: c2.version, reason: "Prueba" }); assert.equal(x.lines.length, 1);
 });
@@ -319,7 +330,7 @@ test("confirm, deliver, cancel and returns take the account money lock first; tw
   const f = fixture(); const id = randomUUID(); f.item(10, id);
   const a = f.draft([{ itemId: id, quantity: 1 }]), b = f.draft([{ itemId: id, quantity: 1 }]);
   const [confirmedA] = await Promise.all([f.service.confirm(owner, a, confirmInput()), f.service.confirm(owner, b, confirmInput())]) as any[];
-  const delivered = await f.service.transition(owner, a, { operationId: randomUUID(), requestId: randomUUID(), expectedVersion: confirmedA.version }) as any;
+  const delivered = await f.service.transition(owner, a, { operationId: randomUUID(), requestId: randomUUID(), expectedVersion: confirmedA.version, ...f.pay(a) }) as any;
   await f.service.returnSale(owner, a, { operationId: randomUUID(), requestId: randomUUID(), expectedVersion: delivered.version, reason: "Parcial",
     lines: [{ saleLineId: delivered.lines[0].id, receivedQuantity: 1, resellableQuantity: 1, damagedQuantity: 0 }] });
   const saleB = f.state.sales.find(sale => sale.id === b)!;
@@ -331,4 +342,14 @@ test("confirm, deliver, cancel and returns take the account money lock first; tw
     assert.equal(mine[0], `money:${owner}`, "the account money lock is the first lock of every sale mutation");
   }
   assert.equal(f.state.items[0]!.stock, 10, "10 − 2 confirmed + 1 returned + 1 cancelled");
+});
+
+test("F2a-3c: confirming without payments is rejected and writes nothing; an advance of 0 (payments: []) confirms TRACKED", async () => {
+  const f = fixture(); const itemId = f.item(3);
+  const sale = f.draft([{ itemId, quantity: 1 }]);
+  const { payments: _none, ...withoutPayments } = confirmInput();
+  await assert.rejects(f.service.confirm(owner, sale, withoutPayments as any), /PAYMENTS_REQUIRED/);
+  assert.deepEqual([f.state.sales[0].status, f.state.items[0].stock, f.state.movements.length, f.state.operations.length], ["DRAFT", 3, 0, 0]);
+  const confirmed: any = await f.service.confirm(owner, sale, confirmInput());
+  assert.deepEqual([confirmed.status, f.state.sales[0].paymentMode, confirmed.payments.mode, confirmed.payments.balance], ["CONFIRMED", "TRACKED", "TRACKED", 100n]);
 });

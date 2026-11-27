@@ -178,7 +178,7 @@ async function closureVsMoney(db: Db) {
     if (round % 2 === 1) await sleep(40); // odd rounds: closure holds the account lock before the others arrive
     const settled = await Promise.allSettled([
       closure,
-      service.confirm(ownerId, created.id, { ...keys(), expectedVersion: draft.version, deliverImmediately: false }),
+      service.confirm(ownerId, created.id, { ...keys(), expectedVersion: draft.version, deliverImmediately: false, payments: [] }),
       makeExpenseRepository(db, clock).createExpense(ownerId, { ...keys(), expenseDate: new Date(Date.now() - 5 * 3600_000).toISOString().slice(0, 10), amount: "1000", categoryId: category.id, paymentMethod: "CASH", description: "Domicilio" }),
       moveInventory(ownerId, itemId, { key: randomUUID(), type: "IN", quantity: 1, reason: "Ingreso" }, db),
     ]);
@@ -204,7 +204,7 @@ async function confirmVsCancel(db: Db) {
     const created = await service.create(ownerId, keys()) as { id: string; version: number };
     const draft = await service.updateDraft(ownerId, created.id, { operationId: randomUUID(), expectedVersion: created.version, lines: [{ inventoryItemId: itemId, quantity: 2, unitDiscount: "0" }] }) as { version: number };
     const settled = await Promise.allSettled([
-      service.confirm(ownerId, created.id, { ...keys(), expectedVersion: draft.version, deliverImmediately: false }),
+      service.confirm(ownerId, created.id, { ...keys(), expectedVersion: draft.version, deliverImmediately: false, payments: [] }),
       service.cancel(ownerId, created.id, { ...keys(), expectedVersion: draft.version + 1, reason: "Cliente desistió" }),
     ]);
     noDeadlock(`round ${round}`, settled);
@@ -266,7 +266,8 @@ async function twoSalesOneItem(db: Db) {
       drafts.push({ id: created.id, version: draft.version });
     }
     const settled = await Promise.allSettled([
-      ...drafts.map(d => service.confirm(ownerId, d.id, { ...keys(), expectedVersion: d.version, deliverImmediately: round % 2 === 0 })),
+      // F2a-3c: payments are required; delivering at once means paid in full (one unit at 20.000).
+      ...drafts.map(d => service.confirm(ownerId, d.id, { ...keys(), expectedVersion: d.version, deliverImmediately: round % 2 === 0, payments: round % 2 === 0 ? [{ method: "CASH" as const, amount: "20000" }] : [] })),
       moveInventory(ownerId, itemId, { key: randomUUID(), type: "IN", quantity: 1, reason: "Reposición" }, db),
     ]);
     noDeadlock(`round ${round}`, settled);

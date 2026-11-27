@@ -20,6 +20,7 @@ export async function convertOrderToSaleController(req: AuthenticatedRequest, re
     if (["ORDER_NOT_FOUND", "CUSTOMER_NOT_FOUND"].includes(code)) return res.status(404).json({ success: false, error: code, message: code });
     if (["IDEMPOTENCY_CONFLICT", "STOCK_INSUFFICIENT", "PRICE_DIFFERENCE_REQUIRES_CONFIRMATION", "ORDER_STATUS_NOT_CONVERTIBLE", "ORDER_ALREADY_CONVERTED", "CUSTOMER_ARCHIVED",
       "PAYMENT_EXCEEDS_BALANCE", "SALE_BALANCE_DUE", "CUSTOMER_REQUIRED_FOR_CREDIT", "CREDIT_INSUFFICIENT"].includes(code)) return res.status(409).json({ success: false, error: code, message: code });
+    if (code === "ORDER_CONVERSION_DELIVERY_REMOVED") return res.status(409).json({ success: false, error: code, message: "Un pedido ya no se convierte y entrega en un paso: conviértelo en venta confirmada y cóbrala y entrégala desde su detalle en Historial." });
     if (code === "ORDER_BUYER_PHONE_TOO_LONG") return res.status(409).json({ success: false, error: code, message: "El teléfono del pedido supera la capacidad del snapshot de la venta. No se creó la venta ni se recortó el teléfono." });
     if (["ORDER_ITEM_NOT_INVENTORY", "PRICE_REQUIRED"].includes(code)) return res.status(400).json({ success: false, error: code, message: code });
     if (code === "ACCOUNT_CLOSED") return res.status(401).json({ success: false, message: "Sesión no disponible" });

@@ -414,18 +414,19 @@ async function compatibilityStage(db: Db) {
     return service.updateDraft(owner.id, created.id, { operationId: randomUUID(), expectedVersion: created.version, lines: [{ inventoryItemId: itemRow.id, quantity, unitDiscount: "0" }] });
   };
   const one = await draft(2) as unknown as { id: string; version: number };
-  const confirmed = await service.confirm(owner.id, one.id, { ...keys(), expectedVersion: one.version, deliverImmediately: false }) as unknown as { version: number };
-  const deliveredSale = await service.transition(owner.id, one.id, { ...keys(), expectedVersion: confirmed.version }) as unknown as { version: number; lines: { id: string }[] };
+  // Since F2a-3c every confirmation sends its payments: an advance of 0, then the rest at delivery.
+  const confirmed = await service.confirm(owner.id, one.id, { ...keys(), expectedVersion: one.version, deliverImmediately: false, payments: [] }) as unknown as { version: number };
+  const deliveredSale = await service.transition(owner.id, one.id, { ...keys(), expectedVersion: confirmed.version, payments: [{ method: "CASH", amount: "40000" }] }) as unknown as { version: number; lines: { id: string }[] };
   await service.returnSale(owner.id, one.id, { ...keys(), expectedVersion: deliveredSale.version, reason: "Partial", lines: [{ saleLineId: deliveredSale.lines[0]!.id, receivedQuantity: 1, resellableQuantity: 1, damagedQuantity: 0 }] });
   const two = await draft(1) as unknown as { id: string; version: number };
-  const twoConfirmed = await service.confirm(owner.id, two.id, { ...keys(), expectedVersion: two.version, deliverImmediately: false }) as unknown as { version: number };
+  const twoConfirmed = await service.confirm(owner.id, two.id, { ...keys(), expectedVersion: two.version, deliverImmediately: false, payments: [] }) as unknown as { version: number };
   await service.cancel(owner.id, two.id, { ...keys(), expectedVersion: twoConfirmed.version, reason: "Cliente desistió" });
   const rows = await db.sale.findMany({ where: { userId: owner.id }, select: { status: true, paymentMode: true, paymentTermDays: true, paymentDueDate: true } });
   assert.deepEqual(rows.map(r => r.status).sort(), ["CANCELLED", "DELIVERED"]);
-  assert.ok(rows.every(r => r.paymentMode === "LEGACY" && r.paymentTermDays === null && r.paymentDueDate === null), "the current API creates LEGACY sales");
-  assert.equal(await db.salePaymentEntry.count({ where: { ownerId: owner.id } }), 0);
+  assert.ok(rows.every(r => r.paymentMode === "TRACKED" && r.paymentTermDays === null && r.paymentDueDate === null), "the current API (F2a-3c) creates TRACKED sales; no term while fiado is off");
+  assert.equal(await db.salePaymentEntry.count({ where: { ownerId: owner.id } }), 1, "the delivery payment; the partial return leaves 20.000 «por devolver» (no customer)");
   assert.equal((await db.inventoryItem.findUniqueOrThrow({ where: { id: itemRow.id } })).stock, 9, "stock: 10 − 2 − 1 + 1 returned + 1 cancelled");
-  passed("Current sales service on the new schema: confirm, deliver, partial return and cancel work, sales stay LEGACY without entries, stock unchanged in behaviour");
+  passed("Current sales service on the new schema: confirm (payments required), deliver, partial return and cancel work, sales are TRACKED, stock unchanged in behaviour");
 }
 
 main().then(() => { console.log(JSON.stringify({ success: true, checks: results, observations, productionAccess: false }, null, 2)); })

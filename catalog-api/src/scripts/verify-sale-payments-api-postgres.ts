@@ -251,16 +251,25 @@ async function main() {
   await rejects(() => money.advance(a, sale.id, { ...keys(), expectedVersion: sale.version, payments: [cash("60000")] }), "PAYMENT_EXCEEDS_BALANCE", "together above the total");
   passed("Two simultaneous advances that together exceed the total, 6 rounds: one succeeds, the other fails cleanly (VERSION_CONFLICT); a later one above the balance gets PAYMENT_EXCEEDS_BALANCE");
 
-  stage = "LEGACY_UNCHANGED";
+  stage = "PAYMENTS_REQUIRED_AND_LEGACY";
+  // F2a-3c: a new confirmation without payments is rejected and writes nothing; an advance of 0 is payments: [].
   d = await draft(a, phone);
-  sale = json<SaleView>(await sales.confirm(a, d.id, { ...keys(), expectedVersion: d.version, deliverImmediately: false }));
-  assert.equal(sale.paymentMode, "LEGACY"); assert.equal((sale as unknown as { payments?: unknown }).payments, undefined, "LEGACY mutation responses are unchanged");
+  const stockBeforeRefusal = await stockOf(phone);
+  await rejects(() => sales.confirm(a, d.id, { ...keys(), expectedVersion: d.version, deliverImmediately: false }), "PAYMENTS_REQUIRED", "confirm without payments");
+  assert.deepEqual([(await get(a, d.id)).status, await stockOf(phone)], ["DRAFT", stockBeforeRefusal], "nothing confirmed, no stock moved");
+  sale = json<SaleView>(await sales.confirm(a, d.id, { ...keys(), expectedVersion: d.version, payments: [] }));
+  assert.deepEqual([sale.status, sale.paymentMode, sale.payments.balance], ["CONFIRMED", "TRACKED", "85000"]);
+  // A LEGACY sale confirmed by the earlier API (simulated in SQL) keeps working as before: delivered without payments.
+  d = await draft(a, phone);
+  await db.sale.update({ where: { id: d.id }, data: { status: "CONFIRMED", confirmedAt: new Date(), version: { increment: 1 } } });
+  sale = await get(a, d.id);
+  assert.equal(sale.paymentMode, "LEGACY");
   await rejects(() => money.advance(a, sale.id, { ...keys(), expectedVersion: sale.version, payments: [cash("1")] }), "LEGACY_SALE_PAYMENTS_UNSUPPORTED", "payment on a LEGACY sale");
   await rejects(() => sales.transition(a, sale.id, { ...keys(), expectedVersion: sale.version, payments: [cash("1")] }), "LEGACY_SALE_PAYMENTS_UNSUPPORTED", "paying at the delivery of a LEGACY sale");
   sale = json<SaleView>(await sales.transition(a, sale.id, { ...keys(), expectedVersion: sale.version }));
   assert.equal(sale.status, "DELIVERED", "a LEGACY sale is delivered as before, without payments");
   assert.deepEqual((await get(a, sale.id)).payments, { mode: "LEGACY", customerCredit: null });
-  passed("LEGACY: confirm without payments stays LEGACY with the same response; payments rejected (LEGACY_SALE_PAYMENTS_UNSUPPORTED); delivery as before");
+  passed("Payments required: confirm without payments → PAYMENTS_REQUIRED, nothing written; payments: [] confirms TRACKED. A LEGACY sale from the earlier API: payments rejected, delivered as before");
 
   stage = "LINK_CUSTOMER";
   d = await draft(a, tv);
@@ -282,13 +291,16 @@ async function main() {
   const order = async () => (await db.order.create({ data: { catalogId: catalog.id, customerName: "Comprador", customerPhone: "3000000000", total: 85000,
     items: { create: { productId: product.id, productName: "Celular", quantity: 1, unitPrice: 85000, subtotal: 85000 } } } })).id;
   const partial = await order();
-  await rejects(() => sales.convertOrderToSale(a, partial, { ...keys(), mode: "DELIVERED", acceptPriceDifference: false, payments: [cash("40000")] } as never), "SALE_BALANCE_DUE", "delivered conversion with a balance");
+  // F2a-3c: converting and delivering in one call is no longer offered, even fully paid; nothing is created.
+  await rejects(() => sales.convertOrderToSale(a, partial, { ...keys(), mode: "DELIVERED", acceptPriceDifference: false, payments: [cash("40000"), { method: "CARD", amount: "45000" }] } as never), "ORDER_CONVERSION_DELIVERY_REMOVED", "delivered conversion");
   assert.equal(await db.sale.count({ where: { sourceOrderId: partial } }), 0, "nothing created");
-  const converted = json<{ sale: SaleView }>(await sales.convertOrderToSale(a, partial, { ...keys(), mode: "DELIVERED", acceptPriceDifference: false, payments: [cash("40000"), { method: "CARD", amount: "45000" }] } as never));
-  assert.deepEqual([converted.sale.status, converted.sale.paymentMode, converted.sale.payments.paid], ["DELIVERED", "TRACKED", "85000"]);
+  const converted = json<{ sale: SaleView }>(await sales.convertOrderToSale(a, partial, { ...keys(), mode: "CONFIRMED", acceptPriceDifference: false } as never));
+  assert.deepEqual([converted.sale.status, converted.sale.paymentMode, converted.sale.payments.paid, converted.sale.payments.balance], ["CONFIRMED", "TRACKED", "0", "85000"], "without payments: an advance of 0");
+  const chargedLater = json<SaleView>(await sales.transition(a, converted.sale.id, { ...keys(), expectedVersion: converted.sale.version, payments: [cash("40000"), { method: "CARD", amount: "45000" }] }));
+  assert.deepEqual([chargedLater.status, chargedLater.payments.paid, chargedLater.payments.balance], ["DELIVERED", "85000", "0"], "charged and delivered from its detail");
   const pending = json<{ sale: SaleView }>(await sales.convertOrderToSale(a, await order(), { ...keys(), mode: "CONFIRMED", acceptPriceDifference: false, payments: [cash("20000")] } as never));
   assert.deepEqual([pending.sale.status, pending.sale.payments.balance], ["CONFIRMED", "65000"]);
-  passed("Order conversion accepts the payments of confirm: delivered only when fully paid (atomic rejection otherwise); confirmed with an advance");
+  passed("Order conversion (F2a-3c): «convert and deliver» rejected atomically (ORDER_CONVERSION_DELIVERY_REMOVED); a confirmed conversion is TRACKED with an advance of 0 or with payments, then charged and delivered like any sale");
 
   stage = "CROSS_ACCOUNT";
   const foreign = pending.sale.id, foreignEntry = (await db.salePaymentEntry.findFirstOrThrow({ where: { saleId: foreign } })).id;

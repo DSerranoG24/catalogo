@@ -218,7 +218,9 @@ async function main() {
     assert.equal(await stockOf(itemId), stock);
   }
   type Result = { status: string; version: number; lines: unknown[]; returns: { reason: string }[]; returnedAt: Date | null; confirmedAt: Date | null; deliveredAt: Date | null };
-  const confirm = async (sale: { id: string; version: number }, deliverImmediately = false) => { const k = { ...keys(), expectedVersion: sale.version, deliverImmediately }; return { r: await service.confirm(owner.id, sale.id, k) as unknown as Result, k }; };
+  // F2a-3c: every confirmation sends its payments (an advance of 0 is payments: []); delivering means paid in full (fiado off).
+  const paidFull = async (saleId: string) => ({ payments: [{ method: "CASH" as const, amount: (await database.sale.findUniqueOrThrow({ where: { id: saleId } })).total.toString() }] });
+  const confirm = async (sale: { id: string; version: number }, deliverImmediately = false) => { const k = { ...keys(), expectedVersion: sale.version, deliverImmediately, ...(deliverImmediately ? await paidFull(sale.id) : { payments: [] }) }; return { r: await service.confirm(owner.id, sale.id, k) as unknown as Result, k }; };
 
   const a = await item(10, "FLOW-A"), b = await item(4, "FLOW-B");
 
@@ -227,7 +229,7 @@ async function main() {
   const c1 = await confirm(s1);
   assert.equal(c1.r.status, "CONFIRMED"); assert.equal(c1.r.lines.length, 2, "confirm response includes lines");
   await step(a.id, c1.k.operationId, "SALE_CONFIRMATION", 10, 7); await step(b.id, c1.k.operationId, "SALE_CONFIRMATION", 4, 3);
-  const d1k = { ...keys(), expectedVersion: c1.r.version };
+  const d1k = { ...keys(), expectedVersion: c1.r.version, ...await paidFull(s1.id) };
   const d1 = await service.transition(owner.id, s1.id, d1k) as unknown as Result;
   assert.equal(d1.status, "DELIVERED"); assert.equal(d1.lines.length, 2, "deliver response includes lines");
   await noMovement(a.id, d1k.operationId, 7); await noMovement(b.id, d1k.operationId, 3);
@@ -299,7 +301,7 @@ async function main() {
   type Converted = { sale: Result & { id: string; sourceOrderId: string; lines: { unitPrice: bigint }[] }; idempotent: boolean };
   const convert = (orderId: string, mode: "DRAFT" | "CONFIRMED" | "DELIVERED", k = keys()) => service.convertOrderToSale(owner.id, orderId, { ...k, mode, acceptPriceDifference: false }) as unknown as Promise<Converted>;
 
-  stage = "FLOW_ORDER_CONVERSION_CONFIRMED_AND_DELIVERED";
+  stage = "FLOW_ORDER_CONVERSION_CONFIRMED_THEN_DELIVERED";
   const c = await item(6, "FLOW-C"); const product = await productFor(c);
   const o1 = await order(product.id, 2), o2 = await order(product.id, 1), o3 = await order(product.id, 1);
   const k1 = keys();
@@ -309,10 +311,14 @@ async function main() {
   assert.equal((await convert(o1.id, "CONFIRMED", { ...k1, requestId: randomUUID() })).idempotent, true, "conversion retry with new requestId replays");
   await step(c.id, k1.operationId, "SALE_CONFIRMATION", 6, 4);
   await assert.rejects(convert(o1.id, "CONFIRMED"), /ORDER_ALREADY_CONVERTED/);
+  // F2a-3c: «convert and deliver» is no longer offered; the order is converted confirmed and delivered afterwards.
+  await assert.rejects(convert(o2.id, "DELIVERED"), /ORDER_CONVERSION_DELIVERY_REMOVED/);
+  assert.equal(await database.sale.count({ where: { sourceOrderId: o2.id } }), 0); assert.equal(await stockOf(c.id), 4);
   const k2 = keys();
-  const v2 = await convert(o2.id, "DELIVERED", k2);
-  assert.equal(v2.sale.status, "DELIVERED"); assert.ok(v2.sale.deliveredAt);
+  const v2 = await convert(o2.id, "CONFIRMED", k2);
   await step(c.id, k2.operationId, "SALE_CONFIRMATION", 4, 3);
+  const delivered2 = await service.transition(owner.id, v2.sale.id, { ...keys(), expectedVersion: v2.sale.version, ...await paidFull(v2.sale.id) }) as unknown as Result;
+  assert.equal(delivered2.status, "DELIVERED"); assert.ok(delivered2.deliveredAt);
   const k3 = keys();
   assert.equal((await convert(o3.id, "DRAFT", k3)).sale.status, "DRAFT");
   await noMovement(c.id, k3.operationId, 3);
@@ -322,7 +328,7 @@ async function main() {
   stage = "CONCURRENT_CONVERSIONS";
   const lastConv = await item(1, "LAST-CONV"), lastProduct = await productFor(lastConv);
   const [lo1, lo2] = [await order(lastProduct.id, 1), await order(lastProduct.id, 1)];
-  const lastRace = await Promise.allSettled([convert(lo1.id, "CONFIRMED"), convert(lo2.id, "DELIVERED")]);
+  const lastRace = await Promise.allSettled([convert(lo1.id, "CONFIRMED"), convert(lo2.id, "CONFIRMED")]);
   assert.deepEqual(lastRace.map(outcome).sort(), ["OK", "STOCK_INSUFFICIENT"], `outcomes: ${lastRace.map(outcome).join(",")}`);
   assert.equal(await stockOf(lastConv.id), 0); assert.equal(await database.inventoryMovement.count({ where: { itemId: lastConv.id } }), 1);
   const manyConv = await item(10, "MANY-CONV"), manyProduct = await productFor(manyConv);
@@ -354,7 +360,7 @@ async function main() {
 
   stage = "REPLAY_WITH_NEW_REQUEST_ID_AND_JSON_RECEIPTS";
   const replayItem = await item(5, "REPLAY"); const sale = await draft([{ itemId: replayItem.id, quantity: 2 }]);
-  const command = { ...keys(), expectedVersion: sale.version, deliverImmediately: false };
+  const command = { ...keys(), expectedVersion: sale.version, deliverImmediately: false, payments: [] };
   const first = await service.confirm(owner.id, sale.id, command);
   const retry = await service.confirm(owner.id, sale.id, { ...command, requestId: randomUUID() }) as unknown as { id: string; status: string; total: string; lines: { unitPrice: string }[] };
   assert.equal(retry.id, sale.id); assert.equal(retry.status, "CONFIRMED"); assert.equal(retry.total, "200"); assert.equal(retry.lines[0].unitPrice, "100");
