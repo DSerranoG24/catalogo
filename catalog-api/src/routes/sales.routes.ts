@@ -3,7 +3,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { authenticate } from "../middlewares/auth.middleware";
 import type { AuthenticatedRequest } from "../types/auth.types";
-import { createSaleSchema, updateDraftSaleSchema, confirmSaleSchema, deliverSaleSchema, cancelSaleSchema, returnSaleSchema, salePaymentsSchema, voidSalePaymentSchema,
+import { createSaleSchema, updateDraftSaleSchema, confirmSaleSchema, deliverSaleSchema, cancelSaleSchema, returnSaleSchema, salePaymentsSchema, voidSalePaymentSchema, replaceSalePaymentSchema,
   saleCustomerLinkSchema, saleRefundSchema, creditRefundSchema, creditRefundVoidSchema } from "../schemas/sales.schema";
 import { makeSaleService } from "../services/sale.service";
 import { makeSaleMoneyService } from "../services/sale-money.service";
@@ -13,6 +13,12 @@ const PAYMENT_FIELDS = new Set(["payments", "customerCreditAmount", "refundNow"]
 // Payment errors (F2a-2b, docs/sales-payments-cartera-contract.md section 8).
 const PAYMENT_CONFLICTS = ["PAYMENT_EXCEEDS_BALANCE", "SALE_BALANCE_DUE", "LEGACY_SALE_PAYMENTS_UNSUPPORTED", "INVALID_PAYMENT_STATE", "CUSTOMER_REQUIRED_FOR_CREDIT", "CREDIT_INSUFFICIENT",
   "CREDIT_ALREADY_USED", "PAYMENT_ALREADY_REFUNDED", "PAYMENT_ALREADY_VOIDED", "PAYMENT_NOT_VOIDABLE", "REFUND_EXCEEDS_DUE", "REFUND_REQUIRES_NO_CUSTOMER", "CUSTOMER_CHANGE_BLOCKED"];
+
+// Rules of F2a-3c, with their message for whoever calls the API directly.
+const SPANISH: Record<string, [number, string]> = {
+  VOID_REQUIRES_REPLACEMENT: [409, "En una venta entregada, anula el pago y registra el pago correcto (anular y reemplazar)."],
+  REPLACEMENT_AMOUNT_MISMATCH: [409, "El pago que reemplaza debe ser por el mismo monto que el pago anulado."],
+};
 
 export function makeSalesRouter(service = makeSaleService(), authentication = authenticate, money = makeSaleMoneyService()) {
   const router = Router();
@@ -34,6 +40,7 @@ export function makeSalesRouter(service = makeSaleService(), authentication = au
       if (code === "CUSTOMER_ARCHIVED") return res.status(409).json({ error: code, message: "El cliente está archivado. Selecciona otro cliente o crea la venta sin cliente." });
       if (code === "ACCOUNT_CLOSED") return res.status(401).json({ error: "AUTH_REQUIRED", message: "Tu sesión ya no está disponible." });
       if (["VERSION_CONFLICT", "INVALID_TRANSITION", "STOCK_INSUFFICIENT", "PRICE_CHANGED", "IDEMPOTENCY_CONFLICT", "RETURN_EXCEEDS_SOLD"].includes(code)) return res.status(409).json({ error: code, message: code });
+      if (SPANISH[code]) return res.status(SPANISH[code][0]).json({ error: code, message: SPANISH[code][1] });
       if (PAYMENT_CONFLICTS.includes(code)) return res.status(409).json({ error: code, message: code });
       if (code === "REFUND_NOW_REQUIRES_NO_CUSTOMER") return res.status(400).json({ error: "INVALID_PAYMENT_INPUT", message: "«Devolver ahora» solo aplica a ventas sin cliente; con cliente el dinero queda como saldo a favor." });
       if (["NOT_FOUND", "PAYMENT_NOT_FOUND", "CREDIT_ENTRY_NOT_FOUND"].includes(code)) return res.status(404).json({ error: code, message: code });
@@ -53,6 +60,7 @@ export function makeSalesRouter(service = makeSaleService(), authentication = au
   const body = express.json({ limit: "32kb" });
   router.post("/sales/:id/payments", authentication, body, route((u, r) => money.advance(u, String(r.params.id), salePaymentsSchema.parse(r.body)), true));
   router.post("/sales/:id/payments/:entryId/void", authentication, body, route((u, r) => money.voidPayment(u, String(r.params.id), String(r.params.entryId), voidSalePaymentSchema.parse(r.body)), true));
+  router.post("/sales/:id/payments/:entryId/replace", authentication, body, route((u, r) => money.replacePayment(u, String(r.params.id), String(r.params.entryId), replaceSalePaymentSchema.parse(r.body)), true));
   router.post("/sales/:id/customer", authentication, body, route((u, r) => money.linkCustomer(u, String(r.params.id), saleCustomerLinkSchema.parse(r.body)), true));
   router.post("/sales/:id/refunds", authentication, body, route((u, r) => money.refundSale(u, String(r.params.id), saleRefundSchema.parse(r.body)), true));
   router.get("/customers/:id/credit", authentication, route((u, r) => money.customerCredit(u, String(r.params.id)), true));

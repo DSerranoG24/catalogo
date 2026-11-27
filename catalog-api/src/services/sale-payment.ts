@@ -220,6 +220,29 @@ export async function voidEntry(tx: Tx, w: LedgerWriter, ownerId: string, saleId
   await settleSale(tx, w, ownerId, saleId, { reason });
 }
 
+/**
+ * «Anular y reemplazar» (F2a-3c): voids one PAYMENT or CREDIT_USE with its reason and records the right payment for
+ * the SAME amount in the same operation, so the balance never changes (a delivered sale never gets a balance from a
+ * void). Only the method, note, reference or cash received may differ.
+ */
+export async function replaceEntry(tx: Tx, w: LedgerWriter, ownerId: string, saleId: string, entryId: string, reason: string, payment: PaymentInput) {
+  const { entries } = await saleMoneyState(tx, ownerId, saleId);
+  const entry = entries.find(row => row.id === entryId);
+  if (!entry) fail("PAYMENT_NOT_FOUND");
+  if (!["PAYMENT", "CREDIT_USE"].includes(entry!.kind)) fail("PAYMENT_NOT_VOIDABLE");
+  if (reversedIds(entries).has(entryId)) fail("PAYMENT_ALREADY_VOIDED");
+  if (BigInt(payment.amount) !== entry!.amount) fail("REPLACEMENT_AMOUNT_MISMATCH");
+  await reverseEntry(tx, w, ownerId, entry!, reason);
+  await w.sale(saleId, { kind: "PAYMENT", amount: BigInt(payment.amount), method: payment.method, methodNote: payment.methodNote ?? null, reference: payment.reference ?? null,
+    cashReceived: payment.cashReceived === undefined ? null : BigInt(payment.cashReceived) });
+  await settleSale(tx, w, ownerId, saleId, { reason });
+}
+/** Kind of a sale's ledger entry, or null (used to refuse a plain void on a delivered sale). */
+export async function entryKind(tx: Tx, ownerId: string, saleId: string, entryId: string) {
+  const row = await tx.salePaymentEntry.findFirst({ where: { id: entryId, saleId, ownerId }, select: { kind: true } });
+  return row?.kind ?? null;
+}
+
 // ---- Read model ----
 
 type SaleView = { id: string; status: string; total: bigint; customerId: string | null; paymentMode: string; lines: SaleLineValue[]; returns: { lines: ReturnLineValue[] }[] };

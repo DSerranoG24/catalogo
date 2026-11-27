@@ -2,10 +2,10 @@ import type { Prisma } from "@prisma/client";
 import type { z } from "zod";
 import { prisma } from "../config/prisma";
 import { lockAccountForMoney, lockInventoryOwner } from "../repositories/account-lock";
-import type { creditRefundSchema, creditRefundVoidSchema, saleCustomerLinkSchema, salePaymentsSchema, saleRefundSchema, voidSalePaymentSchema } from "../schemas/sales.schema";
+import type { creditRefundSchema, creditRefundVoidSchema, replaceSalePaymentSchema, saleCustomerLinkSchema, salePaymentsSchema, saleRefundSchema, voidSalePaymentSchema } from "../schemas/sales.schema";
 import { captureCustomer } from "./sale-customer";
 import { saleResultInclude } from "./sale.service";
-import { attachPayments, customerCreditBalance, ledgerWriter, PaymentError, recordPayments, reversedIds, saleMoneyState, voidEntry, withMoneyReceipt } from "./sale-payment";
+import { attachPayments, customerCreditBalance, entryKind, ledgerWriter, PaymentError, recordPayments, replaceEntry, reversedIds, saleMoneyState, voidEntry, withMoneyReceipt } from "./sale-payment";
 
 type Tx = Prisma.TransactionClient;
 const fail = (code: string): never => { throw new PaymentError(code); };
@@ -39,11 +39,15 @@ export function makeSaleMoneyService(database = prisma) {
   const run = <T>(work: (tx: Tx) => Promise<T>) => database.$transaction(work);
 
   return {
-    /** Anticipo: payments and/or customer credit on a CONFIRMED sale, never above its balance. */
+    /**
+     * Anticipo: payments and/or customer credit on a CONFIRMED sale, never above its balance. Also on a DELIVERED sale
+     * that already has a balance (left by plain voids before F2a-3c): it can only be paid down, never increased.
+     */
     advance(ownerId: string, saleId: string, input: z.infer<typeof salePaymentsSchema>) {
       return run(async tx => { await lockAccountForMoney(tx, ownerId); return withMoneyReceipt(tx, ownerId, input, "SALE_ADVANCE", saleId, async () => {
         const sale = await lockSale(tx, ownerId, saleId); trackedAt(sale, input.expectedVersion);
-        if (sale.status !== "CONFIRMED") fail("INVALID_PAYMENT_STATE");
+        if (sale.status === "DELIVERED") { if ((await saleMoneyState(tx, ownerId, saleId)).figures.balance <= 0n) fail("INVALID_PAYMENT_STATE"); }
+        else if (sale.status !== "CONFIRMED") fail("INVALID_PAYMENT_STATE");
         await recordPayments(tx, ledgerWriter(tx, ownerId, input.operationId), ownerId, saleId, input.payments, input.customerCreditAmount);
         await bump(tx, saleId); return view(tx, ownerId, saleId);
       }); });
@@ -52,7 +56,17 @@ export function makeSaleMoneyService(database = prisma) {
     voidPayment(ownerId: string, saleId: string, entryId: string, input: z.infer<typeof voidSalePaymentSchema>) {
       return run(async tx => { await lockAccountForMoney(tx, ownerId); return withMoneyReceipt(tx, ownerId, input, "SALE_PAYMENT_VOID", entryId, async () => {
         const sale = await lockSale(tx, ownerId, saleId); trackedAt(sale, input.expectedVersion);
+        // A delivered sale never gets a balance from a void: payments and credit uses are voided with a replacement.
+        if (sale.status === "DELIVERED" && ["PAYMENT", "CREDIT_USE"].includes(String(await entryKind(tx, ownerId, saleId, entryId)))) fail("VOID_REQUIRES_REPLACEMENT");
         await voidEntry(tx, ledgerWriter(tx, ownerId, input.operationId), ownerId, saleId, entryId, input.reason);
+        await bump(tx, saleId); return view(tx, ownerId, saleId);
+      }); });
+    },
+    /** «Anular y reemplazar» (F2a-3c): void a payment or credit use and record the right payment for the same amount. */
+    replacePayment(ownerId: string, saleId: string, entryId: string, input: z.infer<typeof replaceSalePaymentSchema>) {
+      return run(async tx => { await lockAccountForMoney(tx, ownerId); return withMoneyReceipt(tx, ownerId, input, "SALE_PAYMENT_REPLACE", entryId, async () => {
+        const sale = await lockSale(tx, ownerId, saleId); trackedAt(sale, input.expectedVersion);
+        await replaceEntry(tx, ledgerWriter(tx, ownerId, input.operationId), ownerId, saleId, entryId, input.reason, input.payment);
         await bump(tx, saleId); return view(tx, ownerId, saleId);
       }); });
     },

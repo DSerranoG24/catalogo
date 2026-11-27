@@ -42,6 +42,8 @@ export const salePaymentsSchema = transitionSaleSchema.extend(paymentFields).str
   if (!v.payments?.length && v.customerCreditAmount === undefined) ctx.addIssue({ code: "custom", path: ["payments"], message: "Registra al menos un pago." });
 });
 export const voidSalePaymentSchema = transitionSaleSchema.extend({ reason: moneyReason }).strict();
+/** «Anular y reemplazar» (F2a-3c): the reason of the void and the right payment, for the same amount as the voided one. */
+export const replaceSalePaymentSchema = transitionSaleSchema.extend({ reason: moneyReason, payment: salePaymentInputSchema }).strict();
 export const saleCustomerLinkSchema = transitionSaleSchema.extend({ customerId: uuid }).strict();
 export const saleRefundSchema = transitionSaleSchema.extend({ amount: paymentAmount, method: salePaymentMethodSchema, methodNote: methodNote.optional(), reference: reference.optional(), reason: moneyReason }).strict().superRefine(noteRule);
 export const creditRefundSchema = z.object({ operationId: uuid, requestId: uuid, amount: paymentAmount, method: salePaymentMethodSchema, methodNote: methodNote.optional(), reference: reference.optional(), reason: moneyReason }).strict().superRefine(noteRule);

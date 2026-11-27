@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { creditBalanceOf, moneyCommandHash, netPaid, paymentFigures, returnedValue, reversedIds, type LedgerEntry } from "./sale-payment";
-import { confirmSaleSchema, convertOrderToSaleSchema, creditRefundSchema, salePaymentInputSchema, salePaymentsSchema, saleRefundSchema } from "../schemas/sales.schema";
+import { confirmSaleSchema, convertOrderToSaleSchema, creditRefundSchema, replaceSalePaymentSchema, salePaymentInputSchema, salePaymentsSchema, saleRefundSchema } from "../schemas/sales.schema";
 
 const entry = (kind: string, amount: bigint, reversesEntryId: string | null = null): LedgerEntry => ({ id: randomUUID(), kind, amount, reversesEntryId });
 const line = { id: "line", unitPrice: 150000n, unitDiscount: 0n };
@@ -94,4 +94,16 @@ test("money receipts hash the command without requestId, scoped by kind and reso
   assert.notEqual(moneyCommandHash("SALE_ADVANCE", "s1", body), moneyCommandHash("SALE_ADVANCE", "s2", body));
   assert.notEqual(moneyCommandHash("SALE_ADVANCE", "s1", body), moneyCommandHash("SALE_REFUND", "s1", body));
   assert.notEqual(moneyCommandHash("SALE_ADVANCE", "s1", body), moneyCommandHash("SALE_ADVANCE", "s1", { ...body, expectedVersion: 3 }));
+});
+
+test("«anular y reemplazar» (F2a-3c): a reason and one valid payment; the receipt ignores requestId", () => {
+  const keys = { operationId: randomUUID(), requestId: randomUUID(), expectedVersion: 3 };
+  assert.ok(replaceSalePaymentSchema.safeParse({ ...keys, reason: "Era en efectivo", payment: { method: "CASH", amount: "85000", cashReceived: "100000" } }).success);
+  assert.ok(!replaceSalePaymentSchema.safeParse({ ...keys, payment: { method: "CASH", amount: "85000" } }).success, "the reason is mandatory");
+  assert.ok(!replaceSalePaymentSchema.safeParse({ ...keys, reason: "ab", payment: { method: "CASH", amount: "85000" } }).success, "3 to 300 characters");
+  assert.ok(!replaceSalePaymentSchema.safeParse({ ...keys, reason: "Era Nequi", payment: { method: "NEQUI", amount: "85000", cashReceived: "90000" } }).success, "cash received only in cash");
+  assert.ok(!replaceSalePaymentSchema.safeParse({ ...keys, reason: "Era otro", payment: { method: "OTHER", amount: "85000" } }).success, "OTHER needs its note");
+  assert.ok(!replaceSalePaymentSchema.safeParse({ ...keys, reason: "Dos pagos", payments: [{ method: "CASH", amount: "1" }] }).success, "one replacement, not a list");
+  const body = { ...keys, reason: "Era en efectivo", payment: { method: "CASH", amount: "85000" } };
+  assert.equal(moneyCommandHash("SALE_PAYMENT_REPLACE", "e1", body), moneyCommandHash("SALE_PAYMENT_REPLACE", "e1", { ...body, requestId: randomUUID() }));
 });

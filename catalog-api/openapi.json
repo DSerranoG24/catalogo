@@ -2747,7 +2747,7 @@
             }
           }
         },
-        "description": "Idempotente por operationId (recibo en sale_money_operations, hash sin requestId). Pagos: método CASH, NEQUI, DAVIPLATA, BANK_TRANSFER, CARD u OTHER (con nota); cashReceived solo en CASH, informativo (el cambio se muestra, no se guarda). Importes COP enteros como cadenas."
+        "description": "Idempotente por operationId (recibo en sale_money_operations, hash sin requestId). Pagos: método CASH, NEQUI, DAVIPLATA, BANK_TRANSFER, CARD u OTHER (con nota); cashReceived solo en CASH, informativo (el cambio se muestra, no se guarda). Importes COP enteros como cadenas. Desde F2a-3c también en una venta DELIVERED que ya tiene saldo, nunca por encima de él."
       }
     },
     "/api/sales/{id}/payments/{entryId}/void": {
@@ -2767,7 +2767,7 @@
             "description": "NOT_FOUND, PAYMENT_NOT_FOUND, CREDIT_ENTRY_NOT_FOUND o CUSTOMER_NOT_FOUND"
           },
           "409": {
-            "description": "VERSION_CONFLICT, IDEMPOTENCY_CONFLICT, INVALID_PAYMENT_STATE, INVALID_TRANSITION, LEGACY_SALE_PAYMENTS_UNSUPPORTED, PAYMENT_EXCEEDS_BALANCE, CUSTOMER_REQUIRED_FOR_CREDIT, CREDIT_INSUFFICIENT, CREDIT_ALREADY_USED, PAYMENT_ALREADY_REFUNDED, PAYMENT_ALREADY_VOIDED, PAYMENT_NOT_VOIDABLE, REFUND_EXCEEDS_DUE, REFUND_REQUIRES_NO_CUSTOMER, CUSTOMER_CHANGE_BLOCKED"
+            "description": "VERSION_CONFLICT, IDEMPOTENCY_CONFLICT, INVALID_PAYMENT_STATE, INVALID_TRANSITION, LEGACY_SALE_PAYMENTS_UNSUPPORTED, PAYMENT_EXCEEDS_BALANCE, CUSTOMER_REQUIRED_FOR_CREDIT, CREDIT_INSUFFICIENT, CREDIT_ALREADY_USED, PAYMENT_ALREADY_REFUNDED, PAYMENT_ALREADY_VOIDED, PAYMENT_NOT_VOIDABLE, REFUND_EXCEEDS_DUE, REFUND_REQUIRES_NO_CUSTOMER, CUSTOMER_CHANGE_BLOCKED, VOID_REQUIRES_REPLACEMENT (venta entregada: usar /replace)"
           }
         },
         "security": [
@@ -2800,6 +2800,58 @@
           }
         },
         "description": "Nunca se edita ni se borra: se añade un REVERSAL. Si el dinero ya había pasado a saldo a favor, se recupera de ahí; si el cliente ya lo usó: CREDIT_ALREADY_USED."
+      }
+    },
+    "/api/sales/{id}/payments/{entryId}/replace": {
+      "post": {
+        "summary": "Anular y reemplazar un pago o un uso de saldo a favor por un pago del mismo monto (F2a-3c)",
+        "description": "Una sola operación idempotente: REVERSAL del movimiento con su motivo y un PAYMENT nuevo por el mismo monto (puede cambiar el medio, la nota, la referencia o el efectivo recibido). El saldo de la venta no cambia. Es la única forma de anular un pago o un uso de saldo de una venta entregada.",
+        "responses": {
+          "200": {
+            "description": "{result:{result,idempotent}}; result es la venta con payments"
+          },
+          "400": {
+            "description": "INVALID_PAYMENT_INPUT"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "NOT_FOUND o PAYMENT_NOT_FOUND"
+          },
+          "409": {
+            "description": "VERSION_CONFLICT, IDEMPOTENCY_CONFLICT, INVALID_PAYMENT_STATE, LEGACY_SALE_PAYMENTS_UNSUPPORTED, PAYMENT_ALREADY_VOIDED, PAYMENT_NOT_VOIDABLE, REPLACEMENT_AMOUNT_MISMATCH, CREDIT_ALREADY_USED"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          },
+          {
+            "name": "entryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceSalePayment"
+              }
+            }
+          }
+        }
       }
     },
     "/api/sales/{id}/customer": {
@@ -5816,6 +5868,76 @@
           "confirmation"
         ],
         "additionalProperties": false
+      },
+      "ReplaceSalePayment": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operationId",
+          "requestId",
+          "expectedVersion",
+          "reason",
+          "payment"
+        ],
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300
+          },
+          "payment": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string",
+                "enum": [
+                  "CASH",
+                  "NEQUI",
+                  "DAVIPLATA",
+                  "BANK_TRANSFER",
+                  "CARD",
+                  "OTHER"
+                ]
+              },
+              "amount": {
+                "type": "string"
+              },
+              "methodNote": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 80
+              },
+              "reference": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "cashReceived": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "method",
+              "amount"
+            ],
+            "additionalProperties": false
+          }
+        }
       }
     }
   }

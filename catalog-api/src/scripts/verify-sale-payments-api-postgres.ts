@@ -188,6 +188,36 @@ async function main() {
   await rejects(() => money.voidPayment(a, cancelledWithCredit.id, advance, { ...keys(), expectedVersion: cancelledWithCredit.version, reason: "No llegó" }), "CREDIT_ALREADY_USED", "the credit from that advance was already used");
   passed("Void a payment with a reason: balance comes back, history keeps both rows, once only; cannot claw back credit already used (CREDIT_ALREADY_USED)");
 
+  stage = "VOID_AND_REPLACE";
+  // F2a-3c: on a delivered sale a payment is voided only together with its replacement, for the same amount.
+  d = await draft(a, phone);
+  sale = json<SaleView>(await sales.confirm(a, d.id, { ...keys(), expectedVersion: d.version, deliverImmediately: true, payments: [{ method: "NEQUI", amount: "85000" }] }));
+  const nequi = (await db.salePaymentEntry.findFirstOrThrow({ where: { saleId: sale.id, kind: "PAYMENT" } })).id;
+  await rejects(() => money.voidPayment(a, sale.id, nequi, { ...keys(), expectedVersion: sale.version, reason: "Era en efectivo" }), "VOID_REQUIRES_REPLACEMENT", "plain void on a delivered sale");
+  await rejects(() => money.replacePayment(a, sale.id, nequi, { ...keys(), expectedVersion: sale.version, reason: "Era en efectivo", payment: cash("80000") }), "REPLACEMENT_AMOUNT_MISMATCH", "replacement for another amount");
+  assert.equal(await db.salePaymentEntry.count({ where: { saleId: sale.id } }), 1, "rejections write nothing");
+  const replaceOp = keys(), replaceBody = { expectedVersion: sale.version, reason: "Era en efectivo", payment: cash("85000", "100000") };
+  const replaced = json<{ result: SaleView; idempotent: boolean }>(await money.replacePayment(a, sale.id, nequi, { ...replaceOp, ...replaceBody }));
+  assert.deepEqual([replaced.result.status, replaced.result.payments.paid, replaced.result.payments.balance, replaced.result.payments.stage], ["DELIVERED", "85000", "0", "PAID"]);
+  assert.deepEqual(replaced.result.payments.entries?.map(e => [e.kind, e.amount, e.voided, e.change]), [["PAYMENT", "85000", true, null], ["REVERSAL", "85000", false, null], ["PAYMENT", "85000", false, "15000"]],
+    "the Nequi payment voided with its reason, the cash one below it (change only shown)");
+  const replayed = json<{ result: SaleView; idempotent: boolean }>(await money.replacePayment(a, sale.id, nequi, { ...replaceOp, requestId: randomUUID(), ...replaceBody }));
+  assert.equal(replayed.idempotent, true);
+  assert.equal(await db.salePaymentEntry.count({ where: { saleId: sale.id } }), 3, "the retry duplicates nothing");
+  await rejects(() => money.replacePayment(a, sale.id, nequi, { ...keys(), expectedVersion: replaced.result.version, reason: "Otra vez", payment: cash("85000") }), "PAYMENT_ALREADY_VOIDED", "replacing twice");
+  // A delivered sale left with a balance by a plain void before this rule: it can be paid down, never above the balance.
+  d = await draft(a, phone);
+  sale = json<SaleView>(await sales.confirm(a, d.id, { ...keys(), expectedVersion: d.version, deliverImmediately: true, payments: [cash("85000")] }));
+  const old = await db.salePaymentEntry.findFirstOrThrow({ where: { saleId: sale.id, kind: "PAYMENT" } });
+  await db.salePaymentEntry.create({ data: { ownerId: a, saleId: sale.id, operationId: randomUUID(), position: 1, kind: "REVERSAL", amount: 85000n, reversesEntryId: old.id, reason: "Anulación anterior a F2a-3c" } });
+  sale = await get(a, sale.id);
+  assert.deepEqual([sale.status, sale.payments.balance], ["DELIVERED", "85000"]);
+  await rejects(() => money.advance(a, sale.id, { ...keys(), expectedVersion: sale.version, payments: [cash("85001")] }), "PAYMENT_EXCEEDS_BALANCE", "repair above the balance");
+  const repaired = json<{ result: SaleView }>(await money.advance(a, sale.id, { ...keys(), expectedVersion: sale.version, payments: [cash("85000")] }));
+  assert.deepEqual([repaired.result.status, repaired.result.payments.balance], ["DELIVERED", "0"]);
+  await rejects(() => money.advance(a, sale.id, { ...keys(), expectedVersion: repaired.result.version, payments: [cash("1")] }), "INVALID_PAYMENT_STATE", "no new balance on a paid delivered sale");
+  passed("Void and replace on a DELIVERED sale: plain void rejected (VOID_REQUIRES_REPLACEMENT), other amount rejected, Nequi → cash keeps the balance at 0 with the voided payment and its replacement, the retry duplicates nothing; an old balance is paid down only up to it");
+
   stage = "IDEMPOTENCY";
   d = await draft(a, tv);
   sale = json<SaleView>(await sales.confirm(a, d.id, { ...keys(), expectedVersion: d.version, payments: [] }));
@@ -265,6 +295,7 @@ async function main() {
   await rejects(() => sales.get(b, foreign), "NOT_FOUND", "read");
   await rejects(() => money.advance(b, foreign, { ...keys(), expectedVersion: pending.sale.version, payments: [cash("1")] }), "NOT_FOUND", "advance");
   await rejects(() => money.voidPayment(b, foreign, foreignEntry, { ...keys(), expectedVersion: pending.sale.version, reason: "Ajena" }), "NOT_FOUND", "void");
+  await rejects(() => money.replacePayment(b, foreign, foreignEntry, { ...keys(), expectedVersion: pending.sale.version, reason: "Ajena", payment: cash("20000") }), "NOT_FOUND", "replace");
   await rejects(() => money.linkCustomer(b, foreign, { ...keys(), expectedVersion: pending.sale.version, customerId: ana }), "CUSTOMER_NOT_FOUND", "link another account's customer");
   await rejects(() => money.customerCredit(b, ana), "CUSTOMER_NOT_FOUND", "credit of another account");
   await rejects(() => money.refundCredit(b, ana, { ...keys(), amount: "1", method: "CASH", reason: "Ajena" }), "CUSTOMER_NOT_FOUND", "refund another account's credit");
