@@ -49,8 +49,8 @@ export default function PaymentBox({ idPrefix, rows, status, credit, disabled, o
               {method === "BANK_TRANSFER" ? "Banco" : METHOD_LABELS[method]}</button>)}
           </div>}
           {row.method === "CASH" && <div className="grid grid-cols-2 items-end gap-2">
-            <label htmlFor={`${id}-received`} className="grid min-w-0 gap-1 text-sm font-medium text-[var(--vy-text)]">Recibido
-              <AmountInput id={`${id}-received`} value={row.received} placeholder="Opcional" onChange={value => onChange(row.key, { received: value })} /></label>
+            <label htmlFor={`${id}-received`} className="grid min-w-0 gap-1 text-sm font-medium text-[var(--vy-text)]">Recibido (opcional)
+              <AmountInput id={`${id}-received`} value={row.received} placeholder="0" onChange={value => onChange(row.key, { received: value })} /></label>
             <p className="grid min-w-0 gap-1 text-sm font-medium text-[var(--vy-text)]">Cambio
               <output htmlFor={`${id}-received`} data-cash-change className="flex min-h-12 min-w-0 items-center overflow-hidden rounded-2xl bg-[#ECFDF3] px-4 text-xl font-bold text-[#067647]">{change === null ? "—" : formatPesos(change)}</output></p>
           </div>}

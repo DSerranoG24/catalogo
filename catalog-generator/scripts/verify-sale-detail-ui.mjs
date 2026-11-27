@@ -32,14 +32,19 @@ act = a(sale("CONFIRMED", tracked({ paid: "500000", balance: "0", stage: "PAID" 
 assert.deepEqual([act.chargeAndDeliver, act.deliver, act.cancel], [false, true, true], "paid: Entregar");
 act = a(sale("CONFIRMED", { mode: "LEGACY" }));
 assert.deepEqual([act.chargeAndDeliver, act.registerPayment, act.deliver, act.cancel, act.voidable], [false, false, true, true, []], "LEGACY confirmed: deliver as before, no payments");
-act = a(sale("DELIVERED", tracked({ paid: "500000", balance: "0", stage: "PAID" })));
-assert.deepEqual([act.registerReturn, act.cancel, act.deliver], [true, false, false], "delivered: returns only");
+act = a(sale("DELIVERED", tracked({ paid: "500000", balance: "0", stage: "PAID" }, [entry(1, "PAYMENT", "500000")])));
+assert.deepEqual([act.registerReturn, act.cancel, act.deliver, act.registerPayment], [true, false, false, false], "delivered: returns, no new balance");
+assert.deepEqual([act.voidable, act.replaceable], [[], [id(1)]], "F2a-3c: on a delivered sale a payment is only voided with its replacement");
+act = a(sale("DELIVERED", tracked({ paid: "300000", balance: "200000", stage: "BALANCE_DUE" })));
+assert.deepEqual([act.registerPayment, act.chargeAndDeliver], [true, false], "an old balance on a delivered sale can be paid down");
+act = a(sale("RETURNED", tracked({ effectiveTotal: "0", paid: "60000", balance: "0", refundDue: "60000", stage: "REFUND_DUE" }, [entry(1, "PAYMENT", "60000"), entry(2, "SALE_REFUND", "10000")])));
+assert.deepEqual([act.voidable, act.replaceable], [[id(1), id(2)], []], "after a full return a plain void leaves no balance");
 act = a(sale("CANCELLED", tracked({ effectiveTotal: "0", paid: "200000", balance: "0", refundDue: "200000", stage: "REFUND_DUE" })));
 assert.equal(act.refundMoney, true, "por devolver without customer: Devolver dinero");
 act = a(sale("CANCELLED", tracked({ effectiveTotal: "0", paid: "0", balance: "0", stage: "SETTLED" }, [], "200000"), { customerId: id(7) }));
 assert.deepEqual([act.refundMoney, act.refundCredit], [false, true], "customer with credit: Devolver saldo a favor");
 assert.equal(a(sale("DRAFT", { mode: "LEGACY" })).continueDraft, true);
-checks.push("Actions: charge-and-deliver and pay with a balance, deliver when paid or LEGACY, cancel while confirmed, returns once delivered, refunds of money due or of customer credit, continue a draft in Vender");
+checks.push("Actions: «anular y reemplazar» for payments of delivered sales and «Registrar pago» only for an old balance (F2a-3c); charge-and-deliver and pay with a balance, deliver when paid or LEGACY, cancel while confirmed, returns once delivered, refunds of money due or of customer credit, continue a draft in Vender");
 
 // Payments book: reversals hidden, the voided entry struck through with its reason; change only informative.
 const pay = entry(1, "PAYMENT", "35000", { cashReceived: "50000", change: "15000", voided: true });

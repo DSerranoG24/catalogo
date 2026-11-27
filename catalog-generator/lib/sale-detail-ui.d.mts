@@ -11,7 +11,7 @@ export type SalePayments =
 export type LedgerRow = { id: string; kind: LedgerEntry["kind"]; label: string; amount: string; sign: 1 | -1; createdAt: string; change: string | null; reference: string | null;
   voided: boolean; voidReason: string | null; voidedAt: string | null; reason: string | null };
 export type DetailActions = { continueDraft: boolean; chargeAndDeliver: boolean; registerPayment: boolean; deliver: boolean; cancel: boolean; registerReturn: boolean;
-  refundMoney: boolean; refundCredit: boolean; voidable: string[] };
+  refundMoney: boolean; refundCredit: boolean; voidable: string[]; replaceable: string[] };
 
 export const HISTORY_FILTERS: HistoryFilter[];
 export const FILTER_LABELS: Record<HistoryFilter, string>;

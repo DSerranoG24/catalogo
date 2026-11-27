@@ -72,25 +72,29 @@ export function apiStatusOf(filter) { return filter === "PARTIALLY_RETURNED" ? "
 /**
  * What the detail offers for this sale (only operations of the F2a-2b API; the server checks them again):
  * - CONFIRMED with a balance: «Cobrar y entregar» (deliver with the payments) and «Registrar pago» (advance);
+ * - DELIVERED with a balance (left by a plain void before F2a-3c): only «Registrar pago», up to the balance;
  * - CONFIRMED paid, or a LEGACY CONFIRMED sale: «Entregar»; any CONFIRMED: «Cancelar venta»;
  * - DELIVERED with units still out: «Registrar devolución»;
  * - money «por devolver» on a sale without customer: «Devolver dinero»; customer credit: «Devolver saldo a favor»;
- * - «Anular» on each payment, credit use or refund that is still standing (TRACKED, not a draft).
+ * - «Anular» on each payment, credit use or refund that is still standing (TRACKED, not a draft). On a DELIVERED sale a
+ *   payment or credit use is only voided together with its replacement (`replaceable`, F2a-3c): it never leaves a balance.
  */
 export function detailActions(sale, payments = salePayments(sale)) {
   const tracked = payments.mode === "TRACKED", status = sale.status;
   const balance = tracked ? BigInt(payments.balance) : 0n, refundDue = tracked ? BigInt(payments.refundDue) : 0n;
   const credit = payments.customerCredit === null ? 0n : BigInt(payments.customerCredit);
+  const standing = kinds => tracked && status !== "DRAFT" ? payments.entries.filter(e => kinds.includes(e.kind) && !e.voided).map(e => e.id) : [];
   return {
     continueDraft: status === "DRAFT",
     chargeAndDeliver: status === "CONFIRMED" && tracked && balance > 0n,
-    registerPayment: status === "CONFIRMED" && tracked && balance > 0n,
+    registerPayment: (status === "CONFIRMED" || status === "DELIVERED") && tracked && balance > 0n,
     deliver: status === "CONFIRMED" && (!tracked || balance === 0n),
     cancel: status === "CONFIRMED",
     registerReturn: status === "DELIVERED" && hasPendingUnits(sale),
     refundMoney: tracked && !sale.customerId && refundDue > 0n,
     refundCredit: Boolean(sale.customerId) && credit > 0n,
-    voidable: tracked && status !== "DRAFT" ? payments.entries.filter(e => ["PAYMENT", "CREDIT_USE", "SALE_REFUND"].includes(e.kind) && !e.voided).map(e => e.id) : [],
+    voidable: standing(["SALE_REFUND", ...(status === "DELIVERED" ? [] : ["PAYMENT", "CREDIT_USE"])]),
+    replaceable: status === "DELIVERED" ? standing(["PAYMENT", "CREDIT_USE"]) : [],
   };
 }
 

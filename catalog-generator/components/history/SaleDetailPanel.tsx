@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Ban, CircleCheck, CreditCard, PackageCheck, RotateCcw, Undo2, Wallet, X } from "lucide-react";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, ApiError } from "@/lib/api";
 import { useSafeCommand, type SafeCommand } from "@/components/common/useSafeCommand";
 import { AmountInput, panelSelect } from "@/components/expenses/Sheet";
 import PaymentBox from "@/components/sell/PaymentBox";
@@ -14,9 +14,14 @@ import { cancelOutcome, changeGiven, detailActions, ledgerRows, reasonError, REF
   type SalePayments } from "@/lib/sale-detail-ui.mjs";
 import StatusPill from "./StatusPill";
 
-type Mode = null | "charge" | "pay" | "deliver" | "cancel" | "return" | "refund" | "credit" | { void: string };
+type Mode = null | "charge" | "pay" | "deliver" | "cancel" | "return" | "refund" | "credit" | { void: string } | { replace: string };
+type ReplaceMethod = "CASH" | "NEQUI" | "DAVIPLATA" | "BANK_TRANSFER" | "CARD";
+const TRANSFERS: ReplaceMethod[] = ["NEQUI", "DAVIPLATA", "BANK_TRANSFER"];
 type Loaded = { sale: Sale; payments: SalePayments };
 const ZERO = BigInt(0);
+const REPLACE_LABELS: Record<ReplaceMethod, string> = { CASH: "Efectivo", NEQUI: "Nequi", DAVIPLATA: "Daviplata", BANK_TRANSFER: "Transferencia bancaria", CARD: "Tarjeta" };
+/** A sale that does not exist (or not in this account), or an incomplete id in ?venta=. */
+const MISSING = { title: "No encontramos esa venta", detail: "Revisa el enlace o búscala en la lista de Historial.", action: null };
 const primary = `inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[var(--vy-blue-600)] px-4 font-semibold text-white hover:bg-[var(--vy-blue-700)] disabled:bg-[#A9B5CC] ${focus}`;
 const secondary = `inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#A9B5CC] bg-white px-3 font-semibold text-[var(--vy-text)] hover:bg-[var(--vy-surface-soft)] disabled:text-[var(--vy-text-subtle)] ${focus}`;
 const danger = `inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#B42318] px-4 font-semibold text-white hover:bg-[#912018] disabled:bg-[#A9B5CC] ${focus}`;
@@ -40,6 +45,7 @@ export default function SaleDetailPanel({ saleId, onClose, onChanged, inSheet = 
   const [amount, setAmount] = useState("");
   const [returnRows, setReturnRows] = useState<ReturnRows>({});
   const [formError, setFormError] = useState<string[]>([]);
+  const [replaceMethod, setReplaceMethod] = useState<ReplaceMethod>("CASH"), [replaceReceived, setReplaceReceived] = useState("");
   const command = useSafeCommand(describeFailure);
   const heading = useRef<HTMLHeadingElement>(null), formHeading = useRef<HTMLHeadingElement>(null);
   const rowKey = useRef(0);
@@ -48,7 +54,7 @@ export default function SaleDetailPanel({ saleId, onClose, onChanged, inSheet = 
     let active = true;
     apiRequest<{ result?: unknown }>(`/sales/${saleId}`).then(reply => { const sale = parseSale(reply?.result); return { sale, payments: salePayments(sale) }; }).then(
       loaded => { if (active) setState({ revision, loaded, error: null }); },
-      cause => { if (active) setState(current => ({ revision, loaded: current?.loaded ?? null, error: describeFailure(cause) })); });
+      cause => { if (active) setState(current => ({ revision, loaded: current?.loaded ?? null, error: cause instanceof ApiError && cause.status === 404 ? MISSING : describeFailure(cause) })); });
     return () => { active = false; };
   }, [saleId, revision]);
   const reload = useCallback(() => setRevision(value => value + 1), []);
@@ -59,6 +65,7 @@ export default function SaleDetailPanel({ saleId, onClose, onChanged, inSheet = 
 
   function setMode(next: Mode) {
     setModeState(next); setRows([]); setReason(""); setRefundNow("later"); setMethod("CASH"); setMethodNote(""); setFormError([]); setReturnRows({}); command.clearFailure(); setMessage("");
+    setReplaceMethod("CASH"); setReplaceReceived("");
     if (next === "refund" && loaded?.payments.mode === "TRACKED") setAmount(amountText(loaded.payments.refundDue));
     else if (next === "credit" && loaded?.payments.customerCredit) setAmount(amountText(loaded.payments.customerCredit));
     else setAmount("");
@@ -81,7 +88,7 @@ export default function SaleDetailPanel({ saleId, onClose, onChanged, inSheet = 
   const tracked = payments.mode === "TRACKED" ? payments : null;
   const actions = detailActions(sale, payments);
   // A form whose action no longer applies to the sale read again (delivered elsewhere, payment voided…) closes itself.
-  const allowed = (value: Mode) => value === null ? true : typeof value === "object" ? actions.voidable.includes(value.void)
+  const allowed = (value: Mode) => value === null ? true : typeof value === "object" ? ("void" in value ? actions.voidable.includes(value.void) : actions.replaceable.includes(value.replace))
     : { charge: actions.chargeAndDeliver, pay: actions.registerPayment, deliver: actions.deliver, cancel: actions.cancel, return: actions.registerReturn, refund: actions.refundMoney, credit: actions.refundCredit }[value];
   const mode = allowed(modeState) ? modeState : null;
   const status = displayStatus(sale), buyer = buyerName(sale);
@@ -93,8 +100,11 @@ export default function SaleDetailPanel({ saleId, onClose, onChanged, inSheet = 
   const ledger = tracked ? ledgerRows(tracked.entries) : [];
   const change = tracked ? changeGiven(tracked.entries) : ZERO;
   const outcome = cancelOutcome(sale, payments);
-  const voidId = mode && typeof mode === "object" ? mode.void : null;
+  const voidId = mode && typeof mode === "object" && "void" in mode ? mode.void : null;
   const voidRow = voidId ? ledger.find(row => row.id === voidId) : null;
+  const replaceId = mode && typeof mode === "object" && "replace" in mode ? mode.replace : null;
+  const replaceRow = replaceId ? ledger.find(row => row.id === replaceId) : null;
+  const replaceChange = replaceRow && replaceMethod === "CASH" ? (() => { const received = parseAmountText(replaceReceived), amount = BigInt(replaceRow.amount); return received !== null && received >= amount ? received - amount : null; })() : null;
   const base = { resourceId: sale.id, method: "POST" as const };
 
   function addRow(button: MethodButton) { setRows(current => addPaymentRow(current, button, balance, credit, `d${++rowKey.current}`)); }
@@ -135,6 +145,17 @@ export default function SaleDetailPanel({ saleId, onClose, onChanged, inSheet = 
     const body = { amount: value.toString(), ...chosen.value, reason: reason.trim() };
     if (kind === "refund") void send({ ...base, action: "detailRefund", path: `/sales/${sale.id}/refunds`, body: { expectedVersion: sale.version, ...body }, label: "Registrando devolución de dinero…" }, `Devolución de dinero registrada: ${formatPesos(value)}.`);
     else void send({ ...base, resourceId: sale.customerId!, action: "creditRefund", path: `/customers/${sale.customerId}/credit/refunds`, body, label: "Devolviendo saldo a favor…" }, `Saldo a favor devuelto: ${formatPesos(value)}.`);
+  }
+  /** «Anular y reemplazar» (F2a-3c): the voided payment and the right one, for the same amount, in one operation. */
+  function submitReplace() {
+    if (!replaceRow || !replaceId) return;
+    const errors = [reasonError(reason)].filter((e): e is string => Boolean(e));
+    const received = replaceMethod === "CASH" && replaceReceived.trim() ? parseAmountText(replaceReceived) : null;
+    if (replaceMethod === "CASH" && replaceReceived.trim() && (received === null || received < BigInt(replaceRow.amount))) errors.push("El efectivo recibido no alcanza para el pago.");
+    if (errors.length) { setFormError(errors); return; }
+    const payment = { method: replaceMethod, amount: replaceRow.amount, ...(received !== null ? { cashReceived: received.toString() } : {}) };
+    void send({ ...base, resourceId: replaceId, action: "detailReplace", path: `/sales/${sale.id}/payments/${replaceId}/replace`, body: { expectedVersion: sale.version, reason: reason.trim(), payment }, label: "Anulando y reemplazando…" },
+      `Pago reemplazado: ${REPLACE_LABELS[replaceMethod]} por ${formatPesos(replaceRow.amount)}.${replaceChange !== null && replaceChange > ZERO ? ` Cambio ${formatPesos(replaceChange)}.` : ""}`);
   }
   function submitVoid() {
     const why = reasonError(reason);
@@ -213,6 +234,8 @@ export default function SaleDetailPanel({ saleId, onClose, onChanged, inSheet = 
           </div>
           <p className="text-xs text-[var(--vy-text-muted)]">{formatDate(row.createdAt)}{row.change ? ` · Cambio ${formatPesos(row.change)}` : ""}{row.reason ? ` · Motivo: ${row.reason}` : ""}</p>
           {row.voided && <p data-void-reason className="mt-1 text-xs font-semibold text-[#B42318]">Anulado{row.voidedAt ? ` el ${formatDate(row.voidedAt)}` : ""}{row.voidReason ? ` · Motivo: ${row.voidReason}` : ""}</p>}
+          {actions.replaceable.includes(row.id) && !mode && <button type="button" disabled={busy} onClick={() => setMode({ replace: row.id })} aria-label={`Anular y reemplazar ${row.label} de ${formatPesos(row.amount)}`}
+            className={`mt-2 min-h-10 rounded-lg px-2 text-sm font-semibold text-[#B42318] hover:bg-[#FEF3F2] ${focus}`}>Anular y reemplazar</button>}
           {actions.voidable.includes(row.id) && !mode && <button type="button" disabled={busy} onClick={() => setMode({ void: row.id })} aria-label={`Anular ${row.label} de ${formatPesos(row.amount)}`}
             className={`mt-2 min-h-10 rounded-lg px-2 text-sm font-semibold text-[#B42318] hover:bg-[#FEF3F2] ${focus}`}>Anular</button>}
         </li>)}</ol>}
@@ -236,7 +259,8 @@ export default function SaleDetailPanel({ saleId, onClose, onChanged, inSheet = 
     {command.busy && <p role="status" className="text-sm font-semibold text-[var(--vy-blue-700)]">{command.busy}</p>}
 
     {(mode === "charge" || mode === "pay") && form(mode === "charge" ? `Cobrar ${formatPesos(balance)} y entregar` : "Registrar pago", <>
-      <p className="text-sm text-[var(--vy-text-muted)]">Falta {formatPesos(balance)}. {mode === "charge" ? "Se registra el pago y se entrega en una sola operación." : "El pago queda como anticipo; la venta sigue sin entregar."}</p>
+      <p className="text-sm text-[var(--vy-text-muted)]">Falta {formatPesos(balance)}. {mode === "charge" ? "Se registra el pago y se entrega en una sola operación."
+        : sale.status === "DELIVERED" ? "Esta venta entregada quedó con saldo por una anulación anterior. Registra lo que falta, como máximo el saldo." : "El pago queda como anticipo; la venta sigue sin entregar."}</p>
       <PaymentBox idPrefix="detail" rows={rows} status={check?.status ?? null} credit={credit} disabled={busy} legend="¿Cómo pagó el resto?"
         onAdd={addRow} onChange={(key, patch) => setRows(current => current.map(row => row.key === key ? { ...row, ...patch } : row))} onRemove={key => setRows(current => current.filter(row => row.key !== key))}
         onPayTotal={() => setRows(current => payExactly(current, balance))} />
@@ -297,7 +321,32 @@ export default function SaleDetailPanel({ saleId, onClose, onChanged, inSheet = 
       <button type="button" data-detail-refund disabled={busy} onClick={() => submitRefund(mode)} className={primary}><Undo2 aria-hidden="true" className="size-5" />Registrar devolución de dinero</button>
     </>)}
 
-    {voidRow && form(`Anular ${voidRow.label.toLowerCase()} de ${formatPesos(voidRow.amount)}`, <>
+    {replaceRow && form(`Anular y reemplazar ${replaceRow.label} de ${formatPesos(replaceRow.amount)}`, <>
+      <p className="text-sm text-[var(--vy-text-muted)]">La venta ya se entregó: el pago anulado queda tachado con su motivo y en la misma operación se registra el pago correcto por el mismo monto. El saldo no cambia.</p>
+      {reasonField("replace", "Motivo de la anulación")}
+      <fieldset className="@container min-w-0 space-y-2">
+        <legend className="text-sm font-semibold">¿Cómo se pagó en realidad?</legend>
+        <div role="radiogroup" aria-label="Medio del pago correcto" className="grid grid-cols-3 gap-2">
+          {(["CASH", "TRANSFER", "CARD"] as const).map(kind => { const active = kind === "TRANSFER" ? TRANSFERS.includes(replaceMethod) : replaceMethod === kind;
+            return <button key={kind} type="button" role="radio" aria-checked={active} onClick={() => { setReplaceMethod(kind === "TRANSFER" ? "NEQUI" : kind); setFormError([]); }}
+              className={`min-h-11 min-w-0 rounded-xl border px-1 text-sm font-semibold ${active ? "border-[var(--vy-blue-600)] bg-[#E8EFFE] text-[var(--vy-blue-700)]" : "border-[var(--vy-border)] bg-white text-[var(--vy-text)]"} ${focus}`}>
+              {kind === "CASH" ? "Efectivo" : kind === "CARD" ? "Tarjeta" : "Transferencia"}</button>; })}
+        </div>
+        {TRANSFERS.includes(replaceMethod) && <div role="radiogroup" aria-label="Medio de la transferencia" className="flex flex-wrap gap-2">
+          {TRANSFERS.map(value => <button key={value} type="button" role="radio" aria-checked={replaceMethod === value} onClick={() => setReplaceMethod(value)}
+            className={`min-h-11 rounded-xl border px-3 text-sm font-semibold ${replaceMethod === value ? "border-[var(--vy-blue-600)] bg-[#E8EFFE] text-[var(--vy-blue-700)]" : "border-[var(--vy-border)] bg-white text-[var(--vy-text)]"} ${focus}`}>
+            {value === "BANK_TRANSFER" ? "Banco" : REPLACE_LABELS[value]}</button>)}
+        </div>}
+        <p className="flex items-baseline justify-between gap-3 rounded-xl bg-white px-3 py-2 text-sm ring-1 ring-[var(--vy-border)]"><span className="text-[var(--vy-text-muted)]">Monto (igual al anulado)</span><strong data-replace-amount className="text-base">{formatPesos(replaceRow.amount)}</strong></p>
+        {replaceMethod === "CASH" && <div className="grid grid-cols-2 items-end gap-2">
+          <label htmlFor="replace-received" className="grid min-w-0 gap-1 text-sm font-medium">Recibido (opcional)<AmountInput id="replace-received" value={replaceReceived} onChange={setReplaceReceived} placeholder="0" /></label>
+          <p className="grid min-w-0 gap-1 text-sm font-medium">Cambio<output htmlFor="replace-received" data-replace-change className="flex min-h-12 min-w-0 items-center overflow-hidden rounded-2xl bg-[#ECFDF3] px-4 text-xl font-bold text-[#067647]">{replaceChange === null ? "—" : formatPesos(replaceChange)}</output></p>
+        </div>}
+      </fieldset>
+      <button type="button" data-detail-replace disabled={busy} onClick={submitReplace} className={danger}>Anular y registrar {REPLACE_LABELS[replaceMethod]}</button>
+    </>)}
+
+    {voidRow && form(`Anular ${voidRow.label} de ${formatPesos(voidRow.amount)}`, <>
       <p className="text-sm text-[var(--vy-text-muted)]">No se borra: queda tachado en el historial con su motivo y se recalcula el saldo.</p>
       {reasonField("void", "Motivo de la anulación")}
       <button type="button" data-detail-void disabled={busy} onClick={submitVoid} className={danger}>Sí, anular</button>
@@ -314,7 +363,7 @@ export default function SaleDetailPanel({ saleId, onClose, onChanged, inSheet = 
         {actions.cancel && <button type="button" disabled={busy} onClick={() => setMode("cancel")} className={`${secondary} text-[#B42318]`}><Ban aria-hidden="true" className="size-4" />Cancelar venta</button>}
       </div>
       {actions.continueDraft && <Link href={`/dashboard/ventas?borrador=${sale.id}`} className={primary}><CircleCheck aria-hidden="true" className="size-5" />Continuar en Vender</Link>}
-      {!actions.chargeAndDeliver && !actions.deliver && !actions.registerPayment && !actions.registerReturn && !actions.refundMoney && !actions.refundCredit && !actions.cancel && !actions.continueDraft && actions.voidable.length === 0
+      {!actions.chargeAndDeliver && !actions.deliver && !actions.registerPayment && !actions.registerReturn && !actions.refundMoney && !actions.refundCredit && !actions.cancel && !actions.continueDraft && actions.voidable.length === 0 && actions.replaceable.length === 0
         && <p className="text-sm text-[var(--vy-text-muted)]">Esta venta ya no tiene acciones pendientes.</p>}
     </div>}
   </section>;
@@ -331,4 +380,15 @@ function Notice({ title, detail, children }: { title: string; detail: string; ch
     <p className="font-semibold text-[#B42318]">{title}</p><p>{detail}</p>
     {children && <div className="flex flex-wrap gap-2">{children}</div>}
   </div>;
+}
+
+/** ?venta= with an id that is not a sale id (incomplete or malformed): said plainly instead of opening nothing. */
+export function MissingSale({ onClose, inSheet = false }: { onClose: () => void; inSheet?: boolean }) {
+  return <section aria-labelledby="sale-missing-title" data-sale-missing className="space-y-3">
+    <div className="flex items-start justify-between gap-3">
+      <h2 id="sale-missing-title" className="text-xl font-bold text-[var(--vy-text)]">{MISSING.title}</h2>
+      {!inSheet && <button type="button" onClick={onClose} aria-label="Cerrar detalle" className={`grid size-11 shrink-0 place-items-center rounded-xl hover:bg-[var(--vy-surface-soft)] ${focus}`}><X aria-hidden="true" className="size-5" /></button>}
+    </div>
+    <p role="status" className="text-sm text-[var(--vy-text-muted)]">{MISSING.detail}</p>
+  </section>;
 }

@@ -12,7 +12,7 @@ import { buyerName, describeFailure, displayStatus, formatDate, itemCount, parse
 import { parseCustomerSales, parseCustomerSearch, type HistoryCustomer } from "@/lib/customer-sales.mjs";
 import { apiStatusOf, FILTER_LABELS, filterSales, HISTORY_FILTERS, rowMoney, saleIdFrom, type HistoryFilter } from "@/lib/sale-detail-ui.mjs";
 import { formatPesos } from "@/lib/pos-ui.mjs";
-import SaleDetailPanel from "./SaleDetailPanel";
+import SaleDetailPanel, { MissingSale } from "./SaleDetailPanel";
 import StatusPill from "./StatusPill";
 import { useMediaQuery } from "./useMediaQuery";
 
@@ -37,7 +37,7 @@ async function pool<T, R>(values: T[], limit: number, work: (value: T) => Promis
  */
 export default function HistoryPanel() {
   const params = useSearchParams(), router = useRouter(), pathname = usePathname();
-  const selectedId = saleIdFrom(params.get("venta"));
+  const requested = params.get("venta"), selectedId = saleIdFrom(requested);
   const desktop = useMediaQuery("(min-width: 1024px)");
   const [revision, setRevision] = useState(0);
   const [recent, setRecent] = useState<{ revision: number; sales: Sale[] | null; error: Failure | null } | null>(null);
@@ -109,12 +109,13 @@ export default function HistoryPanel() {
   const listLoading = customer ? pagesLoading && !pages : recentLoading && !lastSales;
   const listError = customer ? pagesError : recentError ? `${recentError.title}. ${recentError.detail}` : "";
   // The sheet (mobile) has its own close button; the side panel shows the detail's.
-  const detail = selectedId ? <SaleDetailPanel key={selectedId} saleId={selectedId} onClose={close} onChanged={changed} inSheet={!desktop} /> : null;
+  const detail = selectedId ? <SaleDetailPanel key={selectedId} saleId={selectedId} onClose={close} onChanged={changed} inSheet={!desktop} />
+    : requested !== null ? <MissingSale onClose={close} inSheet={!desktop} /> : null;
 
   return <main className="vy-theme mx-auto w-full max-w-7xl space-y-5 px-4 pb-28 pt-5 sm:px-8 lg:pb-8 lg:pt-4">
     <VenderHeader current="history" title="Historial" subtitle="Tus ventas, sus pagos y lo que falta por cobrar o entregar" />
 
-    <div className={`grid gap-5 lg:items-start ${selectedId ? "lg:grid-cols-[minmax(0,1fr)_24rem] xl:grid-cols-[minmax(0,1fr)_28rem]" : ""}`}>
+    <div className={`grid gap-5 lg:items-start ${detail ? "lg:grid-cols-[minmax(0,1fr)_24rem] xl:grid-cols-[minmax(0,1fr)_28rem]" : ""}`}>
       <section aria-labelledby="history-list-title" className="min-w-0 space-y-4 rounded-3xl bg-white p-4 shadow-[0_24px_60px_-40px_rgba(1,28,79,0.55)] sm:p-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <h2 id="history-list-title" className="text-xl font-bold text-[var(--vy-text)]">{customer ? `Ventas de ${customer.fullName}` : "Ventas"}</h2>

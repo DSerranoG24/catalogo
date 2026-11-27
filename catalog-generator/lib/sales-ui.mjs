@@ -183,6 +183,10 @@ const ERRORS = {
   INVALID_SALE_INPUT: { title: "Revisa los datos de la venta", detail: "Algún dato del ticket no es válido. Corrígelo e intenta de nuevo.", action: null },
   CREDIT_ALREADY_USED: { title: "Ese saldo a favor ya se usó", detail: "Recarga para ver el saldo actual del cliente.", action: "reload" },
   CUSTOMER_CHANGE_BLOCKED: { title: "No se puede cambiar el cliente", detail: "La venta ya se entregó o usa saldo a favor del cliente anterior.", action: "reload" },
+  // F2a-3c rules.
+  VOID_REQUIRES_REPLACEMENT: { title: "En una venta entregada, anula y registra el pago correcto", detail: "Usa «Anular y reemplazar»: la venta entregada no puede quedar con saldo.", action: "reload" },
+  REPLACEMENT_AMOUNT_MISMATCH: { title: "El pago correcto debe ser por el mismo monto", detail: "Recarga la venta: el pago que reemplaza es por el mismo monto que el anulado.", action: "reload" },
+  PAYMENTS_REQUIRED: { title: "Falta indicar cómo se pagó", detail: "Toda venta se confirma con sus pagos; para entregar después, el anticipo puede ser de $ 0.", action: null },
   // Corrections of the payments book (F2a-3b).
   PAYMENT_NOT_FOUND: { title: "Pago no encontrado", detail: "Recarga la venta para ver sus pagos actuales.", action: "reload" },
   PAYMENT_ALREADY_VOIDED: { title: "Ese pago ya está anulado", detail: "Recarga la venta para ver sus pagos actuales.", action: "reload" },

@@ -14,6 +14,10 @@ const stamp = () => new Date(clock += 60000).toISOString();
 class Fail extends Error { constructor(status, code) { super(code); this.status = status; this.code = code; } }
 const customers = [{ id: randomUUID(), fullName: "Ana Gómez", phone: "3001234567", archivedAt: null, credit: [] }];
 const ana = customers[0];
+const catalog = { id: randomUUID(), publicId: randomUUID(), name: "Tienda de prueba", slug: "prueba", template: "TECH", active: true, archivedAt: null, logoUrl: null };
+const order = (n, name) => ({ id: randomUUID(), customerName: name, customerPhone: "3000000000", customerEmail: null, customerAddress: null, notes: null, customerConsentAt: null, customerConsentVersion: null,
+  anonymizedAt: null, quotationSellerSnapshot: null, status: "PENDING", total: 4000 * n, createdAt: "2026-11-27T12:00:00.000Z", quotationNumber: null, items: [{ productName: "Funda de pedido", quantity: n, unitPrice: 4000, subtotal: 4000 * n }], convertedSale: null });
+const orders = [order(1, "Comprador escritorio"), order(2, "Comprador móvil")];
 const sales = new Map(), receipts = new Map(), creditOps = new Map();
 let dropNext = null, forceExcess = false, closurePreviewOverride = null, closed = false;
 
@@ -105,7 +109,8 @@ function mutate(method, p, body) {
       } else if (op === "payments") {
         if (s.paymentMode !== "TRACKED") throw new Fail(409, "LEGACY_SALE_PAYMENTS_UNSUPPORTED");
         if (s.version !== body.expectedVersion) throw new Fail(409, "VERSION_CONFLICT");
-        if (s.status !== "CONFIRMED") throw new Fail(409, "INVALID_PAYMENT_STATE");
+        // F2a-3c: a DELIVERED sale only takes payments while it has a balance left by an older plain void.
+        if (s.status !== "CONFIRMED" && !(s.status === "DELIVERED" && figures(s).balance > 0n)) throw new Fail(409, "INVALID_PAYMENT_STATE");
         if (!body.payments?.length && !body.customerCreditAmount) throw new Fail(400, "INVALID_PAYMENT_INPUT");
         payments(s, body.payments, body.customerCreditAmount, body.operationId); s.version++;
       } else {
@@ -126,6 +131,7 @@ function mutate(method, p, body) {
       if (s.version !== body.expectedVersion) throw new Fail(409, "VERSION_CONFLICT");
       const target = s.entries.find(e => e.id === m[2]); if (!target) throw new Fail(404, "PAYMENT_NOT_FOUND");
       if (s.entries.some(e => e.reversesEntryId === target.id)) throw new Fail(409, "PAYMENT_ALREADY_VOIDED");
+      if (s.status === "DELIVERED" && ["PAYMENT", "CREDIT_USE"].includes(target.kind)) throw new Fail(409, "VOID_REQUIRES_REPLACEMENT");
       entry(s, { kind: "REVERSAL", amount: target.amount, reversesEntryId: target.id, reason: body.reason });
       if (figures(s).paid < 0n) {
         const moved = s.entries.filter(e => e.kind === "EXCESS_TO_CREDIT" && !s.entries.some(r => r.reversesEntryId === e.id)).at(-1);
@@ -136,6 +142,34 @@ function mutate(method, p, body) {
       s.version++;
       return { result: { result: view(s, true), idempotent: false } };
     });
+  }
+  m = p.match(/^\/api\/sales\/([^/]+)\/payments\/([^/]+)\/replace$/);
+  if (method === "POST" && m) {
+    const s = sales.get(m[1]); if (!s) throw new Fail(404, "NOT_FOUND");
+    return once(body, "replace", () => {
+      reason(body);
+      if (s.version !== body.expectedVersion) throw new Fail(409, "VERSION_CONFLICT");
+      const target = s.entries.find(e => e.id === m[2]); if (!target) throw new Fail(404, "PAYMENT_NOT_FOUND");
+      if (!["PAYMENT", "CREDIT_USE"].includes(target.kind)) throw new Fail(409, "PAYMENT_NOT_VOIDABLE");
+      if (s.entries.some(e => e.reversesEntryId === target.id)) throw new Fail(409, "PAYMENT_ALREADY_VOIDED");
+      const pay = body.payment ?? {};
+      if (!["CASH", "NEQUI", "DAVIPLATA", "BANK_TRANSFER", "CARD", "OTHER"].includes(pay.method) || (pay.cashReceived !== undefined && (pay.method !== "CASH" || BigInt(pay.cashReceived) < BigInt(pay.amount)))) throw new Fail(400, "INVALID_PAYMENT_INPUT");
+      if (BigInt(pay.amount) !== target.amount) throw new Fail(409, "REPLACEMENT_AMOUNT_MISMATCH");
+      entry(s, { kind: "REVERSAL", amount: target.amount, reversesEntryId: target.id, reason: body.reason, operationId: body.operationId });
+      entry(s, { kind: "PAYMENT", amount: BigInt(pay.amount), method: pay.method, cashReceived: pay.cashReceived ? BigInt(pay.cashReceived) : null, operationId: body.operationId });
+      s.version++;
+      return { result: { result: view(s, true), idempotent: false } };
+    });
+  }
+  m = p.match(/^\/api\/orders\/([^/]+)\/convert-to-sale$/);
+  if (method === "POST" && m) {
+    const o = orders.find(x => x.id === m[1]); if (!o) throw new Fail(404, "ORDER_NOT_FOUND");
+    if (body.mode === "DELIVERED") return { status: 409, body: { success: false, error: "ORDER_CONVERSION_DELIVERY_REMOVED", message: "ORDER_CONVERSION_DELIVERY_REMOVED" } };
+    if (o.convertedSale) throw new Fail(409, "ORDER_ALREADY_CONVERTED");
+    const s = addSale({ status: body.mode === "CONFIRMED" ? "CONFIRMED" : "DRAFT", lines: o.items.map(i => line(i.productName, "PED-1", i.unitPrice, i.quantity)), mode: body.mode === "CONFIRMED" ? "TRACKED" : "LEGACY" });
+    if (body.mode === "CONFIRMED") payments(s, body.payments ?? [], body.customerCreditAmount, body.operationId);
+    o.convertedSale = view(s, false);
+    return { status: 200, body: { success: true, sale: view(s, true), idempotent: false } };
   }
   m = p.match(/^\/api\/customers\/([^/]+)\/credit\/refunds$/);
   if (method === "POST" && m) {
@@ -178,6 +212,14 @@ function read(url) {
     sales: [...sales.values()].filter(s => s.customerId === c.id && (status === "all" || s.status === status)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .map(s => ({ id: s.id, status: s.status, version: s.version, currency: "COP", total: s.total.toString(), createdAt: s.createdAt, sourceOrderId: null, customerNameSnapshot: c.fullName, customerName: null })), nextCursor: null }; }
   if (p === "/api/auth/close/preview") return { success: true, preview: closurePreview() };
+  // Catalog workspace (Pedidos → «Convertir a venta», F2a-3c).
+  if (p === "/api/catalogs") return { catalogs: [catalog] };
+  if (p === `/api/catalogs/${catalog.id}`) return { catalog };
+  if (p === `/api/categories/catalog/${catalog.id}`) return { categories: [] };
+  if (p.endsWith("/featured")) return { products: [], selectedCount: 0, validCount: 0, visible: false, warning: null };
+  if (p.endsWith("/list")) return { products: [], page: 1, pageSize: 24, totalProducts: 0, totalFiltered: 0, totalPages: 1, needsCompletionCount: 0 };
+  if (p.endsWith("/suggestions")) return { products: [] };
+  if (p === `/api/orders/catalog/${catalog.id}`) return { orders, nextCursor: null };
   return null;
 }
 async function api(req, res) {
@@ -436,10 +478,13 @@ try {
     await waitFor(`document.activeElement?.id==="sale-detail-title"`, "foco en el título del detalle");
     await press("Cerrar detalle");
     await waitFor(`!document.querySelector('[data-detail-panel]')&&!new URL(location.href).searchParams.has('venta')`, "cerrado sin ?venta");
+    // F2a-3c: an incomplete id, or a sale that does not exist, says so instead of leaving the panel closed.
     await command("Page.navigate", { url: `${historyUrl}?venta=no-es-un-id` });
     await waitFor(`${row(advance.id)}`, "lista");
-    assert.equal(await evaluate(`Boolean(document.querySelector('[data-detail-panel]'))`), false, "an invalid id opens nothing");
-    checks.push("Direct link /dashboard/ventas/historial?venta=<id> opens the detail with focus on its title; closing removes ?venta; an invalid id opens nothing");
+    await waitFor(`document.querySelector('[data-detail-panel] [data-sale-missing]')?.innerText.includes("No encontramos esa venta")`, "mensaje de id incompleto");
+    await command("Page.navigate", { url: `${historyUrl}?venta=${randomUUID()}` });
+    await waitFor(`document.querySelector('[data-detail-panel]')?.innerText.includes("No encontramos esa venta")`, "mensaje de venta inexistente");
+    checks.push("Direct link /dashboard/ventas/historial?venta=<id> opens the detail with focus on its title; closing removes ?venta; an incomplete id or a sale that does not exist shows «No encontramos esa venta»");
 
     // No old green on the page and the panel (control element first).
     const OLD = ["#0F6B57", "#0B5646", "#E8F3EF", "#0B2E27", "#EDF3EC", "#D6DFD7", "#E2E8E0", "#A8C2AF", "#52655A", "#68756E", "#FCFDFB", "#52675B", "#DCE4DC", "#F3F5F2", "#CFD6CF", "#3F4A43",
@@ -522,6 +567,117 @@ try {
     assert.equal(writes("/auth/close").length, before + 1); assert.equal(writes("/auth/close").at(-1).body.confirmOpenBalances, undefined);
     assert.equal(await evaluate(`${closeButton}.disabled`), true, "after the 409: confirm and authenticate again");
     checks.push("Stale preview: the server answers 409 ACCOUNT_CLOSURE_REQUIRES_CONFIRMATION with its figures; the notice appears and closing waits for the confirmation and the password again");
+
+    // ---- F2a-3c ----
+    await command("Network.setCookie", { name: "catalogo_session", value: "synthetic-fixture", url: "http://localhost:4338/", httpOnly: true, sameSite: "Lax" });
+    await viewport(1440);
+
+    // «Anular y reemplazar» on a delivered sale: Nequi → cash for the same amount; the balance stays at 0; a lost reply is retried once.
+    const nequiSale = addSale({ status: "DELIVERED", lines: [line("Celular", "CEL-01", 85000, 1)], payments: [{ method: "NEQUI", amount: "85000" }] });
+    await command("Page.navigate", { url: `${historyUrl}?venta=${nequiSale.id}` });
+    await waitFor(`${inPanel(`[data-sale-detail="${nequiSale.id}"]`)}`, "venta entregada");
+    assert.equal(await evaluate(`Boolean(${button("Anular Nequi de $ 85.000")})`), false, "no plain void on a delivered sale");
+    assert.equal(await evaluate(`Boolean(${button("Registrar pago")})`), false, "a paid delivered sale takes no new payment");
+    await press("Anular y reemplazar Nequi de $ 85.000");
+    await waitText("Anular y reemplazar Nequi de $ 85.000");
+    await click(inPanel("[data-detail-replace]"), "Anular y registrar");
+    await waitText("Escribe un motivo de 3 a 300 caracteres.");
+    assert.equal(writes("/replace").length, 0, "nothing sent without a reason");
+    await typeIn("#replace-reason", "Pagó en efectivo, no por Nequi");
+    assert.equal(await evaluate(`${inPanel("[data-replace-amount]")}.textContent.replace(/\\s+/g," ")`), "$ 85.000", "the amount is fixed: the voided one");
+    await typeIn("#replace-received", "100000");
+    await waitFor(`${inPanel("[data-replace-change]")}?.textContent.replace(/\\s+/g," ")==="$ 15.000"`, "cambio informativo");
+    await shot("1440-anular-reemplazar");
+    dropNext = "/replace";
+    await click(inPanel("[data-detail-replace]"), "Anular y registrar Efectivo");
+    await waitText("Reintenta: se enviará la misma operación y no se duplicará.");
+    await press("Reintentar");
+    await waitText("Pago reemplazado: Efectivo por $ 85.000. Cambio $ 15.000.");
+    const [lostReplace, retriedReplace] = writes("/replace");
+    assert.equal(lostReplace.body.operationId, retriedReplace.body.operationId);
+    assert.deepEqual(lostReplace.body.payment, { method: "CASH", amount: "85000", cashReceived: "100000" });
+    assert.equal(sales.get(nequiSale.id).entries.filter(e => e.kind === "PAYMENT").length, 2, "one voided payment and one replacement, no duplicate");
+    assert.deepEqual(await evaluate(`[...${panel}.querySelectorAll('[data-ledger-entry]')].map(e=>[e.dataset.ledgerEntry,Boolean(e.dataset.voided),e.querySelector('span').textContent])`),
+      [["PAYMENT", true, "Nequi"], ["PAYMENT", false, "Efectivo"]], "the voided payment struck through, the new one below");
+    assert.ok((await panelText()).includes("Motivo: Pagó en efectivo, no por Nequi"));
+    assert.deepEqual([await money("paid"), await money("balance")], ["$ 85.000", "$ 0"]);
+    checks.push("«Anular y reemplazar» on a delivered sale (Nequi → Efectivo): no plain «Anular», reason required, amount fixed to the voided one, change informative; a lost reply is retried with the same operation; the voided payment struck through with its reason and the new one below; balance stays $ 0");
+
+    // Repair: a delivered sale left with a balance by a plain void before F2a-3c can be paid down, never above the balance.
+    const holed = addSale({ status: "DELIVERED", lines: [line("Parlante", "PAR-02", 60000, 1)], payments: [{ method: "CASH", amount: "60000" }] });
+    entry(holed, { kind: "REVERSAL", amount: 60000n, reversesEntryId: holed.entries[0].id, reason: "Anulado antes de la regla" });
+    await command("Page.navigate", { url: `${historyUrl}?venta=${holed.id}` });
+    await waitFor(`${inPanel(`[data-sale-detail="${holed.id}"]`)}`, "venta con saldo previo");
+    assert.equal(await money("balance"), "$ 60.000");
+    assert.equal(await evaluate(`Boolean(${startsWith("Cobrar y entregar")})`), false);
+    await press("Registrar pago");
+    await waitText("quedó con saldo por una anulación anterior");
+    await press("Agregar pago: Efectivo");
+    await typeIn(`[data-detail-panel] [data-payment-row="CASH"] input:not([id$="-received"])`, "70000");
+    await waitText("Los pagos superan el total por $ 10.000");
+    assert.equal(await evaluate(`${inPanel("[data-detail-pay]")}.disabled`), true, "never above the balance");
+    await click(inPanel("[data-pay-total]"), "Pagar el total");
+    await click(inPanel("[data-detail-pay]"), "Registrar pago");
+    await waitText("Pago registrado.");
+    assert.equal(await money("balance"), "$ 0");
+    assert.equal(await evaluate(`Boolean(${button("Registrar pago")})`), false, "once repaired, no more payments");
+    checks.push("A delivered sale with an old balance offers «Registrar pago» (no «Cobrar y entregar»), limited to the balance; once paid it disappears");
+
+    // 320–1440 px with «Anular y reemplazar» open (transfer selector and cash rows): no overflow, controls inside the panel.
+    const layoutSale = addSale({ status: "DELIVERED", lines: [line("Tablet", "TAB-01", 1250000, 1)], payments: [{ method: "DAVIPLATA", amount: "1250000" }] });
+    await command("Page.navigate", { url: `${historyUrl}?venta=${layoutSale.id}` });
+    for (const width of [320, 375, 414, 768, 1024, 1132, 1280, 1440]) {
+      await viewport(width);
+      const mobile = width < 1024;
+      await waitFor(mobile ? `document.querySelector('[role="dialog"] [data-sale-detail]')` : `document.querySelector('[data-detail-panel] [data-sale-detail]')`, `detalle a ${width}px`);
+      if (!(await evaluate(`Boolean(${inPanel("[data-detail-replace]")})`))) await press("Anular y reemplazar Daviplata de $ 1.250.000");
+      const transfer = `[...${panel}.querySelectorAll('[role="radio"]')].find(b=>b.textContent.trim()==="Transferencia")`;
+      const cash = `[...${panel}.querySelectorAll('[role="radio"]')].find(b=>b.textContent.trim()==="Efectivo")`;
+      await click(transfer, "Transferencia");
+      await waitFor(`[...${panel}.querySelectorAll('[role="radio"]')].some(b=>b.textContent.trim()==="Banco")`, "selector de transferencia");
+      assert.deepEqual(await evaluate(outside), [], `transfer selector inside the panel at ${width}px`);
+      await click(cash, "Efectivo");
+      await waitFor(`${inPanel("#replace-received")}`, "recibido");
+      assert.deepEqual(await evaluate(outside), [], `cash fields inside the panel at ${width}px`);
+      assert.ok(await evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`) <= 0, `no overflow at ${width}px`);
+      const placeholder = await evaluate(`(()=>{const i=${inPanel("#replace-received")};return i.scrollWidth<=i.clientWidth+1})()`);
+      assert.ok(placeholder, `«Recibido» shown whole at ${width}px`);
+      if (width === 375 || width === 1440) await shot(`${width}-anular-reemplazar-form`);
+      if (mobile) { await click(`document.querySelector('[role="dialog"] button[aria-label="Cerrar"]')`, "cerrar hoja"); await command("Page.navigate", { url: `${historyUrl}?venta=${layoutSale.id}` }); }
+    }
+    checks.push("320–1440 px with «Anular y reemplazar» open (Transferencia with Nequi/Daviplata/Banco, Efectivo with Recibido and Cambio): no overflow, controls inside the panel or sheet, «Recibido» shown whole");
+
+    // Pedidos → «Convertir a venta»: no «Confirmar y entregar»; a confirmed conversion opens its detail, charged and delivered there.
+    for (const [width, target] of [[1440, orders[0]], [375, orders[1]]]) {
+      await viewport(width);
+      await command("Page.navigate", { url: `http://localhost:4338/dashboard/catalogos/${catalog.id}` });
+      await waitFor(`[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Órdenes')`, "espacio del catálogo");
+      await evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Órdenes').click()`);
+      const article = `[...document.querySelectorAll('article')].find(a=>a.textContent.includes(${JSON.stringify(target.customerName)}))`;
+      await waitFor(article, "pedido");
+      await evaluate(`[...${article}.querySelectorAll('button')].find(b=>b.textContent.trim()==='Convertir a venta').click()`);
+      await waitFor(`${article}.querySelector('select')`, "modo de conversión");
+      assert.deepEqual(await evaluate(`[...${article}.querySelectorAll('select option')].map(o=>[o.value,o.textContent])`),
+        [["DRAFT", "Crear borrador"], ["CONFIRMED", "Crear y confirmar (cobrar y entregar en Historial)"]], "no «Confirmar y entregar»");
+      await evaluate(`(()=>{const s=${article}.querySelector('select');s.value='CONFIRMED';s.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+      await evaluate(`[...${article}.querySelectorAll('button')].find(b=>b.textContent.trim()==='Confirmar conversión').click()`);
+      await waitFor(`location.pathname==='/dashboard/ventas/historial'&&new URL(location.href).searchParams.has('venta')`, "detalle de la venta nueva");
+      const conversion = writes(`/orders/${target.id}/convert-to-sale`).at(-1);
+      assert.deepEqual([conversion.body.mode, conversion.body.payments], ["CONFIRMED", []], "a confirmed conversion with an advance of 0");
+      const newId = await evaluate(`new URL(location.href).searchParams.get('venta')`);
+      assert.equal(sales.get(newId)?.paymentMode, "TRACKED");
+      await waitFor(`${inPanel(`[data-sale-detail="${newId}"]`)}`, "detalle abierto");
+      const total = width === 1440 ? "$ 4.000" : "$ 8.000";
+      await waitFor(`${startsWith("Cobrar y entregar")}?.textContent.replace(/\\s+/g," ").includes(${JSON.stringify(total)})`, "cobro a la vista");
+      await shot(`${width}-conversion-detalle`);
+      await pressStart("Cobrar y entregar");
+      await press("Agregar pago: Efectivo");
+      await click(inPanel("[data-detail-charge]"), "Cobrar y entregar");
+      await waitFor(`${inPanel('[data-sale-status="DELIVERED"]')}`, "entregada");
+      assert.equal(sales.get(newId).status, "DELIVERED");
+      if (width < 1024) await click(`document.querySelector('[role="dialog"] button[aria-label="Cerrar"]')`, "cerrar hoja");
+    }
+    checks.push("Pedidos: «Convertir a venta» only offers «Crear borrador» and «Crear y confirmar»; confirming sends payments: [] (TRACKED, advance of 0) and opens /dashboard/ventas/historial?venta=<id> with «Cobrar y entregar» in view (1440 px panel, 375 px sheet); charged and delivered there");
 
     assert.deepEqual(unknown, [], "every request was expected");
     assert.ok(mutations.filter(m => m.path.startsWith("/api/sales/")).every(m => m.body.operationId && m.body.requestId), "money actions carry operationId and requestId");
