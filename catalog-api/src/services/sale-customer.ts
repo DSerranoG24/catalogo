@@ -24,7 +24,7 @@ export async function findActiveSaleCustomer(tx: Prisma.TransactionClient, userI
   return customer;
 }
 
-async function captureCustomer(tx: Prisma.TransactionClient, userId: string, customerId: string) {
+export async function captureCustomer(tx: Prisma.TransactionClient, userId: string, customerId: string) {
   const customer = await findActiveSaleCustomer(tx, userId, customerId);
   return { customerId: customer.id, customerNameSnapshot: customer.fullName, customerPhoneSnapshot: customer.phone,
     customerEmailSnapshot: customer.email, customerName: customer.fullName, customerPhone: customer.phone };

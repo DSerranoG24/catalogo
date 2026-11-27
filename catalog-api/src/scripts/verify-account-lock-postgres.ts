@@ -173,7 +173,8 @@ async function closureVsMoney(db: Db) {
     const category = await db.expenseCategory.create({ data: { ownerId, name: "Varios", normalizedKey: "varios" } });
     const created = await service.create(ownerId, keys()) as { id: string; version: number };
     const draft = await service.updateDraft(ownerId, created.id, { operationId: randomUUID(), expectedVersion: created.version, lines: [{ inventoryItemId: itemId, quantity: 1, unitDiscount: "0" }] }) as { version: number };
-    const closure = requestAccountClosure(ownerId, {}, db, noReauth);
+    // The owner confirmed the preview (F2a-2b): this pair is about locks, and a sale may stay CONFIRMED.
+    const closure = requestAccountClosure(ownerId, { confirmOpenBalances: true }, db, noReauth);
     if (round % 2 === 1) await sleep(40); // odd rounds: closure holds the account lock before the others arrive
     const settled = await Promise.allSettled([
       closure,

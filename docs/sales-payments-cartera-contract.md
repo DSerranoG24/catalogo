@@ -1,6 +1,6 @@
 # Contrato de Pagos de la venta (F2a) y Cartera por cobrar (F2)
 
-**Estado:** aprobado por el dueño el 26/11/2026. Incluye sus decisiones ([sección 14](#14-decisiones-del-dueño)) y las correcciones del planificador A a E ([sección 15](#15-correcciones-del-planificador)), que prevalecen sobre cualquier texto anterior. El esquema de F2a-1 está implementado y ensayado en local, **sin aplicar en producción** ([sección 16](#16-esquema-f2a-1-implementado)). Este documento no autoriza despliegues.
+**Estado:** aprobado por el dueño el 26/11/2026. F2a-1 (esquema), F2a-2a (bloqueo único) y F2a-2b (API de pagos, [sección 17](#17-api-f2a-2b-implementada)) están implementados. Incluye sus decisiones ([sección 14](#14-decisiones-del-dueño)) y las correcciones del planificador A a E ([sección 15](#15-correcciones-del-planificador)), que prevalecen sobre cualquier texto anterior. El esquema de F2a-1 está implementado y ensayado en local, **sin aplicar en producción** ([sección 16](#16-esquema-f2a-1-implementado)). Este documento no autoriza despliegues.
 
 Se apoya en el código desplegado de Ventas ([contrato v2.1](sales-contract.md)), Clientes ([historial](customer-sales-history.md)), Inicio ([resumen](dashboard-summary.md)) y el cierre de cuenta (`catalog-api/src/services/account-closure.service.ts`). Sigue el formato de [Gastos F1b](expenses-f1b-contract.md). Si el código y este documento chocan, manda el código: los choques encontrados y cómo se resolvieron están en la [sección 13](#13-choques-con-el-código-y-cómo-se-resuelven).
 
@@ -406,7 +406,7 @@ Las lecturas (`GET`) no escriben y se calculan en una transacción `READ ONLY`.
 | --- | --- | --- |
 | **F2a-1 Esquema** (hecho, [sección 16](#16-esquema-f2a-1-implementado)) | Enums, columnas de `"Sale"` con `LEGACY` por defecto, `UNIQUE ("id","userId")`, `sale_payment_entries`, `customer_credit_entries`, `sale_money_operations`, `receivable_settings`, CHECK, FKs compuestas, índices y triggers. Consulta previa, ensayo y [runbook](despliegue-f2a-1.md). | **Sí** |
 | **F2a-2a Bloqueo único** (hecho, [15.A](#15-correcciones-del-planificador)) | `lockAccountForMoney` en ventas, conversión, gastos e inventario y `accountClosureMoneyLock` en el cierre; sustituye a `expenses-v1`; ensayo de concurrencia `test:account-lock-postgres`. Sin cambios visibles. | No |
-| **F2a-2b API de pagos** | Pagos en `confirm`, `deliver` y la conversión (D); anticipos; vincular o cambiar el cliente en `CONFIRMED` y en la entrega (B); anulación; excedente en `cancel` y `returns` con «Devolver ahora» o por devolver; saldo a favor como medio y «Devolver dinero»; plazo y ajustes; bloque `payments` en las lecturas (toda operación nueva usa el bloqueo único de F2a-2a); vista previa y confirmación del cierre (C) con saldos a favor, por devolver y ventas sin entregar. **El fiado queda apagado** (`CREDIT_NOT_ENABLED`): sin abonos, una deuda no se podría cobrar. | No |
+| **F2a-2b API de pagos** (hecho, [sección 17](#17-api-f2a-2b-implementada)) | Pagos en `confirm`, `deliver` y la conversión (D); anticipos; vincular o cambiar el cliente en `CONFIRMED` y en la entrega (B); anulación; excedente en `cancel` y `returns` con «Devolver ahora» o por devolver; saldo a favor como medio y «Devolver dinero»; plazo y ajustes; bloque `payments` en las lecturas (toda operación nueva usa el bloqueo único de F2a-2a); vista previa y confirmación del cierre (C) con saldos a favor, por devolver y ventas sin entregar. **El fiado queda apagado** (`CREDIT_NOT_ENABLED`): sin abonos, una deuda no se podría cobrar. | No |
 | **F2a-3 Interfaz de cobro** | «Cómo pagó» en Vender, anticipo, cambio de cliente, cobro y cliente al entregar, «Devolver ahora», pagos en el detalle, anular, «Devolver dinero», aviso de por devolver en Inicio y diálogo de cierre. | No |
 | **F2a-4 Pruebas y despliegue** | Ensayos PostgreSQL y de navegador, runbook de F2a-2/3 y `estado.md`. | Requiere F2a-1 aplicada |
 | **F2-1 Esquema de cartera** | `customer_receipts`; valor `RECEIPT_ALLOCATION` y `receiptId`; `customer_opening_debts`, con `saleId` nulo y `openingDebtId` en el libro (CHECK de un documento); `receivable_due_date_changes`; `customers."creditLimit"`; invariantes nuevas en los triggers diferidos. | **Sí** |
@@ -517,3 +517,75 @@ Migración `20261126100000_sale_payments_ledger` (en `catalog-api/prisma/migrati
 - Nueva columna `position` para la idempotencia en base de datos.
 - `customer_receipts` sin columnas de anulación: solo inserción.
 - Las comprobaciones diferidas confían en el bloqueo único de la cuenta (corrección A) para la concurrencia, como en F1b: dos transacciones simultáneas sin ese bloqueo podrían pasar cada una su comprobación.
+
+## 17. API F2a-2b implementada
+
+Implementada el 26/11/2026 sobre el esquema de F2a-1, **sin cambios de esquema ni migraciones**. Código:
+- `catalog-api/src/services/sale-payment.ts`: cálculos, libro de movimientos, liquidación del excedente, anulaciones y bloque `payments`;
+- `sale-money.service.ts`: operaciones de dinero que no son una transición;
+- `sale.service.ts`: confirmar, entregar, cancelar, devolver y convertir;
+- `account-closure.service.ts`: vista previa y confirmación.
+
+Ensayo: `npm.cmd run test:sale-payments-api-postgres`.
+
+### Rutas
+
+| Ruta | Cambio |
+| --- | --- |
+| `POST /api/sales/:id/confirm` | `payments[0..10]` y `customerCreditAmount` opcionales. **Si llega alguno de los dos (también `payments: []`), la venta pasa a `TRACKED`**; si no, sigue el flujo `LEGACY` de siempre, con las mismas respuestas y errores. |
+| `POST /api/sales/:id/deliver` | Los mismos campos. Una venta `TRACKED` solo se entrega pagada (`SALE_BALANCE_DUE`); no se fija vencimiento. |
+| `POST /api/sales/:id/cancel`, `…/returns` | `refundNow?` (`{method, methodNote?, reference?}`), solo sin cliente. En `TRACKED` liquidan el excedente: con cliente, a saldo a favor; sin cliente, «por devolver» o devuelto en el acto. |
+| `POST /api/orders/:orderId/convert-to-sale` | `payments` y `customerCreditAmount` en modo `CONFIRMED`/`DELIVERED` (corrección D); un borrador no los admite (400). |
+| `GET /api/sales`, `GET /api/sales/:id` | Bloque `payments`. Con `{ mode: "LEGACY" }` en ventas antiguas. En `TRACKED`: `{ mode, creditSalesEnabled, total, returnedValue, effectiveTotal, paid, balance, refundDue, stage }`. El detalle añade `entries` (con `change` y `voided`) y `customerCredit`. |
+| `POST /api/sales/:id/payments` | **Nueva.** Anticipo en `CONFIRMED`. |
+| `POST /api/sales/:id/payments/:entryId/void` | **Nueva.** Anula un `PAYMENT`, `CREDIT_USE` o `SALE_REFUND` con motivo (sección 5.5). |
+| `POST /api/sales/:id/customer` | **Nueva.** Vincula o cambia el cliente de una venta `CONFIRMED` (corrección B), copiando sus datos. |
+| `POST /api/sales/:id/refunds` | **Nueva.** «Devolver dinero» de una venta sin cliente con dinero por devolver. |
+| `GET /api/customers/:id/credit` | **Nueva.** Saldo a favor y sus movimientos. |
+| `POST /api/customers/:id/credit/refunds`, `…/:entryId/void` | **Nuevas.** «Devolver dinero» del saldo a favor y su anulación. |
+| `GET /api/auth/close/preview` | **Nueva** (corrección C). |
+| `POST /api/auth/close` | `confirmOpenBalances?`; sin él y con algo abierto, `409 ACCOUNT_CLOSURE_REQUIRES_CONFIRMATION` con `preview`. |
+
+Las operaciones nuevas responden `{ result: { result, idempotent } }` y guardan su recibo en `sale_money_operations`. Las transiciones siguen con el recibo de `"SaleOperation"`.
+
+### Errores
+
+- **400** `INVALID_PAYMENT_INPUT`: Zod en los campos de pago y en las rutas nuevas, y `refundNow` con cliente. El resto de Zod de Ventas sigue en `INVALID_SALE_INPUT`.
+- **404** `PAYMENT_NOT_FOUND`, `CREDIT_ENTRY_NOT_FOUND`, `NOT_FOUND`, `CUSTOMER_NOT_FOUND`.
+- **409**:
+  - `LEGACY_SALE_PAYMENTS_UNSUPPORTED`, `INVALID_PAYMENT_STATE`;
+  - `PAYMENT_EXCEEDS_BALANCE`, `SALE_BALANCE_DUE`;
+  - `CUSTOMER_REQUIRED_FOR_CREDIT`, `CREDIT_INSUFFICIENT`, `CREDIT_ALREADY_USED`;
+  - `PAYMENT_ALREADY_REFUNDED`, `PAYMENT_ALREADY_VOIDED`, `PAYMENT_NOT_VOIDABLE`;
+  - `REFUND_EXCEEDS_DUE`, `REFUND_REQUIRES_NO_CUSTOMER`;
+  - `CUSTOMER_CHANGE_BLOCKED`;
+  - `ACCOUNT_CLOSURE_REQUIRES_CONFIRMATION`;
+  - los de siempre: `VERSION_CONFLICT`, `INVALID_TRANSITION`, `IDEMPOTENCY_CONFLICT`.
+
+  Los códigos de error de Ventas que ya existían no cambian.
+
+### Interpretaciones del implementador
+
+1. **`TRACKED` solo si la petición trae pagos.** Así la interfaz publicada hoy, que no los envía, sigue vendiendo como antes hasta F2a-3. Cuando F2a-3 esté publicada y envíe siempre `payments`, se podrá hacer obligatorio en una fase posterior.
+2. **Fiado apagado:** constante `CREDIT_SALES_ENABLED = false` en `sale-payment.ts`, el único punto que se cambia en F2-2. Mientras esté apagada:
+   - no se fijan `paymentTermDays` ni `paymentDueDate`;
+   - no se vincula el cliente en la entrega (decisión 1);
+   - no existen `PATCH /sales/:id/payment-terms` ni `GET/PUT /receivables/settings`.
+
+   Todo eso queda para F2, porque sin fiado no tiene efecto.
+3. **El motivo es obligatorio** en «Devolver dinero» (de la venta y del saldo a favor) y en toda anulación.
+4. **Anular un pago cuyo dinero ya pasó a saldo a favor:**
+   - se revierten primero los excedentes enteros, empezando por el más reciente;
+   - si se revirtió de más, se vuelve a pasar la diferencia;
+   - si el saldo del cliente quedaría negativo: `CREDIT_ALREADY_USED`;
+   - sin cliente, con el dinero ya devuelto: `PAYMENT_ALREADY_REFUNDED` (primero se anula la devolución).
+5. **Cliente de la venta:**
+   - se puede cambiar también en ventas `LEGACY` confirmadas (no es un pago);
+   - el cambio exige un `customerId`: no se desvincula un cliente.
+6. **Vista previa del cierre:** es una transacción `READ ONLY`, así que comprueba la cuenta abierta con una lectura simple y no con `FOR SHARE`. `requiresConfirmation` se activa con ventas `CONFIRMED` (también las `LEGACY`), lo pendiente o adeudado, el saldo a favor o el dinero por devolver.
+
+### Riesgo de despliegue
+
+- La API de F2a-2b necesita F2a-1 aplicada (lee las tablas y columnas nuevas). Orden: migración F2a-1 → API → frontend F2a-3.
+- **Cambio para la interfaz actual:** cerrar una cuenta con ventas confirmadas sin entregar, o con saldos a favor, ahora responde 409 hasta que la interfaz envíe `confirmOpenBalances` (F2a-3). La pantalla actual muestra el mensaje, pero no puede confirmar. Antes, esas cuentas se cerraban sin aviso.
+- El resto de la interfaz actual sigue igual: crea ventas `LEGACY` y las lecturas solo añaden el campo `payments`, que el validador del frontend ignora.

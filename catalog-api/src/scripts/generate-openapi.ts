@@ -8,7 +8,9 @@ import { createProductSchema, updateProductSchema } from "../schemas/product.sch
 import { createPublicOrderSchema, updateOrderSchema } from "../schemas/order.schema";
 import { createProductReviewSchema, moderateProductReviewSchema } from "../schemas/product-review.schema";
 import { createCustomerSchema, updateCustomerSchema, customerListSchema } from "../schemas/customer.schema";
-import { createSaleSchema, updateDraftSaleSchema, convertOrderToSaleSchema } from "../schemas/sales.schema";
+import { createSaleSchema, updateDraftSaleSchema, convertOrderToSaleSchema, confirmSaleSchema, deliverSaleSchema, cancelSaleSchema, returnSaleSchema, salePaymentsSchema,
+  voidSalePaymentSchema, saleCustomerLinkSchema, saleRefundSchema, creditRefundSchema, creditRefundVoidSchema } from "../schemas/sales.schema";
+import { accountClosureSchema } from "../schemas/account-closure.schema";
 import { orderCustomerPreviewSchema, confirmOrderCustomerSchema, orderCustomerMatchesSchema } from "../schemas/order-customer.schema";
 import { customerSalesQuerySchema } from "../schemas/customer-sales.schema";
 import { dashboardQuerySchema } from "../services/dashboard-summary";
@@ -48,6 +50,17 @@ const schemas = {
   CreateSale: createSaleSchema,
   UpdateDraftSale: updateDraftSaleSchema,
   ConvertOrderToSale: convertOrderToSaleSchema,
+  ConfirmSale: confirmSaleSchema,
+  DeliverSale: deliverSaleSchema,
+  CancelSale: cancelSaleSchema,
+  ReturnSale: returnSaleSchema,
+  SalePayments: salePaymentsSchema,
+  VoidSalePayment: voidSalePaymentSchema,
+  SaleCustomerLink: saleCustomerLinkSchema,
+  SaleRefund: saleRefundSchema,
+  CreditRefund: creditRefundSchema,
+  CreditRefundVoid: creditRefundVoidSchema,
+  AccountClosure: accountClosureSchema,
   OrderCustomerPreview: orderCustomerPreviewSchema,
   ConfirmOrderCustomer: confirmOrderCustomerSchema,
   OrderCustomerMatches: orderCustomerMatchesSchema,
@@ -65,6 +78,11 @@ const schemas = {
 } satisfies Record<string, z.ZodType>;
 
 const ref = (name: keyof typeof schemas) => ({ $ref: `#/components/schemas/${name}` });
+const PAYMENT_ERRORS = "Pagos: método CASH, NEQUI, DAVIPLATA, BANK_TRANSFER, CARD u OTHER (con nota); cashReceived solo en CASH, informativo (el cambio se muestra, no se guarda). Importes COP enteros como cadenas.";
+const entryParameter = { name: "entryId", in: "path", required: true, schema: { type: "string", format: "uuid" } };
+const moneyResponses = { "200": { description: "{result:{result,idempotent}}; result es la venta con payments (o el saldo del cliente)" }, "400": { description: "INVALID_PAYMENT_INPUT" }, "401": { description: "Sesión requerida" },
+  "404": { description: "NOT_FOUND, PAYMENT_NOT_FOUND, CREDIT_ENTRY_NOT_FOUND o CUSTOMER_NOT_FOUND" },
+  "409": { description: "VERSION_CONFLICT, IDEMPOTENCY_CONFLICT, INVALID_PAYMENT_STATE, INVALID_TRANSITION, LEGACY_SALE_PAYMENTS_UNSUPPORTED, PAYMENT_EXCEEDS_BALANCE, CUSTOMER_REQUIRED_FOR_CREDIT, CREDIT_INSUFFICIENT, CREDIT_ALREADY_USED, PAYMENT_ALREADY_REFUNDED, PAYMENT_ALREADY_VOIDED, PAYMENT_NOT_VOIDABLE, REFUND_EXCEEDS_DUE, REFUND_REQUIRES_NO_CUSTOMER, CUSTOMER_CHANGE_BLOCKED" } };
 const jsonBody = (name: keyof typeof schemas) => ({
   required: true,
   content: { "application/json": { schema: ref(name) } },
@@ -128,12 +146,74 @@ const paths = {
   "/api/orders/{orderId}/convert-to-sale": {
     post: operation("Convertir pedido propio conservando snapshots del comprador del pedido", {
       security: secured, parameters: [{ $ref: "#/components/parameters/orderId" }], requestBody: jsonBody("ConvertOrderToSale"),
-      description: "Los snapshots proceden exclusivamente del pedido. customerId opcional enlaza un cliente activo propio sin sustituir los snapshots ni crear clientes. Conserva precios, stock e idempotencia del flujo anterior.",
+      description: "Los snapshots proceden exclusivamente del pedido. customerId opcional enlaza un cliente activo propio sin sustituir los snapshots ni crear clientes. Conserva precios, stock e idempotencia del flujo anterior. En CONFIRMED/DELIVERED acepta payments y customerCreditAmount como confirmar (TRACKED); DELIVERED exige pagar todo (SALE_BALANCE_DUE). Un borrador no admite pagos.",
       responses: { "200": { description: "{success, sale, idempotent}" }, "400": { description: "Conversión inválida o producto no vinculado" }, "401": { description: "Sesión requerida" }, "404": { description: "ORDER_NOT_FOUND o CUSTOMER_NOT_FOUND" }, "409": { description: "CUSTOMER_ARCHIVED, ORDER_BUYER_PHONE_TOO_LONG o conflictos existentes de stock, estado, precio o idempotencia" }, "500": { description: "CONVERSION_FAILED" } },
     }),
   },
+  // ---- Payments of a sale (F2a-2b, docs/sales-payments-cartera-contract.md section 8) ----
+  "/api/sales/{id}/confirm": {
+    post: operation("Confirmar un borrador; con payments o customerCreditAmount la venta registra sus pagos (TRACKED)", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("ConfirmSale"),
+      description: `Sin payments ni customerCreditAmount: flujo LEGACY de siempre, mismas respuestas y errores. Con ellos (payments: [] incluido): TRACKED; los pagos nunca superan el total. Con deliverImmediately y saldo pendiente: SALE_BALANCE_DUE (fiado apagado hasta F2). ${PAYMENT_ERRORS}`,
+      responses: { "200": { description: "{result: Sale}; TRACKED incluye payments" }, "400": { description: "INVALID_SALE_INPUT o INVALID_PAYMENT_INPUT" }, "401": { description: "Sesión requerida" }, "404": { description: "NOT_FOUND" },
+        "409": { description: "VERSION_CONFLICT, STOCK_INSUFFICIENT, PRICE_CHANGED, IDEMPOTENCY_CONFLICT, PAYMENT_EXCEEDS_BALANCE, SALE_BALANCE_DUE, CUSTOMER_REQUIRED_FOR_CREDIT, CREDIT_INSUFFICIENT" } } }),
+  },
+  "/api/sales/{id}/deliver": {
+    post: operation("Entregar una venta confirmada, con pagos opcionales si es TRACKED", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("DeliverSale"),
+      description: "Una venta TRACKED solo se entrega pagada por completo (SALE_BALANCE_DUE si queda saldo; fiado apagado, sin vencimiento). Pagos en una venta LEGACY: LEGACY_SALE_PAYMENTS_UNSUPPORTED.",
+      responses: { "200": response, "400": { description: "INVALID_SALE_INPUT o INVALID_PAYMENT_INPUT" }, "401": { description: "Sesión requerida" }, "404": { description: "NOT_FOUND" },
+        "409": { description: "INVALID_TRANSITION, IDEMPOTENCY_CONFLICT, LEGACY_SALE_PAYMENTS_UNSUPPORTED, PAYMENT_EXCEEDS_BALANCE, SALE_BALANCE_DUE, CUSTOMER_REQUIRED_FOR_CREDIT, CREDIT_INSUFFICIENT" } } }),
+  },
+  "/api/sales/{id}/cancel": {
+    post: operation("Cancelar una venta confirmada; en TRACKED lo recibido pasa a saldo a favor o queda por devolver", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("CancelSale"),
+      description: "Con cliente, lo pagado neto pasa a su saldo a favor. Sin cliente queda «por devolver», o refundNow lo devuelve en la misma operación. refundNow con cliente: 400 INVALID_PAYMENT_INPUT.",
+      responses: { "200": response, "400": { description: "INVALID_SALE_INPUT o INVALID_PAYMENT_INPUT" }, "401": { description: "Sesión requerida" }, "404": { description: "NOT_FOUND" }, "409": { description: "INVALID_TRANSITION, IDEMPOTENCY_CONFLICT, LEGACY_SALE_PAYMENTS_UNSUPPORTED" } } }),
+  },
+  "/api/sales/{id}/returns": {
+    post: operation("Devolución parcial o total; en TRACKED baja el total por el valor de venta de lo devuelto", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("ReturnSale"),
+      description: "Valor devuelto = (unitPrice − unitDiscount) × receivedQuantity, revendible o dañado. Lo pagado por encima del nuevo total va al saldo a favor (con cliente) o queda por devolver (sin cliente; refundNow lo devuelve). El stock sigue igual que antes.",
+      responses: { "200": response, "400": { description: "INVALID_SALE_INPUT, INVALID_PAYMENT_INPUT o líneas inválidas" }, "401": { description: "Sesión requerida" }, "404": { description: "NOT_FOUND" }, "409": { description: "INVALID_TRANSITION, RETURN_EXCEEDS_SOLD, IDEMPOTENCY_CONFLICT, LEGACY_SALE_PAYMENTS_UNSUPPORTED" } } }),
+  },
+  "/api/sales/{id}/payments": {
+    post: operation("Anticipo: pagos y/o saldo a favor en una venta CONFIRMED TRACKED", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("SalePayments"),
+      description: `Idempotente por operationId (recibo en sale_money_operations, hash sin requestId). ${PAYMENT_ERRORS}`, responses: moneyResponses }),
+  },
+  "/api/sales/{id}/payments/{entryId}/void": {
+    post: operation("Anular un pago, un uso de saldo a favor o una devolución directa con motivo (movimiento compensatorio)", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }, entryParameter], requestBody: jsonBody("VoidSalePayment"),
+      description: "Nunca se edita ni se borra: se añade un REVERSAL. Si el dinero ya había pasado a saldo a favor, se recupera de ahí; si el cliente ya lo usó: CREDIT_ALREADY_USED.", responses: moneyResponses }),
+  },
+  "/api/sales/{id}/customer": {
+    post: operation("Vincular o cambiar el cliente de una venta CONFIRMED, copiando sus datos", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("SaleCustomerLink"),
+      description: "Tras entregar, o si la venta usa saldo a favor del cliente anterior: CUSTOMER_CHANGE_BLOCKED. Un borrador cambia su cliente con PATCH /sales/{id} (INVALID_TRANSITION).", responses: moneyResponses }),
+  },
+  "/api/sales/{id}/refunds": {
+    post: operation("Devolver dinero «por devolver» de una venta sin cliente", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("SaleRefund"),
+      description: "Con medio de pago y motivo; nunca más de lo por devolver (REFUND_EXCEEDS_DUE). Con cliente: REFUND_REQUIRES_NO_CUSTOMER (se devuelve desde su saldo a favor).", responses: moneyResponses }),
+  },
+  "/api/customers/{id}/credit": {
+    get: operation("Saldo a favor de un cliente propio y sus movimientos", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }],
+      description: "Solo lectura. {result:{customerId,balance,entries:[{id,kind,amount,saleId,method,methodNote,reference,reversesEntryId,reason,voided,createdAt}]}}. Importes como cadenas.",
+      responses: { "200": response, "401": { description: "Sesión requerida" }, "404": { description: "CUSTOMER_NOT_FOUND" } } }),
+  },
+  "/api/customers/{id}/credit/refunds": {
+    post: operation("«Devolver dinero» del saldo a favor de un cliente", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("CreditRefund"),
+      description: "Con medio de pago y motivo. El saldo nunca queda negativo (CREDIT_INSUFFICIENT). {result:{result:{customerId,entryId,balance},idempotent}}.", responses: moneyResponses }),
+  },
+  "/api/customers/{id}/credit/refunds/{entryId}/void": {
+    post: operation("Anular una devolución de dinero: el saldo vuelve a estar a favor del cliente", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }, entryParameter], requestBody: jsonBody("CreditRefundVoid"), responses: moneyResponses }),
+  },
+  "/api/auth/close/preview": {
+    get: operation("Vista previa del cierre de cuenta: lo que queda abierto", { security: secured,
+      description: "Solo lectura. {success,preview:{unresolvedOrders,undeliveredSales,pendingOrderBalance,balanceDue,customerCredit:{total,customers},refundDue:{total,sales},requiresConfirmation}}. Sin exportación hasta F5.",
+      responses: { "200": response, "401": { description: "AUTH_REQUIRED" }, "500": { description: "CLOSURE_PREVIEW_UNAVAILABLE" } } }),
+  },
+  "/api/auth/close": {
+    post: operation("Cerrar la cuenta; con algo abierto exige confirmOpenBalances", { requestBody: jsonBody("AccountClosure"), security: secured,
+      description: "Si requiresConfirmation y no llega confirmOpenBalances: true, 409 ACCOUNT_CLOSURE_REQUIRES_CONFIRMATION con la vista previa. Los pedidos sin resolver siguen bloqueando como antes.",
+      responses: { "202": { description: "{success,job}" }, "400": { description: "Confirmación o identidad inválidas" }, "403": { description: "Reautenticación fallida" }, "409": { description: "ACCOUNT_CLOSURE_REQUIRES_CONFIRMATION (con preview) o pedidos sin resolver" } } }),
+  },
   "/api/sales": {
-    get: operation("Listar las últimas 50 ventas propias con snapshots y ficha actual del cliente", { security: secured }),
+    get: operation("Listar las últimas 50 ventas propias con snapshots y ficha actual del cliente", { security: secured,
+      description: "Cada venta trae payments: {mode:LEGACY} o, en TRACKED, {mode,creditSalesEnabled,total,returnedValue,effectiveTotal,paid,balance,refundDue,stage} calculados en el servidor." }),
     post: operation("Crear borrador, opcionalmente asociado a un cliente activo propio", {
       security: secured, requestBody: jsonBody("CreateSale"),
       description: "Responde {result: Sale}; customerNameSnapshot, customerPhoneSnapshot y customerEmailSnapshot son históricos. customer contiene la ficha actual. Sin customerId los nuevos campos son null. Importe BigInt como string decimal. No se admiten snapshots desde el cliente.",
@@ -141,7 +221,8 @@ const paths = {
     }),
   },
   "/api/sales/{id}": {
-    get: operation("Consultar venta propia con snapshots y relación actual, sin sustituir los datos históricos", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }] }),
+    get: operation("Consultar venta propia con snapshots y relación actual, sin sustituir los datos históricos", { security: secured, parameters: [{ $ref: "#/components/parameters/id" }],
+      description: "payments como en el listado y, además, entries (movimientos con change = cashReceived − amount y voided) y customerCredit (saldo a favor actual del cliente vinculado, o null)." }),
     patch: operation("Editar borrador; customerId omitido conserva asociación, null desvincula y UUID asigna cliente activo propio", {
       security: secured, parameters: [{ $ref: "#/components/parameters/id" }], requestBody: jsonBody("UpdateDraftSale"),
       responses: { "200": response, "400": { description: "INVALID_SALE_INPUT o datos de líneas inválidos" }, "401": { description: "Sesión requerida" }, "404": { description: "NOT_FOUND o CUSTOMER_NOT_FOUND" }, "409": { description: "INVALID_TRANSITION, VERSION_CONFLICT, CUSTOMER_ARCHIVED o IDEMPOTENCY_CONFLICT" }, "500": { description: "SALE_OPERATION_FAILED" } },

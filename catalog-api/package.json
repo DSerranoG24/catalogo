@@ -20,6 +20,7 @@
     "test:scheduled-postgres": "node dist/scripts/verify-scheduled-postgres.js",
     "test:sale-payments-postgres": "node dist/scripts/verify-sale-payments-postgres.js",
     "test:account-lock-postgres": "node dist/scripts/verify-account-lock-postgres.js",
+    "test:sale-payments-api-postgres": "node dist/scripts/verify-sale-payments-api-postgres.js",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

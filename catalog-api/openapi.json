@@ -570,7 +570,7 @@
             }
           }
         },
-        "description": "Los snapshots proceden exclusivamente del pedido. customerId opcional enlaza un cliente activo propio sin sustituir los snapshots ni crear clientes. Conserva precios, stock e idempotencia del flujo anterior."
+        "description": "Los snapshots proceden exclusivamente del pedido. customerId opcional enlaza un cliente activo propio sin sustituir los snapshots ni crear clientes. Conserva precios, stock e idempotencia del flujo anterior. En CONFIRMED/DELIVERED acepta payments y customerCreditAmount como confirmar (TRACKED); DELIVERED exige pagar todo (SALE_BALANCE_DUE). Un borrador no admite pagos."
       }
     },
     "/api/sales": {
@@ -588,7 +588,8 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "description": "Cada venta trae payments: {mode:LEGACY} o, en TRACKED, {mode,creditSalesEnabled,total,returnedValue,effectiveTotal,paid,balance,refundDue,stage} calculados en el servidor."
       },
       "post": {
         "summary": "Crear borrador, opcionalmente asociado a un cliente activo propio",
@@ -650,7 +651,8 @@
           {
             "$ref": "#/components/parameters/id"
           }
-        ]
+        ],
+        "description": "payments como en el listado y, además, entries (movimientos con change = cashReceived − amount y voided) y customerCredit (saldo a favor actual del cliente vinculado, o null)."
       },
       "patch": {
         "summary": "Editar borrador; customerId omitido conserva asociación, null desvincula y UUID asigna cliente activo propio",
@@ -2532,6 +2534,537 @@
           }
         }
       }
+    },
+    "/api/sales/{id}/confirm": {
+      "post": {
+        "summary": "Confirmar un borrador; con payments o customerCreditAmount la venta registra sus pagos (TRACKED)",
+        "responses": {
+          "200": {
+            "description": "{result: Sale}; TRACKED incluye payments"
+          },
+          "400": {
+            "description": "INVALID_SALE_INPUT o INVALID_PAYMENT_INPUT"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "NOT_FOUND"
+          },
+          "409": {
+            "description": "VERSION_CONFLICT, STOCK_INSUFFICIENT, PRICE_CHANGED, IDEMPOTENCY_CONFLICT, PAYMENT_EXCEEDS_BALANCE, SALE_BALANCE_DUE, CUSTOMER_REQUIRED_FOR_CREDIT, CREDIT_INSUFFICIENT"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmSale"
+              }
+            }
+          }
+        },
+        "description": "Sin payments ni customerCreditAmount: flujo LEGACY de siempre, mismas respuestas y errores. Con ellos (payments: [] incluido): TRACKED; los pagos nunca superan el total. Con deliverImmediately y saldo pendiente: SALE_BALANCE_DUE (fiado apagado hasta F2). Pagos: método CASH, NEQUI, DAVIPLATA, BANK_TRANSFER, CARD u OTHER (con nota); cashReceived solo en CASH, informativo (el cambio se muestra, no se guarda). Importes COP enteros como cadenas."
+      }
+    },
+    "/api/sales/{id}/deliver": {
+      "post": {
+        "summary": "Entregar una venta confirmada, con pagos opcionales si es TRACKED",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "INVALID_SALE_INPUT o INVALID_PAYMENT_INPUT"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "NOT_FOUND"
+          },
+          "409": {
+            "description": "INVALID_TRANSITION, IDEMPOTENCY_CONFLICT, LEGACY_SALE_PAYMENTS_UNSUPPORTED, PAYMENT_EXCEEDS_BALANCE, SALE_BALANCE_DUE, CUSTOMER_REQUIRED_FOR_CREDIT, CREDIT_INSUFFICIENT"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeliverSale"
+              }
+            }
+          }
+        },
+        "description": "Una venta TRACKED solo se entrega pagada por completo (SALE_BALANCE_DUE si queda saldo; fiado apagado, sin vencimiento). Pagos en una venta LEGACY: LEGACY_SALE_PAYMENTS_UNSUPPORTED."
+      }
+    },
+    "/api/sales/{id}/cancel": {
+      "post": {
+        "summary": "Cancelar una venta confirmada; en TRACKED lo recibido pasa a saldo a favor o queda por devolver",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "INVALID_SALE_INPUT o INVALID_PAYMENT_INPUT"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "NOT_FOUND"
+          },
+          "409": {
+            "description": "INVALID_TRANSITION, IDEMPOTENCY_CONFLICT, LEGACY_SALE_PAYMENTS_UNSUPPORTED"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelSale"
+              }
+            }
+          }
+        },
+        "description": "Con cliente, lo pagado neto pasa a su saldo a favor. Sin cliente queda «por devolver», o refundNow lo devuelve en la misma operación. refundNow con cliente: 400 INVALID_PAYMENT_INPUT."
+      }
+    },
+    "/api/sales/{id}/returns": {
+      "post": {
+        "summary": "Devolución parcial o total; en TRACKED baja el total por el valor de venta de lo devuelto",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "400": {
+            "description": "INVALID_SALE_INPUT, INVALID_PAYMENT_INPUT o líneas inválidas"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "NOT_FOUND"
+          },
+          "409": {
+            "description": "INVALID_TRANSITION, RETURN_EXCEEDS_SOLD, IDEMPOTENCY_CONFLICT, LEGACY_SALE_PAYMENTS_UNSUPPORTED"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnSale"
+              }
+            }
+          }
+        },
+        "description": "Valor devuelto = (unitPrice − unitDiscount) × receivedQuantity, revendible o dañado. Lo pagado por encima del nuevo total va al saldo a favor (con cliente) o queda por devolver (sin cliente; refundNow lo devuelve). El stock sigue igual que antes."
+      }
+    },
+    "/api/sales/{id}/payments": {
+      "post": {
+        "summary": "Anticipo: pagos y/o saldo a favor en una venta CONFIRMED TRACKED",
+        "responses": {
+          "200": {
+            "description": "{result:{result,idempotent}}; result es la venta con payments (o el saldo del cliente)"
+          },
+          "400": {
+            "description": "INVALID_PAYMENT_INPUT"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "NOT_FOUND, PAYMENT_NOT_FOUND, CREDIT_ENTRY_NOT_FOUND o CUSTOMER_NOT_FOUND"
+          },
+          "409": {
+            "description": "VERSION_CONFLICT, IDEMPOTENCY_CONFLICT, INVALID_PAYMENT_STATE, INVALID_TRANSITION, LEGACY_SALE_PAYMENTS_UNSUPPORTED, PAYMENT_EXCEEDS_BALANCE, CUSTOMER_REQUIRED_FOR_CREDIT, CREDIT_INSUFFICIENT, CREDIT_ALREADY_USED, PAYMENT_ALREADY_REFUNDED, PAYMENT_ALREADY_VOIDED, PAYMENT_NOT_VOIDABLE, REFUND_EXCEEDS_DUE, REFUND_REQUIRES_NO_CUSTOMER, CUSTOMER_CHANGE_BLOCKED"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SalePayments"
+              }
+            }
+          }
+        },
+        "description": "Idempotente por operationId (recibo en sale_money_operations, hash sin requestId). Pagos: método CASH, NEQUI, DAVIPLATA, BANK_TRANSFER, CARD u OTHER (con nota); cashReceived solo en CASH, informativo (el cambio se muestra, no se guarda). Importes COP enteros como cadenas."
+      }
+    },
+    "/api/sales/{id}/payments/{entryId}/void": {
+      "post": {
+        "summary": "Anular un pago, un uso de saldo a favor o una devolución directa con motivo (movimiento compensatorio)",
+        "responses": {
+          "200": {
+            "description": "{result:{result,idempotent}}; result es la venta con payments (o el saldo del cliente)"
+          },
+          "400": {
+            "description": "INVALID_PAYMENT_INPUT"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "NOT_FOUND, PAYMENT_NOT_FOUND, CREDIT_ENTRY_NOT_FOUND o CUSTOMER_NOT_FOUND"
+          },
+          "409": {
+            "description": "VERSION_CONFLICT, IDEMPOTENCY_CONFLICT, INVALID_PAYMENT_STATE, INVALID_TRANSITION, LEGACY_SALE_PAYMENTS_UNSUPPORTED, PAYMENT_EXCEEDS_BALANCE, CUSTOMER_REQUIRED_FOR_CREDIT, CREDIT_INSUFFICIENT, CREDIT_ALREADY_USED, PAYMENT_ALREADY_REFUNDED, PAYMENT_ALREADY_VOIDED, PAYMENT_NOT_VOIDABLE, REFUND_EXCEEDS_DUE, REFUND_REQUIRES_NO_CUSTOMER, CUSTOMER_CHANGE_BLOCKED"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          },
+          {
+            "name": "entryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoidSalePayment"
+              }
+            }
+          }
+        },
+        "description": "Nunca se edita ni se borra: se añade un REVERSAL. Si el dinero ya había pasado a saldo a favor, se recupera de ahí; si el cliente ya lo usó: CREDIT_ALREADY_USED."
+      }
+    },
+    "/api/sales/{id}/customer": {
+      "post": {
+        "summary": "Vincular o cambiar el cliente de una venta CONFIRMED, copiando sus datos",
+        "responses": {
+          "200": {
+            "description": "{result:{result,idempotent}}; result es la venta con payments (o el saldo del cliente)"
+          },
+          "400": {
+            "description": "INVALID_PAYMENT_INPUT"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "NOT_FOUND, PAYMENT_NOT_FOUND, CREDIT_ENTRY_NOT_FOUND o CUSTOMER_NOT_FOUND"
+          },
+          "409": {
+            "description": "VERSION_CONFLICT, IDEMPOTENCY_CONFLICT, INVALID_PAYMENT_STATE, INVALID_TRANSITION, LEGACY_SALE_PAYMENTS_UNSUPPORTED, PAYMENT_EXCEEDS_BALANCE, CUSTOMER_REQUIRED_FOR_CREDIT, CREDIT_INSUFFICIENT, CREDIT_ALREADY_USED, PAYMENT_ALREADY_REFUNDED, PAYMENT_ALREADY_VOIDED, PAYMENT_NOT_VOIDABLE, REFUND_EXCEEDS_DUE, REFUND_REQUIRES_NO_CUSTOMER, CUSTOMER_CHANGE_BLOCKED"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaleCustomerLink"
+              }
+            }
+          }
+        },
+        "description": "Tras entregar, o si la venta usa saldo a favor del cliente anterior: CUSTOMER_CHANGE_BLOCKED. Un borrador cambia su cliente con PATCH /sales/{id} (INVALID_TRANSITION)."
+      }
+    },
+    "/api/sales/{id}/refunds": {
+      "post": {
+        "summary": "Devolver dinero «por devolver» de una venta sin cliente",
+        "responses": {
+          "200": {
+            "description": "{result:{result,idempotent}}; result es la venta con payments (o el saldo del cliente)"
+          },
+          "400": {
+            "description": "INVALID_PAYMENT_INPUT"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "NOT_FOUND, PAYMENT_NOT_FOUND, CREDIT_ENTRY_NOT_FOUND o CUSTOMER_NOT_FOUND"
+          },
+          "409": {
+            "description": "VERSION_CONFLICT, IDEMPOTENCY_CONFLICT, INVALID_PAYMENT_STATE, INVALID_TRANSITION, LEGACY_SALE_PAYMENTS_UNSUPPORTED, PAYMENT_EXCEEDS_BALANCE, CUSTOMER_REQUIRED_FOR_CREDIT, CREDIT_INSUFFICIENT, CREDIT_ALREADY_USED, PAYMENT_ALREADY_REFUNDED, PAYMENT_ALREADY_VOIDED, PAYMENT_NOT_VOIDABLE, REFUND_EXCEEDS_DUE, REFUND_REQUIRES_NO_CUSTOMER, CUSTOMER_CHANGE_BLOCKED"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaleRefund"
+              }
+            }
+          }
+        },
+        "description": "Con medio de pago y motivo; nunca más de lo por devolver (REFUND_EXCEEDS_DUE). Con cliente: REFUND_REQUIRES_NO_CUSTOMER (se devuelve desde su saldo a favor)."
+      }
+    },
+    "/api/customers/{id}/credit": {
+      "get": {
+        "summary": "Saldo a favor de un cliente propio y sus movimientos",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "CUSTOMER_NOT_FOUND"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "description": "Solo lectura. {result:{customerId,balance,entries:[{id,kind,amount,saleId,method,methodNote,reference,reversesEntryId,reason,voided,createdAt}]}}. Importes como cadenas."
+      }
+    },
+    "/api/customers/{id}/credit/refunds": {
+      "post": {
+        "summary": "«Devolver dinero» del saldo a favor de un cliente",
+        "responses": {
+          "200": {
+            "description": "{result:{result,idempotent}}; result es la venta con payments (o el saldo del cliente)"
+          },
+          "400": {
+            "description": "INVALID_PAYMENT_INPUT"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "NOT_FOUND, PAYMENT_NOT_FOUND, CREDIT_ENTRY_NOT_FOUND o CUSTOMER_NOT_FOUND"
+          },
+          "409": {
+            "description": "VERSION_CONFLICT, IDEMPOTENCY_CONFLICT, INVALID_PAYMENT_STATE, INVALID_TRANSITION, LEGACY_SALE_PAYMENTS_UNSUPPORTED, PAYMENT_EXCEEDS_BALANCE, CUSTOMER_REQUIRED_FOR_CREDIT, CREDIT_INSUFFICIENT, CREDIT_ALREADY_USED, PAYMENT_ALREADY_REFUNDED, PAYMENT_ALREADY_VOIDED, PAYMENT_NOT_VOIDABLE, REFUND_EXCEEDS_DUE, REFUND_REQUIRES_NO_CUSTOMER, CUSTOMER_CHANGE_BLOCKED"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditRefund"
+              }
+            }
+          }
+        },
+        "description": "Con medio de pago y motivo. El saldo nunca queda negativo (CREDIT_INSUFFICIENT). {result:{result:{customerId,entryId,balance},idempotent}}."
+      }
+    },
+    "/api/customers/{id}/credit/refunds/{entryId}/void": {
+      "post": {
+        "summary": "Anular una devolución de dinero: el saldo vuelve a estar a favor del cliente",
+        "responses": {
+          "200": {
+            "description": "{result:{result,idempotent}}; result es la venta con payments (o el saldo del cliente)"
+          },
+          "400": {
+            "description": "INVALID_PAYMENT_INPUT"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "404": {
+            "description": "NOT_FOUND, PAYMENT_NOT_FOUND, CREDIT_ENTRY_NOT_FOUND o CUSTOMER_NOT_FOUND"
+          },
+          "409": {
+            "description": "VERSION_CONFLICT, IDEMPOTENCY_CONFLICT, INVALID_PAYMENT_STATE, INVALID_TRANSITION, LEGACY_SALE_PAYMENTS_UNSUPPORTED, PAYMENT_EXCEEDS_BALANCE, CUSTOMER_REQUIRED_FOR_CREDIT, CREDIT_INSUFFICIENT, CREDIT_ALREADY_USED, PAYMENT_ALREADY_REFUNDED, PAYMENT_ALREADY_VOIDED, PAYMENT_NOT_VOIDABLE, REFUND_EXCEEDS_DUE, REFUND_REQUIRES_NO_CUSTOMER, CUSTOMER_CHANGE_BLOCKED"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          },
+          {
+            "name": "entryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditRefundVoid"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/close/preview": {
+      "get": {
+        "summary": "Vista previa del cierre de cuenta: lo que queda abierto",
+        "responses": {
+          "200": {
+            "description": "Respuesta de la API"
+          },
+          "401": {
+            "description": "AUTH_REQUIRED"
+          },
+          "500": {
+            "description": "CLOSURE_PREVIEW_UNAVAILABLE"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Solo lectura. {success,preview:{unresolvedOrders,undeliveredSales,pendingOrderBalance,balanceDue,customerCredit:{total,customers},refundDue:{total,sales},requiresConfirmation}}. Sin exportación hasta F5."
+      }
+    },
+    "/api/auth/close": {
+      "post": {
+        "summary": "Cerrar la cuenta; con algo abierto exige confirmOpenBalances",
+        "responses": {
+          "202": {
+            "description": "{success,job}"
+          },
+          "400": {
+            "description": "Confirmación o identidad inválidas"
+          },
+          "403": {
+            "description": "Reautenticación fallida"
+          },
+          "409": {
+            "description": "ACCOUNT_CLOSURE_REQUIRES_CONFIRMATION (con preview) o pedidos sin resolver"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountClosure"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Si requiresConfirmation y no llega confirmOpenBalances: true, 409 ACCOUNT_CLOSURE_REQUIRES_CONFIRMATION con la vista previa. Los pedidos sin resolver siguen bloqueando como antes."
+      }
     }
   },
   "components": {
@@ -3560,6 +4093,50 @@
           "acceptPriceDifference": {
             "default": false,
             "type": "boolean"
+          },
+          "payments": {
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "type": "string",
+                  "enum": [
+                    "CASH",
+                    "NEQUI",
+                    "DAVIPLATA",
+                    "BANK_TRANSFER",
+                    "CARD",
+                    "OTHER"
+                  ]
+                },
+                "amount": {
+                  "type": "string"
+                },
+                "methodNote": {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 80
+                },
+                "reference": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "cashReceived": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "method",
+                "amount"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "customerCreditAmount": {
+            "type": "string"
           }
         },
         "required": [
@@ -4637,6 +5214,606 @@
           "operationId",
           "requestId",
           "expectedVersion"
+        ],
+        "additionalProperties": false
+      },
+      "ConfirmSale": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "deliverImmediately": {
+            "default": false,
+            "type": "boolean"
+          },
+          "payments": {
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "type": "string",
+                  "enum": [
+                    "CASH",
+                    "NEQUI",
+                    "DAVIPLATA",
+                    "BANK_TRANSFER",
+                    "CARD",
+                    "OTHER"
+                  ]
+                },
+                "amount": {
+                  "type": "string"
+                },
+                "methodNote": {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 80
+                },
+                "reference": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "cashReceived": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "method",
+                "amount"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "customerCreditAmount": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId",
+          "expectedVersion"
+        ],
+        "additionalProperties": false
+      },
+      "DeliverSale": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "payments": {
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "type": "string",
+                  "enum": [
+                    "CASH",
+                    "NEQUI",
+                    "DAVIPLATA",
+                    "BANK_TRANSFER",
+                    "CARD",
+                    "OTHER"
+                  ]
+                },
+                "amount": {
+                  "type": "string"
+                },
+                "methodNote": {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 80
+                },
+                "reference": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "cashReceived": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "method",
+                "amount"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "customerCreditAmount": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId",
+          "expectedVersion"
+        ],
+        "additionalProperties": false
+      },
+      "CancelSale": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300
+          },
+          "refundNow": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string",
+                "enum": [
+                  "CASH",
+                  "NEQUI",
+                  "DAVIPLATA",
+                  "BANK_TRANSFER",
+                  "CARD",
+                  "OTHER"
+                ]
+              },
+              "methodNote": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 80
+              },
+              "reference": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              }
+            },
+            "required": [
+              "method"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId",
+          "expectedVersion",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "ReturnSale": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300
+          },
+          "lines": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "saleLineId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "receivedQuantity": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647
+                },
+                "resellableQuantity": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "damagedQuantity": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "saleLineId",
+                "receivedQuantity",
+                "resellableQuantity",
+                "damagedQuantity"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "refundNow": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string",
+                "enum": [
+                  "CASH",
+                  "NEQUI",
+                  "DAVIPLATA",
+                  "BANK_TRANSFER",
+                  "CARD",
+                  "OTHER"
+                ]
+              },
+              "methodNote": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 80
+              },
+              "reference": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              }
+            },
+            "required": [
+              "method"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId",
+          "expectedVersion",
+          "reason",
+          "lines"
+        ],
+        "additionalProperties": false
+      },
+      "SalePayments": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "payments": {
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "type": "string",
+                  "enum": [
+                    "CASH",
+                    "NEQUI",
+                    "DAVIPLATA",
+                    "BANK_TRANSFER",
+                    "CARD",
+                    "OTHER"
+                  ]
+                },
+                "amount": {
+                  "type": "string"
+                },
+                "methodNote": {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 80
+                },
+                "reference": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "cashReceived": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "method",
+                "amount"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "customerCreditAmount": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId",
+          "expectedVersion"
+        ],
+        "additionalProperties": false
+      },
+      "VoidSalePayment": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId",
+          "expectedVersion",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "SaleCustomerLink": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "customerId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId",
+          "expectedVersion",
+          "customerId"
+        ],
+        "additionalProperties": false
+      },
+      "SaleRefund": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "amount": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "CASH",
+              "NEQUI",
+              "DAVIPLATA",
+              "BANK_TRANSFER",
+              "CARD",
+              "OTHER"
+            ]
+          },
+          "methodNote": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 80
+          },
+          "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId",
+          "expectedVersion",
+          "amount",
+          "method",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "CreditRefund": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "amount": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "CASH",
+              "NEQUI",
+              "DAVIPLATA",
+              "BANK_TRANSFER",
+              "CARD",
+              "OTHER"
+            ]
+          },
+          "methodNote": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 80
+          },
+          "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId",
+          "amount",
+          "method",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "CreditRefundVoid": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "operationId",
+          "requestId",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "AccountClosure": {
+        "type": "object",
+        "properties": {
+          "confirmation": {
+            "type": "string",
+            "const": "CERRAR CUENTA"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "idToken": {
+            "type": "string",
+            "maxLength": 10000
+          },
+          "confirmOpenBalances": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "confirmation"
         ],
         "additionalProperties": false
       }

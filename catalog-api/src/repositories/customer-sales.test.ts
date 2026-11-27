@@ -131,6 +131,8 @@ test("existing sale detail reads stored lines and snapshots without consulting c
       assert.equal(args.include?.lines, true);
       return args.where?.userId === owner && args.where.id === stored.id ? structuredClone(stored) : null;
     } };
+    // The detail reads the linked customer's credit balance (F2a-2b): a read, no movements here.
+    if (key === "customerCreditEntry") return { findMany: async () => [] };
     throw new Error(`Unexpected mutation or current product lookup: ${String(key)}`);
   } });
   const service = makeSaleService(db);

@@ -101,6 +101,8 @@ function fixture() {
         lines.push(line); return line;
       },
     };
+    // The detail reads the linked customer's credit balance (F2a-2b): a read, no movements here.
+    if (key === "customerCreditEntry") return { findMany: async () => [] };
     throw new Error(`Unexpected database delegate ${String(key)}`);
   } });
   return { database, customers, locks, service: makeSaleService(database), get sales() { return sales; }, get lines() { return lines; }, get operations() { return operations; }, failOperation() { failOperation = true; }, failLine() { failLine = true; } };

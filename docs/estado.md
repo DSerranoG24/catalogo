@@ -27,14 +27,14 @@ Rutas de la API bajo `/api`. Las tablas usan el nombre SQL real: los modelos de 
 | Conversión de pedido a venta y revisión del cliente del pedido | `"Sale".sourceOrderId`, `orders.customerId`, `order_customer_operations` | `/orders/:id/convert-to-sale`, `customer-preview`, `customer-confirm`, `customer-matches` | Panel de pedidos |
 | Gastos operativos F1a: categorías y gastos puntuales (en `main`; migración aplicada según el responsable) | `expense_categories`, `expenses`, `expense_operations`, `expense_events` y `recurring_expense_templates` | `/expense-categories` (incluye `seed`, `archive`, `reactivate`), `/expenses` (incluye `summary`, `overview`, `:id/void`) | `/dashboard/gastos` (menú «Dinero») y tarjeta en Inicio |
 | Gastos F1b: gastos fijos y pagos programados (en `main` desde `1450a71`; migración aplicada según el responsable). Cierre del 26/11/2026 sin confirmar: meses futuros con proyección, fijos terminados y cabecera | `scheduled_expense_payments`, `expenses."scheduledPaymentId"` y uso de `recurring_expense_templates` | `/expenses/scheduled` (incluye `sync`, `:id/pay`, `:id/cancel`), `/expenses/recurring` (incluye `pause`, `resume`, `end`) | Tarjetas, chip «Fijos» y tarjeta «Gastos fijos» en `/dashboard/gastos`; filas de pagos en «Requiere tu atención» de Inicio |
-| Pagos de la venta F2a-1: **solo esquema**, sin API ni interfaz (en el árbol de trabajo, sin commit; migración **no aplicada** en producción) | `sale_payment_entries`, `customer_credit_entries`, `sale_money_operations`, `receivable_settings` y `"Sale"."paymentMode"`, `paymentTermDays`, `paymentDueDate` | — | — |
+| Pagos de la venta: esquema F2a-1 (en `main`, migración **no aplicada** en producción) y API F2a-2b (sin commit), sin interfaz | `sale_payment_entries`, `customer_credit_entries`, `sale_money_operations`, `receivable_settings` y `"Sale"."paymentMode"`, `paymentTermDays`, `paymentDueDate` | `/sales/:id/payments` (y `/:entryId/void`), `/sales/:id/customer`, `/sales/:id/refunds`, `/customers/:id/credit` (y `refunds`), `/auth/close/preview`; pagos en `confirm`, `deliver`, `cancel`, `returns` y `convert-to-sale` | — (F2a-3) |
 | Compatibilidades privadas por artículo (incremento 1) | `device_brands`, `device_brand_names`, `device_models`, `device_model_names`, `compatibility_sets`, `item_compatibilities`, `compatibility_operations`, `compatibility_events` | `/device-brands`, `/device-models`, `/inventory/items/:id/compatibilities`, `compatibility-events` | Bloque «Compatibilidades» en `/dashboard/inventario` |
 
 Contratos por módulo: [inventario](inventory.md), [hoja](inventory-sheet-contract.md), [ventas](sales-contract.md), [historial de clientes](customer-sales-history.md), [compatibilidades](inventory-compatibilities-design.md), [gastos](expenses-contract.md), [pagos de la venta y cartera (F2a/F2, aprobado)](sales-payments-cartera-contract.md), [cotizaciones](quotations.md), [importación](product-import.md) y [cuentas](accounts.md).
 
 Reglas vigentes sin cambio: los pedidos del catálogo no reservan ni descuentan stock; solo confirmar una venta descuenta existencias. Los precios se calculan en el servidor. Las ventas y los pedidos conservan instantáneas.
 
-De **pagos/cartera** solo existe el esquema de F2a-1 (sin rutas ni pantallas); el contrato de F2a/F2 está aprobado desde el 26/11/2026 ([sales-payments-cartera-contract.md](sales-payments-cartera-contract.md)). No existe **servicio técnico**. De **gastos** existen F1a y F1b (gastos fijos y pagos programados) en `main`. No hay soportes (fotos, F1c), proveedores como entidad, exportación, informes ni avisos por WhatsApp (F3).
+De **pagos/cartera** existen el esquema de F2a-1 y la API de pagos de F2a-2b, sin pantallas ni fiado; el contrato de F2a/F2 está aprobado desde el 26/11/2026 ([sales-payments-cartera-contract.md](sales-payments-cartera-contract.md)). No existe **servicio técnico**. De **gastos** existen F1a y F1b (gastos fijos y pagos programados) en `main`. No hay soportes (fotos, F1c), proveedores como entidad, exportación, informes ni avisos por WhatsApp (F3).
 
 ## Migraciones
 
@@ -111,6 +111,19 @@ Bloqueo único por cuenta F2a-2a (26/11/2026, sin commit), con un clúster Postg
 - `test:inventory-postgres` falla en `BASELINE_MIGRATIONS` también sin este cambio: crea usuarios y productos con el cliente de Prisma actual sobre una cadena de migraciones parcial. Pendiente de corregir aparte, como se hizo con el de Ventas.
 - Frontend (sin cambios): lint sin errores (las 4 advertencias de siempre), `npm.cmd test` (37 grupos) y build, correctos.
 
+API de pagos F2a-2b (26/11/2026, sin commit), con un clúster PostgreSQL 17 local desechable (puerto 55496, eliminado al terminar):
+- API: `npm.cmd run build` correcto y `npm.cmd test` 394/394, con 7 pruebas nuevas en `sale-payment.test.ts`: cálculos con el ejemplo de $300.000, devolución de $150.000 y total, validación y hash. No existe script `lint`.
+- PostgreSQL: `test:sale-payments-api-postgres` (nuevo), 15 etapas en dos ejecuciones:
+  - pago mixto, anticipo y entrega, entrega con saldo rechazada sin escribir nada;
+  - cancelación con anticipo, con y sin cliente («Devolver ahora» incluido);
+  - devoluciones parciales y totales;
+  - usar y devolver saldo a favor, anular pagos;
+  - idempotencia, dos anticipos simultáneos, ventas `LEGACY` sin cambios;
+  - vincular cliente, conversión con pagos, otra cuenta;
+  - vista previa y cierre.
+- Con el código nuevo también pasaron `test:sales-postgres` (24), `test:expenses-postgres` (15), `test:scheduled-postgres`, `test:dashboard-postgres`, `test:sale-payments-postgres`, `test:inventory-batches-postgres` (10) y `test:account-lock-postgres` (0 deadlocks; el par de cierre ahora envía `confirmOpenBalances`).
+- `openapi.json`: solo las 16 rutas y 12 esquemas nuevos o cambiados; el resto del documento no se regeneró.
+
 ## Pendientes vigentes
 
 - **Ventas F0d (reglas e interfaz):** publicadas en `main` (`b177f12`) con su migración aplicada, según el responsable. No se verificó desde esta sesión.
@@ -120,7 +133,8 @@ Bloqueo único por cuenta F2a-2a (26/11/2026, sin commit), con un clúster Postg
 - **Compatibilidades:** su migración se instala sin errores dentro de la cadena completa (ensayo de ventas del 24/11/2026), pero falta probar en PostgreSQL aislado sus restricciones, triggers diferidos y concurrencia. Los incrementos 2 a 5 del diseño no están aprobados. La API todavía no devuelve el ID de la relación existente cuando detecta un duplicado.
 - **Ventas:** el listado devuelve como máximo 50 ventas, sin paginación ni filtros. No existe acción para descartar un borrador. Sigue sin retirarse la venta sintética `fb13793c` desplegada ([detalle](customer-sales-history.md)).
 - **Pagos de la venta F2a-1:** en `main` (`b2cbacf`), migración pendiente de aplicar con el [runbook](despliegue-f2a-1.md).
-- **F2a-2a, bloqueo único por cuenta:** hecho en el árbol de trabajo, sin commit. No necesita migración y es compatible con el esquema actual. Siguiente: F2a-2b (API de pagos, cliente en ventas confirmadas, vista previa del cierre).
+- **F2a-2a, bloqueo único por cuenta:** en `main` (`96dd2c7`).
+- **F2a-2b, API de pagos:** hecha, sin commit. Necesita F2a-1 aplicada. Con la interfaz actual, el cierre de cuentas con ventas sin entregar o saldos a favor pide una confirmación que la pantalla aún no envía (F2a-3). Siguiente: F2a-3 (interfaz de cobro).
 - **Posible traba de la publicación de inventario contra el cierre de cuenta** (anterior y fuera de F2a-2a): ver el [contrato de pagos, 15.A](sales-payments-cartera-contract.md#15-correcciones-del-planificador).
 - **`test:inventory-postgres`** falla en su etapa inicial por el cliente de Prisma sobre la cadena parcial (anterior a F2a-2a).
 - **Cierre de cuenta:** bloquea si hay pedidos sin resolver. Decidido (contrato de pagos, corrección C): las ventas `CONFIRMED` sin entregar, los saldos a favor y el dinero por devolver solo avisan en una vista previa y el dueño confirma. Se implementa en F2a-2.
