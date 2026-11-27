@@ -7,14 +7,14 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useSafeCommand } from "@/components/common/useSafeCommand";
 import { Sheet, AmountInput } from "@/components/expenses/Sheet";
 import { describeFailure, parseSale } from "@/lib/sales-ui.mjs";
-import { addPaymentRow, amountText, formatPesos, parseAmountText, parseCreditBalance, parsePosItems, paymentsBody, totalChange, validatePayments,
+import { addPaymentRow, amountText, applySoldLines, formatPesos, parseAmountText, parseCreditBalance, parsePosItems, payExactly, paymentsBody, totalChange, validatePayments,
   type MethodButton, type PaymentRow, type PosItem } from "@/lib/pos-ui.mjs";
 import CustomerField, { focus } from "./CustomerField";
 import PaymentBox from "./PaymentBox";
 import ProductGrid, { ProductSearch, Thumb } from "./ProductGrid";
 import { useSellDraft, type TicketLine } from "./useSellDraft";
 
-type Done = { kind: "delivered" | "confirmed"; total: string; change: bigint; paid: string | null; balance: string | null };
+type Done = { kind: "delivered" | "confirmed"; saleId: string; total: string; change: bigint; paid: string | null; balance: string | null };
 const ZERO = BigInt(0);
 const TABS = [{ href: "/dashboard/ventas", label: "Nueva venta", Icon: ShoppingCart, current: true }, { href: "/dashboard/catalogos", label: "Pedidos", Icon: Store, current: false },
   { href: "/dashboard/ventas/historial", label: "Historial", Icon: Clock, current: false }];
@@ -43,23 +43,33 @@ export default function SellPanel() {
   const rowKey = useRef(0);
 
   // Products: the first 24 matches of GET /inventory/items (name or SKU), reloaded after each sale (stock changes).
+  // Each read carries a sequence number: only the newest answer is shown, so a slow read started before a sale can
+  // never put the stock from before the sale back on the cards.
+  const itemsSeq = useRef(0), querySeq = useRef(query);
+  useEffect(() => { querySeq.current = query; }, [query]);
+  const fetchItems = useCallback(async (term: string) => {
+    const seq = ++itemsSeq.current;
+    try {
+      const found = parsePosItems(await apiRequest<unknown>(`/inventory/items?page=1&q=${encodeURIComponent(term.trim())}`));
+      if (seq === itemsSeq.current) { setItems(found); setItemsError(""); setOnline(true); }
+    } catch (cause) {
+      if (seq === itemsSeq.current) { setItemsError(cause instanceof Error ? cause.message : "No se pudieron cargar los productos."); setOnline(cause instanceof ApiError); }
+    }
+  }, []);
   useEffect(() => {
-    let active = true;
-    const timer = setTimeout(() => {
-      apiRequest<unknown>(`/inventory/items?page=1&q=${encodeURIComponent(query.trim())}`).then(parsePosItems).then(
-        found => { if (active) { setItems(found); setItemsError(""); setOnline(true); } },
-        cause => { if (active) { setItemsError(cause instanceof Error ? cause.message : "No se pudieron cargar los productos."); setOnline(cause instanceof ApiError); } });
-    }, query ? 250 : 0);
-    return () => { active = false; clearTimeout(timer); };
-  }, [query, itemsRevision]);
+    const timer = setTimeout(() => { void fetchItems(query); }, query ? 250 : 0);
+    return () => clearTimeout(timer);
+  }, [query, itemsRevision, fetchItems]);
   const reloadItems = useCallback(() => setItemsRevision(value => value + 1), []);
 
+  const todaySeq = useRef(0);
   const loadToday = useCallback(() => {
-    apiRequest<{ today?: { salesTotal?: unknown } }>("/dashboard/summary?days=7").then(
-      summary => { const total = summary.today?.salesTotal; setTodaySales(typeof total === "string" && /^-?[0-9]+$/.test(total) ? total : null); setOnline(true); },
-      cause => setOnline(cause instanceof ApiError));
+    const seq = ++todaySeq.current;
+    return apiRequest<{ today?: { salesTotal?: unknown } }>("/dashboard/summary?days=7").then(
+      summary => { const total = summary.today?.salesTotal; if (seq === todaySeq.current) { setTodaySales(typeof total === "string" && /^-?[0-9]+$/.test(total) ? total : null); setOnline(true); } },
+      cause => { if (seq === todaySeq.current) setOnline(cause instanceof ApiError); });
   }, []);
-  useEffect(() => { loadToday(); }, [loadToday]);
+  useEffect(() => { void loadToday(); }, [loadToday]);
 
   // Credit balance of the ticket's customer («Saldo a favor» only shows when there is some), kept with its customer id.
   useEffect(() => {
@@ -98,6 +108,7 @@ export default function SellPanel() {
   const addRow = (button: MethodButton) => { if (total !== null) setRows(current => addPaymentRow(current, button, total, credit, `p${++rowKey.current}`)); };
   const changeRow = (key: string, patch: Partial<PaymentRow>) => setRows(current => current.map(row => row.key === key ? { ...row, ...patch } : row));
   const removeRow = (key: string) => setRows(current => current.filter(row => row.key !== key));
+  const payTotal = () => { if (total !== null) setRows(current => payExactly(current, total)); };
 
   /** Saves the draft, then one confirm call (with payments, and delivery for «Cobrar y entregar»). */
   async function charge(deliver: boolean) {
@@ -112,15 +123,21 @@ export default function SellPanel() {
       label: deliver ? "Cobrando y entregando…" : "Confirmando venta…" }, reply => {
       const result = (reply as { result?: { payments?: { paid?: string; balance?: string } } } | null)?.result;
       const confirmed = parseSale(result);
-      setDone({ kind: deliver ? "delivered" : "confirmed", total: confirmed.total, change, paid: result?.payments?.paid ?? null, balance: result?.payments?.balance ?? null });
-      draft.reset(); setRows([]); reloadItems(); loadToday();
+      setDone({ kind: deliver ? "delivered" : "confirmed", saleId: confirmed.id, total: confirmed.total, change, paid: result?.payments?.paid ?? null, balance: result?.payments?.balance ?? null });
+      draft.reset(); setRows([]);
+      // The cards and «Ventas hoy» change now, without a reload: the confirmed lines are applied to the stock on
+      // screen at once, then the product list and the summary are read again (newest answer wins).
+      itemsSeq.current++; setItems(current => current ? applySoldLines(current, confirmed.lines) : current);
+      if (confirmed.status !== "DRAFT") setTodaySales(current => current === null ? current : (BigInt(current) + BigInt(confirmed.total)).toString());
+      todaySeq.current++;
+      void fetchItems(querySeq.current); void loadToday();
     });
   }
   async function saveDraft() {
     try { await draft.flush(); } catch { return; }
     draft.reset(); setRows([]); setMessage("Borrador guardado. Lo encuentras en Historial.");
   }
-  function startNew() { setDone(null); setMessage(""); command.clearFailure(); setSheetOpen(false); search.current?.focus(); }
+  function startNew() { setDone(null); setMessage(""); command.clearFailure(); setSheetOpen(false); search.current?.focus(); void fetchItems(querySeq.current); }
   function recover() {
     const code = command.failure?.code;
     command.clearFailure(); reloadItems();
@@ -141,7 +158,8 @@ export default function SellPanel() {
     {done ? <div className="space-y-4 rounded-3xl bg-[#ECFDF3] p-5 text-center" data-sale-done={done.kind}>
       <CircleCheck aria-hidden="true" className="mx-auto size-10 text-[#067647]" />
       <p role="status" className="text-lg font-bold text-[var(--vy-text)]">{done.kind === "delivered" ? "Venta entregada" : "Venta confirmada"} · {formatPesos(done.total)}{done.change > ZERO ? ` · Cambio ${formatPesos(done.change)}` : ""}</p>
-      {done.kind === "confirmed" && <p className="text-sm text-[var(--vy-text-muted)]">Pagado {formatPesos(done.paid ?? "0")} · Falta {formatPesos(done.balance ?? "0")} para entregar. La entregas desde Historial.</p>}
+      {done.kind === "confirmed" && <p className="text-sm text-[var(--vy-text-muted)]">Pagado {formatPesos(done.paid ?? "0")} · Falta {formatPesos(done.balance ?? "0")} para entregar. Cóbrala y entrégala desde{" "}
+        <Link href={`/dashboard/ventas/historial?venta=${done.saleId}`} className={`font-semibold text-[var(--vy-blue-600)] underline ${focus}`}>Historial</Link>.</p>}
       <button ref={newSale} type="button" onClick={startNew} className={`inline-flex min-h-12 items-center gap-2 rounded-2xl bg-[var(--vy-blue-600)] px-6 font-semibold text-white hover:bg-[var(--vy-blue-700)] ${focus}`}><Plus aria-hidden="true" className="size-5" />Nueva venta</button>
     </div> : <>
       <CustomerField idPrefix={prefix} value={customer} disabled={busy} onChange={next => { setDone(null); setRows(current => current.filter(row => row.method !== "CREDIT")); setCustomer(next); }} />
@@ -177,7 +195,7 @@ export default function SellPanel() {
         <span data-ticket-total className="text-3xl font-bold tracking-tight text-[var(--vy-blue-600)] sm:text-4xl">{total !== null ? formatPesos(total) : lines.length ? "Calculando…" : formatPesos(0)}</span>
       </div>
       {sale && synced && sale.discountTotal !== "0" && <p className="-mt-2 text-right text-sm text-[var(--vy-text-muted)]">Subtotal {formatPesos(sale.subtotal)} · Descuento {formatPesos(sale.discountTotal)}</p>}
-      {lines.length > 0 && <PaymentBox idPrefix={prefix} rows={rows} status={check?.status ?? null} credit={credit} disabled={busy || total === null} onAdd={addRow} onChange={changeRow} onRemove={removeRow} />}
+      {lines.length > 0 && <PaymentBox idPrefix={prefix} rows={rows} status={check?.status ?? null} credit={credit} disabled={busy || total === null} onAdd={addRow} onChange={changeRow} onRemove={removeRow} onPayTotal={payTotal} />}
       {check && check.errors.length > 0 && <ul role="alert" className="space-y-1 text-sm text-[#B42318]">{check.errors.map(error => <li key={error}>{error}</li>)}</ul>}
       {failure && <div role="alert" className="space-y-2 rounded-2xl border border-[#F4C7C2] bg-[#FEF3F2] p-4 text-sm text-[#7A271A]">
         <p className="font-semibold text-[#B42318]">{failure.title}</p><p>{failure.detail}</p>

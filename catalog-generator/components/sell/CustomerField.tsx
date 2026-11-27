@@ -52,7 +52,8 @@ export default function CustomerField({ idPrefix, value, onChange, disabled }: {
     <button type="button" disabled={disabled} onClick={() => onChange(null)} aria-label={`Quitar al cliente ${value.fullName}`} className={`grid size-11 shrink-0 place-items-center rounded-xl text-[var(--vy-text-muted)] hover:bg-white disabled:opacity-50 ${focus}`}><X aria-hidden="true" className="size-5" /></button>
   </div>;
 
-  return <div className="space-y-2" onKeyDown={event => { if (event.key === "Escape" && (results || creating)) { event.stopPropagation(); setResults(null); setCreating(false); } }}>
+  // The form lives in the ticket column (22–27 rem) or the mobile sheet: one field per row, never side by side.
+  return <div className="min-w-0 space-y-2" onKeyDown={event => { if (event.key === "Escape" && (results || creating)) { event.stopPropagation(); setResults(null); setCreating(false); } }}>
     <div className="flex items-center gap-2 rounded-2xl border border-[var(--vy-field-border)] bg-white pl-3 focus-within:border-[var(--vy-blue-600)] focus-within:ring-4 focus-within:ring-[#0450E5]/25">
       <User aria-hidden="true" className="size-5 shrink-0 text-[var(--vy-text-muted)]" />
       <label htmlFor={`${idPrefix}-customer-q`} className="sr-only">Cliente (opcional): buscar por nombre o teléfono</label>
@@ -70,12 +71,12 @@ export default function CustomerField({ idPrefix, value, onChange, disabled }: {
           className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-xl px-3 text-left text-sm hover:bg-[var(--vy-surface-soft)] ${focus}`}>
           <span className="truncate font-semibold text-[var(--vy-text)]">{c.fullName}</span><span className="shrink-0 text-[var(--vy-text-muted)]">{c.phone}</span></button>)}
     </div>}
-    {creating && <div role="group" aria-label="Crear cliente" className="grid gap-2 rounded-2xl border border-[var(--vy-border)] bg-white p-3 sm:grid-cols-2">
-      <label className="grid gap-1 text-sm font-medium text-[var(--vy-text)]">Nombre
-        <input id={`${idPrefix}-new-name`} value={name} maxLength={160} onChange={e => setName(e.target.value)} className={`min-h-11 rounded-xl border border-[var(--vy-field-border)] px-3 ${focus}`} /></label>
-      <label className="grid gap-1 text-sm font-medium text-[var(--vy-text)]">Teléfono
-        <input id={`${idPrefix}-new-phone`} value={phone} maxLength={40} inputMode="tel" onChange={e => setPhone(e.target.value)} className={`min-h-11 rounded-xl border border-[var(--vy-field-border)] px-3 ${focus}`} /></label>
-      <button type="button" disabled={busy} onClick={() => void create()} className={`min-h-11 rounded-xl bg-[var(--vy-blue-600)] px-4 font-semibold text-white hover:bg-[var(--vy-blue-700)] disabled:opacity-60 sm:col-span-2 ${focus}`}>Crear y usar en la venta</button>
+    {creating && <div role="group" aria-label="Crear cliente" className="grid min-w-0 gap-2 rounded-2xl border border-[var(--vy-border)] bg-white p-3">
+      <label className="grid min-w-0 gap-1 text-sm font-medium text-[var(--vy-text)]">Nombre
+        <input id={`${idPrefix}-new-name`} value={name} maxLength={160} onChange={e => setName(e.target.value)} className={`min-h-11 w-full min-w-0 rounded-xl border border-[var(--vy-field-border)] px-3 ${focus}`} /></label>
+      <label className="grid min-w-0 gap-1 text-sm font-medium text-[var(--vy-text)]">Teléfono
+        <input id={`${idPrefix}-new-phone`} value={phone} maxLength={40} inputMode="tel" onChange={e => setPhone(e.target.value)} className={`min-h-11 w-full min-w-0 rounded-xl border border-[var(--vy-field-border)] px-3 ${focus}`} /></label>
+      <button type="button" disabled={busy} onClick={() => void create()} className={`min-h-11 rounded-xl bg-[var(--vy-blue-600)] px-4 font-semibold text-white hover:bg-[var(--vy-blue-700)] disabled:opacity-60 ${focus}`}>Crear y usar en la venta</button>
     </div>}
     {error && <p role="alert" className="text-sm text-[#B42318]">{error}</p>}
   </div>;

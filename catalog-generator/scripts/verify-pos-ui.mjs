@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { addPaymentRow, amountText, availability, cashChange, formatPesos, METHOD_BUTTONS, parseAmountText, parseCreditBalance, parsePosItems, paymentsBody, paymentStatus,
-  totalChange, validatePayments } from "../lib/pos-ui.mjs";
+import { addPaymentRow, amountText, applySoldLines, availability, cashChange, formatPesos, METHOD_BUTTONS, parseAmountText, parseCreditBalance, parsePosItems, paymentsBody, paymentStatus,
+  payExactly, totalChange, validatePayments } from "../lib/pos-ui.mjs";
 
 // Payment box of Vender › Nueva venta (F2a-3a). The total is the server's; these helpers only split it.
 const button = id => METHOD_BUTTONS.find(b => b.id === id);
@@ -90,5 +90,19 @@ assert.throws(() => parsePosItems({ result: { items: [{ id: "a", name: "x", sku:
 assert.equal(parseCreditBalance({ result: { balance: "70000" } }), "70000");
 assert.throws(() => parseCreditBalance({ result: { balance: 70000 } }));
 checks.push("Validators: inventory items (price or null) and credit balance as a decimal string");
+
+
+// «Pagar el total» (F2a-3b): rows trimmed in order to exactly what is due; rows at 0 dropped, Recibido kept.
+assert.deepEqual(payExactly([row("NEQUI", "45.000"), row("CASH", "90.000", "100.000")], "45000").map(r => [r.method, r.amount]), [["NEQUI", "45.000"]]);
+assert.deepEqual(payExactly([row("CASH", "50.000", "100.000"), row("CARD", "50.000")], "70000").map(r => [r.method, r.amount, r.received]), [["CASH", "50.000", "100.000"], ["CARD", "20.000", ""]]);
+assert.equal(paymentStatus("70000", payExactly([row("CASH", "200.000")], "70000")).complete, true);
+assert.deepEqual(payExactly([row("CASH", "")], "70000"), [], "empty rows are dropped");
+checks.push("Pagar el total: trims the rows in order to exactly the amount due, dropping rows at 0 and keeping Recibido");
+
+// Stock on the cards right after a sale (F2a-3b, fix A.2), from the confirmed lines; never below 0.
+assert.deepEqual(applySoldLines([{ id: "a", stock: 2 }, { id: "b", stock: 40 }, { id: "c", stock: 5 }], [{ inventoryItemId: "a", quantity: 2 }, { inventoryItemId: "b", quantity: 1 }, { inventoryItemId: "z", quantity: 3 }])
+  .map(i => [i.id, i.stock]), [["a", 0], ["b", 39], ["c", 5]]);
+assert.equal(applySoldLines([{ id: "a", stock: 1 }], [{ inventoryItemId: "a", quantity: 3 }])[0].stock, 0);
+checks.push("Sold lines applied to the cards at once: stock minus what was sold, never negative; other items untouched");
 
 console.log(JSON.stringify({ success: true, checks }, null, 2));

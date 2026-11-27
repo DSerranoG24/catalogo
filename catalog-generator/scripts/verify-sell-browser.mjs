@@ -14,7 +14,7 @@ const items = [item("Cargador 20W", "CARG-20W", "45000", 25), item("Audífonos B
   item("Vidrio templado", "VID-TEMP", "15000", 40), item("Cable USB-C", "CAB-USBC", "18000", 0), item("Soporte sin precio", "SOP-SP", null, 5)];
 const customers = [{ id: randomUUID(), fullName: "Ana Gómez", phone: "3001234567", credit: 70000n }];
 const sales = new Map(), receipts = new Map();
-let todayBase = 845000n, dropNextConfirm = false;
+let todayBase = 845000n, dropNextConfirm = false, failReadsAfterConfirm = false;
 class Fail extends Error { constructor(status, code) { super(code); this.status = status; this.code = code; } }
 const byId = id => items.find(i => i.id === id);
 const itemView = i => ({ id: i.id, name: i.name, sku: i.sku, stock: i.stock, minimumStock: i.minimumStock, dataVersion: 1, stockVersion: 1,
@@ -95,6 +95,7 @@ function mutate(method, url, body) {
 function read(url) {
   const p = url.pathname, q = url.searchParams;
   if (p === "/api/me") return { user: { emailVerifiedAt: now(), hasLocalPassword: true } };
+  if (failReadsAfterConfirm && (p === "/api/inventory/items" || p === "/api/dashboard/summary")) throw new Fail(500, "SERVER_ERROR");
   if (p === "/api/inventory/items") {
     const term = (q.get("q") ?? "").toLowerCase();
     return { success: true, result: { items: items.filter(i => !term || i.name.toLowerCase().includes(term) || i.sku.toLowerCase().includes(term)).map(itemView), total: items.length, page: 1 } };
@@ -213,12 +214,19 @@ try {
     await waitFor(`${inTicket('[data-payment-row="NEQUI"] input')}?.value==="25.000"`, "transferencia con el resto");
     await click(`[...${ticket}.querySelectorAll('[role="radio"]')].find(b=>b.textContent.trim()==="Daviplata")`, "Daviplata");
     await waitFor(`${inTicket('[data-payment-row="DAVIPLATA"]')}`, "Daviplata elegido");
+    assert.equal(await evaluate(`document.querySelector('[data-product="VID-TEMP"] [data-availability]')`), null, "in the ticket: the card says «En el ticket»");
+    // The reads after the sale fail: the cards and «Ventas hoy» must change anyway, from the confirmed sale.
+    failReadsAfterConfirm = true;
     await click(charge, "Cobrar y entregar");
     await waitText("Venta entregada · $ 65.000");
     s = lastSale();
     assert.deepEqual(s.payments, [{ method: "CASH", amount: "40000" }, { method: "DAVIPLATA", amount: "25000" }]);
     assert.equal(byId(items[2].id).stock, 0);
-    checks.push("Mixed payment: Efectivo 40.000 + Transferencia (Daviplata) with the remaining 25.000; incomplete payments keep «Cobrar y entregar» disabled; + stops at the stock");
+    await waitFor(`document.querySelector('[data-product="FOR-IP13"] [data-availability="out"]')?.textContent.includes("Agotado")`, "Agotado sin recargar");
+    await waitFor(`document.querySelector('[data-product="VID-TEMP"] [data-availability="ok"]')?.textContent.includes("39 disponibles")`, "39 disponibles sin recargar");
+    await waitFor(`document.querySelector('[data-today-sales]')?.textContent.replace(/\\s+/g," ")==="$ 999.000"`, "ventas de hoy sin recargar");
+    failReadsAfterConfirm = false;
+    checks.push("Mixed payment: Efectivo 40.000 + Transferencia (Daviplata) with the remaining 25.000; incomplete payments keep «Cobrar y entregar» disabled; + stops at the stock; right after the sale, without reloading and even if the reads fail, the cards say «Agotado» / «39 disponibles» and «Ventas hoy» adds the sale");
 
     // Pending balance: delivery blocked and explained; confirm and deliver later with an advance.
     await newSale();
@@ -349,6 +357,35 @@ try {
       assert.equal(await evaluate(`Boolean(${ticket}.getClientRects().length)`), !mobile, `ticket column at ${width}`);
       if (width === 375 || width === 1132 || width === 1440) await shot(`${width}`);
     }
+    // Ticket forms open (Crear cliente, Transferencia with its selector, Efectivo with Recibido/Cambio, Pagar el total):
+    // one field per row, nothing past the edge of the ticket column or the sheet, 320–1440 px (F2a-3b, fix A.1).
+    const outside = root => `(()=>{const r=${root}.getBoundingClientRect();return [...${root}.querySelectorAll('input,button,label,output,[role="radiogroup"]')].filter(e=>e.getClientRects().length).filter(e=>{const b=e.getBoundingClientRect();return b.right>r.right+0.5||b.left<r.left-0.5}).map(e=>(e.id||e.tagName)+':'+Math.round(e.getBoundingClientRect().right)+'>'+Math.round(r.right)).slice(0,5)})()`;
+    for (const width of [320, 375, 414, 768, 1024, 1110, 1132, 1280, 1440]) {
+      await viewport(width);
+      const mobile = width < 1024, prefix = mobile ? "sheet" : "desk", root = mobile ? `document.querySelector('[role="dialog"]')` : ticket;
+      if (mobile) { await click(`document.querySelector('[data-open-ticket]')`, "ver ticket"); await waitFor(`${root}?.querySelector('[data-ticket-total]')`, "hoja del ticket"); }
+      if (!(await evaluate(`Boolean(document.querySelector('#${prefix}-new-name'))`))) await click(`[...${root}.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')==='Crear cliente')`, "Crear cliente");
+      if (!(await evaluate(`Boolean(${root}.querySelector('[data-payment-row="NEQUI"]'))`))) await click(`[...${root}.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')==='Agregar pago: Transferencia')`, "Transferencia");
+      if (!(await evaluate(`Boolean(${root}.querySelector('[data-payment-row="CASH"]'))`))) await click(`[...${root}.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')==='Agregar pago: Efectivo')`, "Efectivo");
+      await fill(`#${prefix}-new-phone`, "3105550101 extensión larga 1234");
+      await evaluate(`(()=>{const i=${root}.querySelector('[data-payment-row="CASH"] input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,'90.000');i.dispatchEvent(new Event('input',{bubbles:true}))})()`);
+      await waitFor(`${root}.querySelector('[data-pay-total]')`, "Pagar el total");
+      assert.deepEqual(await evaluate(outside(root)), [], `ticket forms inside the column at ${width}px`);
+      const [name, phone] = await evaluate(`[document.querySelector('#${prefix}-new-name').getBoundingClientRect(),document.querySelector('#${prefix}-new-phone').getBoundingClientRect()].map(r=>({top:r.top,bottom:r.bottom,left:r.left,width:r.width}))`);
+      assert.ok(phone.top >= name.bottom && Math.abs(phone.left - name.left) < 1 && Math.abs(phone.width - name.width) < 1, `Nombre over Teléfono, same width, at ${width}px`);
+      assert.ok(await evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`) <= 0, `no page overflow with the forms open at ${width}px`);
+      if (width === 1110) await shot("1110-crear-cliente");
+      if (mobile) { await click(`${root}.querySelector('button[aria-label="Cerrar"]')`, "cerrar hoja"); await waitFor(`!document.querySelector('[role="dialog"]')`, "hoja cerrada"); }
+    }
+    // «Pagar el total» trims the payments to exactly the total (the change grows); then the rows are removed.
+    await viewport(1440);
+    await click(`${inTicket("[data-pay-total]")}`, "Pagar el total");
+    await waitFor(`${inTicket("[data-payment-status]")}?.textContent.includes("Completo")`, "completo tras pagar el total");
+    assert.deepEqual(await evaluate(`[...${ticket}.querySelectorAll('[data-payment-row]')].map(r=>[r.dataset.paymentRow,r.querySelector('input').value])`), [["NEQUI", "45.000"]], "the transfer covers the total; the cash row is dropped");
+    await tap("Quitar pago 1 (Nequi)");
+    await tap("Crear cliente");
+    checks.push("Ticket forms open (Crear cliente, Transferencia with Nequi/Daviplata/Banco, Efectivo with Recibido and Cambio, Pagar el total) stay inside the ticket column or the sheet, Nombre above Teléfono at full width, 320–1440 px including 1110 and 1132; «Pagar el total» trims the rows to the total");
+
     await viewport(375);
     assert.ok(norm(await evaluate(`document.querySelector('[data-open-ticket]').textContent`)).includes("Ticket · 1 producto$ 45.000"));
     await click(`document.querySelector('[data-open-ticket]')`, "ver ticket");

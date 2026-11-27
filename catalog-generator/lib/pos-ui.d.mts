@@ -23,3 +23,5 @@ export function formatPesos(value: string | bigint | number): string;
 export function availability(stock: number, minimumStock?: number): Availability;
 export function parsePosItems(value: unknown): PosItem[];
 export function parseCreditBalance(value: unknown): string;
+export function payExactly(rows: PaymentRow[], total: string | bigint): PaymentRow[];
+export function applySoldLines(items: PosItem[], lines: { inventoryItemId: string; quantity: number }[]): PosItem[];

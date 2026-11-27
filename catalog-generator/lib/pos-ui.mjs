@@ -82,6 +82,33 @@ export function validatePayments(total, rows, creditAvailable) {
   };
 }
 
+/**
+ * «Pagar el total»: keeps the rows in order and trims them so they add up to exactly what is due (the ticket total or
+ * the balance of a sale). Rows that end at 0 are dropped; cash keeps its «Recibido» (the change grows accordingly).
+ */
+export function payExactly(rows, total) {
+  let left = BigInt(total);
+  const kept = [];
+  for (const row of rows) {
+    const amount = parseAmountText(row.amount) ?? 0n;
+    if (left <= 0n || amount <= 0n) continue;
+    const take = amount < left ? amount : left;
+    left -= take;
+    kept.push({ ...row, amount: amountText(take) });
+  }
+  return kept;
+}
+
+/**
+ * Stock after a confirmed sale, applied at once to the product cards from the server's confirmed lines, before the
+ * list is read again (so «Quedan n» / «Agotado» never shows the stock from before the sale).
+ */
+export function applySoldLines(items, lines) {
+  const sold = new Map();
+  for (const line of lines) sold.set(line.inventoryItemId, (sold.get(line.inventoryItemId) ?? 0) + line.quantity);
+  return items.map(item => sold.has(item.id) ? { ...item, stock: Math.max(item.stock - sold.get(item.id), 0) } : item);
+}
+
 /** Body fields of confirm (F2a-2b): payments always present (so the sale is TRACKED), credit apart. */
 export function paymentsBody(rows) {
   const payments = rows.filter(row => row.method !== "CREDIT").map(row => {
