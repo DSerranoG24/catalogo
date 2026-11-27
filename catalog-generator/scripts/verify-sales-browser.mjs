@@ -157,7 +157,7 @@ ${(await text()).slice(0, 1500)}`); } };
       await command("Emulation.clearDeviceMetricsOverride");
     };
 
-    await command("Page.navigate", { url: "http://localhost:4338/dashboard/ventas" });
+    await command("Page.navigate", { url: "http://localhost:4338/dashboard/ventas/historial" }); // F2a-3a: the previous Ventas view is Historial
     await waitText("Aún no hay ventas");
     assert.equal(await evaluate(`document.querySelector('nav[aria-label="Principal"] a[href="/dashboard/ventas"]')?.getAttribute('aria-current')`), "page");
     assert.ok((await text()).includes("Los totales no indican pagos recibidos."));

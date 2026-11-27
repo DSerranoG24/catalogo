@@ -22,7 +22,7 @@ Rutas de la API bajo `/api`. Las tablas usan el nombre SQL real: los modelos de 
 | Hoja de inventario | `inventory_workbooks`, `inventory_workbook_saves` | `/inventory/workbook` | `/dashboard/inventario/hoja` |
 | Lotes de inventario (CSV/XLSX con vista previa) | `inventory_batches`, `inventory_batch_rows`, `inventory_batch_chunk_receipts` | `/inventory/batches` | `/dashboard/inventario/lotes` |
 | Publicación de inventario en catálogos | `"InventoryPublication"`, `products.inventoryItemId` | `/inventory/publications` | Panel de publicación en inventario |
-| Ventas presenciales: borrador, confirmación, entrega, cancelación, devoluciones parciales | `"Sale"`, `"SaleLine"`, `"SaleOperation"`, `"SaleReturn"`, `"SaleReturnLine"` y referencias en `inventory_movements` | `/sales` | `/dashboard/ventas` |
+| Ventas presenciales: borrador, confirmación, entrega, cancelación, devoluciones parciales | `"Sale"`, `"SaleLine"`, `"SaleOperation"`, `"SaleReturn"`, `"SaleReturnLine"` y referencias en `inventory_movements` | `/sales` | `/dashboard/ventas` (Nueva venta con cobro, F2a-3a) y `/dashboard/ventas/historial` (vista anterior) |
 | Clientes e historial de ventas por cliente | `customers`, `"Sale".customerId` y columnas `customer*Snapshot` | `/customers` (incluye `archive`, `reactivate`, `/:id/sales`) | Dentro de `/dashboard/ventas` |
 | Conversión de pedido a venta y revisión del cliente del pedido | `"Sale".sourceOrderId`, `orders.customerId`, `order_customer_operations` | `/orders/:id/convert-to-sale`, `customer-preview`, `customer-confirm`, `customer-matches` | Panel de pedidos |
 | Gastos operativos F1a: categorías y gastos puntuales (en `main`; migración aplicada según el responsable) | `expense_categories`, `expenses`, `expense_operations`, `expense_events` y `recurring_expense_templates` | `/expense-categories` (incluye `seed`, `archive`, `reactivate`), `/expenses` (incluye `summary`, `overview`, `:id/void`) | `/dashboard/gastos` (menú «Dinero») y tarjeta en Inicio |
@@ -124,6 +124,18 @@ API de pagos F2a-2b (26/11/2026, sin commit), con un clúster PostgreSQL 17 loca
 - Con el código nuevo también pasaron `test:sales-postgres` (24), `test:expenses-postgres` (15), `test:scheduled-postgres`, `test:dashboard-postgres`, `test:sale-payments-postgres`, `test:inventory-batches-postgres` (10) y `test:account-lock-postgres` (0 deadlocks; el par de cierre ahora envía `confirmOpenBalances`).
 - `openapi.json`: solo las 16 rutas y 12 esquemas nuevos o cambiados; el resto del documento no se regeneró.
 
+Vender › Nueva venta F2a-3a (27/11/2026, sin commit; [diseño](diseno/README.md#vender--nueva-venta-dashboardventas-f2a-3a)):
+- **Pantalla:** `/dashboard/ventas` es la nueva pantalla de venta con cobro (maqueta `docs/diseno/vender-escritorio.png`). La vista anterior pasa a `/dashboard/ventas/historial` sin cambios. «Ver ventas» de Inicio y «Abrir Ventas» de un pedido convertido llevan a Historial.
+- **Cobro:** «Cobrar y entregar» guarda el borrador y hace una sola llamada `confirm` con `deliverImmediately` y los pagos.
+- **API:** sin cambios.
+- **Frontend:**
+  - `npm.cmd run lint`: sin errores (las 4 advertencias de siempre);
+  - `tsc --noEmit` correcto;
+  - `npm.cmd test`: los 37 grupos de siempre más `verify-pos-ui` (9 bloques de la lógica de cobro);
+  - `npm.cmd run build` correcto.
+- **Navegador:** `test:sell-browser` (nuevo, 11 bloques) correcto. Con las rutas actualizadas a Historial también pasaron `test:sales-browser`, `test:customer-sales-browser`, `test:panel-browser` y `test:dashboard-browser`.
+- **API sin cambios:** `npm.cmd run build` correcto y `npm.cmd test` 394/394; no existe script `lint`.
+
 ## Pendientes vigentes
 
 - **Ventas F0d (reglas e interfaz):** publicadas en `main` (`b177f12`) con su migración aplicada, según el responsable. No se verificó desde esta sesión.
@@ -134,7 +146,10 @@ API de pagos F2a-2b (26/11/2026, sin commit), con un clúster PostgreSQL 17 loca
 - **Ventas:** el listado devuelve como máximo 50 ventas, sin paginación ni filtros. No existe acción para descartar un borrador. Sigue sin retirarse la venta sintética `fb13793c` desplegada ([detalle](customer-sales-history.md)).
 - **Pagos de la venta F2a-1:** en `main` (`b2cbacf`), migración pendiente de aplicar con el [runbook](despliegue-f2a-1.md).
 - **F2a-2a, bloqueo único por cuenta:** en `main` (`96dd2c7`).
-- **F2a-2b, API de pagos:** hecha, sin commit. Necesita F2a-1 aplicada. Con la interfaz actual, el cierre de cuentas con ventas sin entregar o saldos a favor pide una confirmación que la pantalla aún no envía (F2a-3). Siguiente: F2a-3 (interfaz de cobro).
+- **F2a-2b, API de pagos:** en `main` (`e03630d`). Necesita F2a-1 aplicada. El cierre de cuentas con ventas sin entregar o saldos a favor pide una confirmación que la pantalla de cuenta aún no envía (F2a-3b).
+- **F2a-3a, Nueva venta:** hecha, sin commit. Necesita F2a-1 y F2a-2b desplegadas antes (envía `payments`). Limitaciones hasta F2a-3b:
+  - una venta confirmada con anticipo parcial no se puede entregar desde Historial: no hay pantalla para cobrar el resto y la API responde `SALE_BALANCE_DUE`, ahora con mensaje claro;
+  - las tarjetas no muestran fotos: la lista de inventario no trae URL de imagen y hace falta un cambio de API.
 - **Posible traba de la publicación de inventario contra el cierre de cuenta** (anterior y fuera de F2a-2a): ver el [contrato de pagos, 15.A](sales-payments-cartera-contract.md#15-correcciones-del-planificador).
 - **`test:inventory-postgres`** falla en su etapa inicial por el cliente de Prisma sobre la cadena parcial (anterior a F2a-2a).
 - **Cierre de cuenta:** bloquea si hay pedidos sin resolver. Decidido (contrato de pagos, corrección C): las ventas `CONFIRMED` sin entregar, los saldos a favor y el dinero por devolver solo avisan en una vista previa y el dueño confirma. Se implementa en F2a-2.

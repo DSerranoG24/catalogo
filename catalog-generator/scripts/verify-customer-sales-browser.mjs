@@ -56,7 +56,7 @@ try {
     const click = async label => assert.equal(await evaluate(`(()=>{const b=[...${root}.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(label)});if(!b||b.disabled)return false;b.click();return true})()`), true, label);
     const waitText = value => poll(async () => (await text()).includes(value));
     const choose = async value => evaluate(`(()=>{const s=${root}.querySelectorAll('select')[0];s.value=${JSON.stringify(value)};s.dispatchEvent(new Event('change',{bubbles:true}))})()`);
-    await command("Page.navigate", { url: "http://localhost:4338/dashboard/ventas" });
+    await command("Page.navigate", { url: "http://localhost:4338/dashboard/ventas/historial" }); // F2a-3a: the previous Ventas view is Historial
     await poll(() => evaluate(`Boolean(${root})`));
     assert.equal(requests.some(r => r.path.endsWith("/sales") && r.path.includes("/customers/")), false);
     await click("Buscar clientes"); await waitText("Selecciona un cliente"); await choose(customer.id);

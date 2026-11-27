@@ -11,7 +11,7 @@ export function RecentSales({ recent, today }: { recent: DashboardSummary["recen
   return <section aria-labelledby="recent-title" className={card}>
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h2 id="recent-title" className="flex items-center gap-3 text-lg font-semibold text-[var(--vy-text)]"><History aria-hidden="true" className="size-6 text-[var(--vy-blue-600)]" />Últimos movimientos</h2>
-      {isEnabled("vender") && <Link href="/dashboard/ventas" className="inline-flex min-h-11 items-center text-sm font-semibold text-[var(--vy-blue-600)] underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--vy-blue-600)]">Ver ventas</Link>}
+      {isEnabled("vender") && <Link href="/dashboard/ventas/historial" className="inline-flex min-h-11 items-center text-sm font-semibold text-[var(--vy-blue-600)] underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--vy-blue-600)]">Ver ventas</Link>}
     </div>
     {recent.length ? <ul className="mt-2 divide-y divide-[var(--vy-border)]">
       {recent.map(sale => <li key={sale.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">

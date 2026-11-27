@@ -1,2 +1,2 @@
-import SalesPanel from "@/components/sales/SalesPanel";
-export default function SalesPage() { return <SalesPanel />; }
+import SellPanel from "@/components/sell/SellPanel";
+export default function SalesPage() { return <SellPanel />; }

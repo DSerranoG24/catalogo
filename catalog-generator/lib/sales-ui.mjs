@@ -172,6 +172,17 @@ const ERRORS = {
   CUSTOMER_ARCHIVED: { title: "Cliente archivado", detail: "Elige otro cliente o deja la venta sin cliente.", action: null },
   CUSTOMER_NOT_FOUND: { title: "Cliente no encontrado", detail: "Elige otro cliente o deja la venta sin cliente.", action: null },
   NOT_FOUND: { title: "Venta no encontrada", detail: "Puede que ya no exista en tu cuenta. Vuelve al listado.", action: "reload" },
+  // Payments of a sale (F2a-2b).
+  SALE_BALANCE_DUE: { title: "Falta dinero para entregar", detail: "Por ahora una venta se entrega pagada por completo. Registra el resto del pago o confírmala para entregar después.", action: null },
+  PAYMENT_EXCEEDS_BALANCE: { title: "Los pagos superan lo que falta", detail: "El total de la venta cambió o ya tenía pagos. Recarga el ticket y revisa los importes.", action: "reload" },
+  CREDIT_INSUFFICIENT: { title: "El saldo a favor no alcanza", detail: "El cliente tiene menos saldo a favor del que intentas usar. Revisa el importe o usa otro medio.", action: "reload" },
+  CUSTOMER_REQUIRED_FOR_CREDIT: { title: "Falta el cliente", detail: "Para usar saldo a favor, la venta debe tener el cliente que lo tiene.", action: null },
+  LEGACY_SALE_PAYMENTS_UNSUPPORTED: { title: "Esta venta no registra pagos", detail: "Es una venta anterior al registro de pagos. Gestiónala desde Historial.", action: null },
+  INVALID_PAYMENT_STATE: { title: "La venta ya no admite este pago", detail: "Cambió de estado. Recarga para ver su estado actual.", action: "reload" },
+  INVALID_PAYMENT_INPUT: { title: "Revisa los pagos", detail: "Algún importe o medio de pago no es válido. Corrígelo e intenta de nuevo.", action: null },
+  INVALID_SALE_INPUT: { title: "Revisa los datos de la venta", detail: "Algún dato del ticket no es válido. Corrígelo e intenta de nuevo.", action: null },
+  CREDIT_ALREADY_USED: { title: "Ese saldo a favor ya se usó", detail: "Recarga para ver el saldo actual del cliente.", action: "reload" },
+  CUSTOMER_CHANGE_BLOCKED: { title: "No se puede cambiar el cliente", detail: "La venta ya se entregó o usa saldo a favor del cliente anterior.", action: "reload" },
 };
 
 /** Maps an API or network failure to a Spanish message and a clear next action. */

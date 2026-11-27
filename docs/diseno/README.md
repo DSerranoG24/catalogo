@@ -194,7 +194,7 @@ Los pagos programados nunca suman en «Gastos del mes», «Variables» ni en la 
 **Siguen con el verde (sin rediseñar):**
 - Catálogos (lista, crear y espacio de trabajo: productos, pedidos, reseñas, banners y ajustes del catálogo);
 - Inventario (incluidas hoja y lotes);
-- Vender (ventas e historial por cliente);
+- Vender › Historial (`/dashboard/ventas/historial`: la vista de ventas anterior, el historial por cliente y su detalle);
 - Ajustes/Cuenta (cierre de cuenta) y el enlace «Volver a catálogos»;
 - el aviso de verificación de correo, común a todo el panel, también encima de Gastos;
 - Admin;
@@ -213,3 +213,60 @@ Los pagos programados nunca suman en «Gastos del mes», «Variables» ni en la 
 | Móvil | 1 columna | 1 columna |
 | Tablet (≥ `sm`) | 2 columnas | 2 columnas (2 + 1) |
 | Escritorio (≥ `lg`) | 2 en una fila | 3 en una fila |
+
+## Vender › Nueva venta (`/dashboard/ventas`, F2a-3a)
+
+Referencia visual: [`vender-escritorio.png`](vender-escritorio.png). El cobro usa la API de pagos de F2a-2b ([contrato, sección 17](../sales-payments-cartera-contract.md#17-api-f2a-2b-implementada)). Código:
+- `catalog-generator/components/sell/`: `SellPanel`, `ProductGrid`, `PaymentBox`, `CustomerField` y `useSellDraft`;
+- `catalog-generator/lib/pos-ui.mjs`: lógica de cobro, sin red;
+- los mensajes de error, en `lib/sales-ui.mjs`.
+
+| Bloque | Qué muestra | Depende de |
+| --- | --- | --- |
+| Cabecera | Mosaico azul con carrito, «Vender», «Selecciona productos y arma tu venta» y las pestañas **Nueva venta**, **Pedidos** (→ `/dashboard/catalogos`, donde están los pedidos de cada catálogo) e **Historial** (→ `/dashboard/ventas/historial`, la vista anterior sin cambios). Con el menú lateral común | — |
+| Buscador | «Buscar por nombre o SKU», atajo **F1** | `GET /inventory/items?q=` (primeros 24) |
+| Productos | Tarjetas con miniatura, nombre, SKU, precio y **un solo dato de disponibilidad**: «n disponibles» (azul), «Quedan n» (naranja; ≤ 3 o ≤ el mínimo) o «Agotado» (rojo). Botón +; en el ticket: borde azul, check, «En el ticket: n» y − n +. Si el ticket pide más de lo que hay, la tarjeta vuelve a mostrar «Agotado» o «Quedan n». Sin precio o agotado: + desactivado con el motivo en su nombre accesible. Tarjeta punteada «Producto nuevo · Agregar al inventario» → Inventario | Inventario y ficha comercial |
+| Ticket | «Borrador guardado» y el cliente opcional («Buscar o crear»: busca con Enter; + crea con nombre y teléfono). Líneas con miniatura, precio c/u, descuento por unidad (plegable), − n + (hasta la existencia), subtotal y papelera. **Total grande del servidor**: mientras el borrador se guarda dice «Calculando…» y no se puede cobrar | Borrador: `POST /sales` y `PATCH /sales/:id`; clientes: `GET`/`POST /customers` |
+| ¿Cómo pagó? | Efectivo, Transferencia (Nequi, Daviplata o banco), Tarjeta y «Saldo a favor» (solo si el cliente tiene; se ve bajo el cliente). Cada toque añade una fila con lo que falta. Efectivo con «Recibido» y «Cambio». Estado «Falta $ X», «Completo» o «Sobran $ X». **Sin fiado** (F2) | `GET /customers/:id/credit` |
+| Acciones | «Cobrar y entregar · $ total» (solo con el pago completo; si no, dice por qué), «Guardar borrador» y «Confirmar, entregar después» (con anticipo opcional, de 0 al total) | `POST /sales/:id/confirm` |
+| Al terminar | «Venta entregada · $ total · Cambio $ X» o «Venta confirmada · $ total», con lo pagado y lo que falta, y «Nueva venta», que recibe el foco | Respuesta de `confirm` |
+| Barra inferior | «Sistema en línea» o «Sin conexión», «Ventas hoy» y «Atajo: F1 para buscar» | `GET /dashboard/summary` |
+
+**Cobrar y entregar: una sola llamada de cobro.**
+1. Se espera a que el borrador esté guardado (`PATCH` con `expectedVersion`), para que el total sea el del servidor.
+2. Una única llamada `POST /sales/:id/confirm` con `deliverImmediately: true`, `payments` y, si aplica, `customerCreditAmount`. La API confirma, descuenta existencias, registra los pagos y entrega en una transacción.
+
+Si se pierde la respuesta, «Reintentar» reenvía la misma `operationId` con una `requestId` nueva, y el recibo responde sin repetir nada. «Confirmar, entregar después» es la misma llamada con `deliverImmediately: false`. Enviar siempre `payments` (aunque esté vacío) hace que la venta registre sus pagos (`TRACKED`).
+
+**Borrador:**
+- El ticket se guarda solo en un borrador del servidor, 450 ms después del último cambio.
+- Cada intención conserva su `operationId`: crear, una vez por ticket; editar, una por contenido y versión.
+- Si otra pestaña cambió el borrador, se relee y se vuelve a guardar el ticket de la pantalla.
+- El id del borrador se recuerda en el navegador: al recargar, el ticket vuelve si sigue siendo borrador.
+- «Guardar borrador» lo deja en Historial y empieza un ticket nuevo.
+- Un ticket vacío no borra el borrador: la API exige al menos una línea.
+
+**Errores:** los de F2a-2b que pueden salir aquí tienen mensaje en español: `SALE_BALANCE_DUE`, `PAYMENT_EXCEEDS_BALANCE`, `CREDIT_INSUFFICIENT`, `CUSTOMER_REQUIRED_FOR_CREDIT`, `LEGACY_SALE_PAYMENTS_UNSUPPORTED`, `INVALID_PAYMENT_STATE`, `INVALID_PAYMENT_INPUT`, `INVALID_SALE_INPUT`, `CREDIT_ALREADY_USED` y `CUSTOMER_CHANGE_BLOCKED`, además de los de Ventas (`STOCK_INSUFFICIENT`, `VERSION_CONFLICT`…). Con `STOCK_INSUFFICIENT`, «Entendido» recarga los productos y la línea afectada dice «Agotado» o «Solo quedan n».
+
+**Móvil (< `lg`):** productos arriba. El ticket es una hoja inferior (Radix, foco atrapado, Escape) que se abre desde una barra fija sobre la navegación inferior, con el número de productos y el total del servidor. Las pestañas pierden el icono para caber en 320 px.
+
+**Diferencias con la maqueta:**
+- Sin cabecera propia: logo, eslogan, «Inventario ▾», campana y «Bodega: Principal» no están; se usa el menú lateral común.
+- Ocultos hasta su fase: chips de categoría (F1e), icono de lector (F1d), «Fiado» (F2), atajo F2 y recibos (F5b). La insignia de pedidos nuevos en «Pedidos» no se muestra.
+- **Sin fotos:** la lista de inventario no trae URL de imagen (`/inventory/items/:id/images` solo da la ruta de almacenamiento, sin URL firmada). Las tarjetas y las líneas muestran la inicial del producto en un mosaico azul. Mostrar fotos requiere un cambio de API.
+- **Un solo dato de disponibilidad**, en vez de la pastilla «Stock: n» más «n disponibles».
+- En el ticket, cada línea ocupa dos filas (nombre y papelera; cantidad y subtotal), para caber en la columna de 22 a 27 rem; el descuento por unidad es plegable.
+- «Guardar borrador» y «Confirmar, entregar después» son dos botones secundarios lado a lado, no enlaces de texto, para tener objetivos de 44 px.
+- El método «Transferencia» elige Nequi, Daviplata o banco dentro de su fila.
+
+**Pruebas:**
+- `scripts/verify-pos-ui.mjs`, dentro de `npm test`: falta y completo, cambio, filas por método, saldo a favor no mayor que lo disponible, cuerpo de `confirm`, disponibilidad y validadores.
+- `npm.cmd run test:sell-browser`, desde `C:\` en mayúscula. Con `SELL_SCREENSHOTS=<carpeta fuera del repo>` guarda capturas a 375, 1132 y 1440 px. Cubre:
+  - venta en efectivo con cambio y pago mixto efectivo + Daviplata;
+  - saldo pendiente que bloquea «Cobrar y entregar», y confirmar con anticipo;
+  - saldo a favor, y crear cliente;
+  - `STOCK_INSUFFICIENT`, y respuesta perdida con «Reintentar» sin duplicar;
+  - borrador que sobrevive a recargar;
+  - F1, Tab y Escape;
+  - sin verde antiguo (con control positivo);
+  - sin desbordes de 320 a 1440 px, y la hoja móvil.

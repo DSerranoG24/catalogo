@@ -1,0 +1,25 @@
+export type PaymentMethod = "CASH" | "NEQUI" | "DAVIPLATA" | "BANK_TRANSFER" | "CARD" | "CREDIT";
+export type MethodButton = { id: "CASH" | "TRANSFER" | "CARD" | "CREDIT"; label: string; method: PaymentMethod };
+export type PaymentRow = { key: string; method: PaymentMethod; amount: string; received: string };
+export type PaymentStatus = { total: bigint; paid: bigint; remaining: bigint; excess: bigint; complete: boolean };
+export type Availability = { tone: "out" | "low" | "ok"; label: string };
+export type PosItem = { id: string; name: string; sku: string; stock: number; minimumStock: number; price: string | null };
+export const PAYMENT_METHODS: PaymentMethod[];
+export const TRANSFER_METHODS: PaymentMethod[];
+export const METHOD_LABELS: Record<PaymentMethod, string>;
+export const METHOD_BUTTONS: MethodButton[];
+export function parseAmountText(text: unknown): bigint | null;
+export function amountText(value: bigint | string): string;
+export function paidOf(rows: PaymentRow[]): bigint;
+export function paymentStatus(total: string | bigint, rows: PaymentRow[]): PaymentStatus;
+export function cashChange(row: PaymentRow): bigint | null;
+export function totalChange(rows: PaymentRow[]): bigint;
+export function addPaymentRow(rows: PaymentRow[], button: MethodButton, total: string | bigint, creditAvailable: string | bigint | null, key: string): PaymentRow[];
+export function validatePayments(total: string | bigint, rows: PaymentRow[], creditAvailable: string | bigint | null): {
+  errors: string[]; status: PaymentStatus; canDeliver: boolean; canConfirmLater: boolean; deliverBlockedReason: string | null;
+};
+export function paymentsBody(rows: PaymentRow[]): { payments: { method: Exclude<PaymentMethod, "CREDIT">; amount: string; cashReceived?: string }[]; customerCreditAmount?: string };
+export function formatPesos(value: string | bigint | number): string;
+export function availability(stock: number, minimumStock?: number): Availability;
+export function parsePosItems(value: unknown): PosItem[];
+export function parseCreditBalance(value: unknown): string;
