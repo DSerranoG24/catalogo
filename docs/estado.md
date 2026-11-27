@@ -136,7 +136,7 @@ Vender › Nueva venta F2a-3a (27/11/2026, sin commit; [diseño](diseno/README.m
 - **Navegador:** `test:sell-browser` (nuevo, 11 bloques) correcto. Con las rutas actualizadas a Historial también pasaron `test:sales-browser`, `test:customer-sales-browser`, `test:panel-browser` y `test:dashboard-browser`.
 - **API sin cambios:** `npm.cmd run build` correcto y `npm.cmd test` 394/394; no existe script `lint`.
 
-Vender › Historial y detalle F2a-3b (27/11/2026, rama `f2a-3b`, sin publicar; [diseño](diseno/README.md#vender--historial-y-detalle-de-la-venta-dashboardventashistorial-f2a-3b)):
+Vender › Historial y detalle F2a-3b (27/11/2026, en `main` desde `19cf72c`; [diseño](diseno/README.md#vender--historial-y-detalle-de-la-venta-dashboardventashistorial-f2a-3b)):
 - **Commits:** `c59d4f7` (A: formulario de cliente a una columna en el ticket y refresco de tarjetas y «Ventas hoy» tras cobrar), `aa7157d` (B–D: Historial nuevo, detalle como panel lateral con cobros y aviso de cierre de cuenta), un ajuste de la hoja móvil y el de documentación con la maqueta `diseno/cartera.png`.
 - **Pantalla:** Historial con pagado, saldo y estado; filtros de estado y de cliente; detalle con libro de pagos y las acciones de la API de F2a-2b (cobrar el resto y entregar, anticipo, entregar, cancelar, devoluciones, devolver dinero, devolver saldo a favor, anular), con motivo obligatorio y reintento idempotente; enlace directo `?venta=<id>` desde Inicio y desde un pedido convertido. La pantalla anterior de Ventas y sus componentes se retiraron; los borradores se continúan en Nueva venta (`?borrador=<id>`).
 - **Cierre de cuenta:** lee la vista previa, muestra lo abierto y envía `confirmOpenBalances` cuando el dueño lo confirma.
@@ -157,7 +157,7 @@ Vender › Historial y detalle F2a-3b (27/11/2026, rama `f2a-3b`, sin publicar; 
 - **F2a-2a, bloqueo único por cuenta:** en `main` (`96dd2c7`).
 - **F2a-2b, API de pagos:** en `main` (`e03630d`). Necesita F2a-1 aplicada. La confirmación del cierre de cuenta la envía la pantalla de F2a-3b.
 - **F2a-3a, Nueva venta:** en `main` (`e28655d`). Necesita F2a-1 y F2a-2b desplegadas antes (envía `payments`). Las tarjetas siguen sin fotos: la lista de inventario no trae URL de imagen y hace falta un cambio de API.
-- **F2a-3b, Historial y detalle:** en la rama `f2a-3b`, sin publicar. Resuelve el cobro del resto de una venta con anticipo y la confirmación del cierre de cuenta. Pendiente:
+- **F2a-3b, Historial y detalle:** en `main` (`19cf72c`, subido a `origin/main` el 27/11/2026). Necesita F2a-1 y F2a-2b en producción, igual que F2a-3a; el resultado del despliegue en Vercel no se verificó desde esta sesión. Resuelve el cobro del resto de una venta con anticipo y la confirmación del cierre de cuenta. Pendiente:
   - **pagos obligatorios al confirmar (E):** bloqueado por la conversión de pedidos, que no puede enviar pagos (sobre todo en «Confirmar y entregar»). Decide el dueño: añadir el cobro a la conversión (toca Pedidos) o limitarla a borrador/confirmada sin entrega;
   - la lista general muestra las 50 ventas más recientes (límite de la API); el filtro de cliente sí pagina.
 - **Posible traba de la publicación de inventario contra el cierre de cuenta** (anterior y fuera de F2a-2a): ver el [contrato de pagos, 15.A](sales-payments-cartera-contract.md#15-correcciones-del-planificador).
