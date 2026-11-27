@@ -94,9 +94,12 @@ try {
     assert.equal(await rows(), 7);
     const labels = await evaluate(`[...document.querySelectorAll('section[aria-labelledby="chart-title"] [aria-hidden="true"] span')].map(s=>s.textContent.trim()).filter(Boolean)`);
     for (const label of ["620K", "845K", "Lun", "Dom", "Mié"]) assert.ok(labels.includes(label), label);
-    assert.equal(await evaluate(`[...document.querySelectorAll('section[aria-labelledby="recent-title"] li a')].length`), 0, "Ventas has no direct link to one sale: rows are not links");
+    // F2a-3b: each row opens its sale in Historial (?venta=<id>).
+    const recentLinks = await evaluate(`[...document.querySelectorAll('section[aria-labelledby="recent-title"] li a')].map(a=>a.getAttribute('href'))`);
+    assert.equal(recentLinks.length, 3, "one link per recent sale");
+    assert.ok(recentLinks.every(href => /^\/dashboard\/ventas\/historial\?venta=[0-9a-f-]{36}$/.test(href)), `rows link to their sale: ${recentLinks}`);
     await shot("inicio-1440");
-    checks.push("Full account: Ventas hoy +12% vs ayer with sparkline, Utilidad $ 3,2 M +8% with note and «2 ventas sin costo» → Inventario, no Gastos/Te deben/fiados/equipos, three attention rows (Revisar → the only catalog), 7 labelled bars, recent with «Sin cliente» and amounts > 2^53, footer 14:32, one «Nueva venta»");
+    checks.push("Full account: Ventas hoy +12% vs ayer with sparkline, Utilidad $ 3,2 M +8% with note and «2 ventas sin costo» → Inventario, no Gastos/Te deben/fiados/equipos, three attention rows (Revisar → the only catalog), 7 labelled bars, recent with «Sin cliente» and amounts > 2^53, each row linking to its sale in Historial (?venta=), footer 14:32, one «Nueva venta»");
 
     // Several catalogs: «Revisar» goes to the list.
     catalogs = [{ id: randomUUID() }, { id: randomUUID() }];

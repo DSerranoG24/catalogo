@@ -174,7 +174,7 @@ const ERRORS = {
   NOT_FOUND: { title: "Venta no encontrada", detail: "Puede que ya no exista en tu cuenta. Vuelve al listado.", action: "reload" },
   // Payments of a sale (F2a-2b).
   SALE_BALANCE_DUE: { title: "Falta dinero para entregar", detail: "Por ahora una venta se entrega pagada por completo. Registra el resto del pago o confírmala para entregar después.", action: null },
-  PAYMENT_EXCEEDS_BALANCE: { title: "Los pagos superan lo que falta", detail: "El total de la venta cambió o ya tenía pagos. Recarga el ticket y revisa los importes.", action: "reload" },
+  PAYMENT_EXCEEDS_BALANCE: { title: "Los pagos superan lo que falta", detail: "La venta ya tenía pagos o su total cambió. Recarga, revisa los importes o usa «Pagar el total».", action: "reload" },
   CREDIT_INSUFFICIENT: { title: "El saldo a favor no alcanza", detail: "El cliente tiene menos saldo a favor del que intentas usar. Revisa el importe o usa otro medio.", action: "reload" },
   CUSTOMER_REQUIRED_FOR_CREDIT: { title: "Falta el cliente", detail: "Para usar saldo a favor, la venta debe tener el cliente que lo tiene.", action: null },
   LEGACY_SALE_PAYMENTS_UNSUPPORTED: { title: "Esta venta no registra pagos", detail: "Es una venta anterior al registro de pagos. Gestiónala desde Historial.", action: null },
@@ -183,6 +183,14 @@ const ERRORS = {
   INVALID_SALE_INPUT: { title: "Revisa los datos de la venta", detail: "Algún dato del ticket no es válido. Corrígelo e intenta de nuevo.", action: null },
   CREDIT_ALREADY_USED: { title: "Ese saldo a favor ya se usó", detail: "Recarga para ver el saldo actual del cliente.", action: "reload" },
   CUSTOMER_CHANGE_BLOCKED: { title: "No se puede cambiar el cliente", detail: "La venta ya se entregó o usa saldo a favor del cliente anterior.", action: "reload" },
+  // Corrections of the payments book (F2a-3b).
+  PAYMENT_NOT_FOUND: { title: "Pago no encontrado", detail: "Recarga la venta para ver sus pagos actuales.", action: "reload" },
+  PAYMENT_ALREADY_VOIDED: { title: "Ese pago ya está anulado", detail: "Recarga la venta para ver sus pagos actuales.", action: "reload" },
+  PAYMENT_NOT_VOIDABLE: { title: "Ese movimiento no se anula", detail: "Solo se anulan pagos, usos de saldo a favor y devoluciones de dinero.", action: null },
+  PAYMENT_ALREADY_REFUNDED: { title: "Ese dinero ya se devolvió", detail: "Primero anula la devolución de dinero y después el pago.", action: "reload" },
+  REFUND_EXCEEDS_DUE: { title: "Devolverías más de lo pendiente", detail: "El dinero por devolver cambió. Recarga la venta y revisa el importe.", action: "reload" },
+  REFUND_REQUIRES_NO_CUSTOMER: { title: "La venta tiene cliente", detail: "Con cliente, el dinero queda como saldo a favor; devuélveselo desde su saldo a favor.", action: "reload" },
+  CREDIT_ENTRY_NOT_FOUND: { title: "Movimiento no encontrado", detail: "Recarga para ver el saldo a favor actual del cliente.", action: "reload" },
 };
 
 /** Maps an API or network failure to a Spanish message and a clear next action. */

@@ -10,6 +10,13 @@ type Wanted = { lines: { inventoryItemId: string; quantity: number; unitDiscount
 export type DraftState = "empty" | "saving" | "saved" | "error";
 
 const STORAGE_KEY = "vitrinaya-sell-draft";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** «Continuar en Vender» from Historial opens /dashboard/ventas?borrador=<id>: that draft replaces the remembered one. */
+function draftFromUrl() {
+  if (typeof window === "undefined") return null;
+  const id = new URLSearchParams(window.location.search).get("borrador");
+  return id && UUID.test(id) ? id : null;
+}
 const wantedOf = (lines: TicketLine[], customer: TicketCustomer | null): Wanted =>
   ({ lines: lines.map(line => ({ inventoryItemId: line.itemId, quantity: line.quantity, unitDiscount: line.unitDiscount })), customerId: customer?.id ?? null });
 const sameLines = (sale: Sale, wanted: Wanted) => sale.lines.length === wanted.lines.length && wanted.lines.every(line => {
@@ -33,7 +40,7 @@ export function useSellDraft() {
   const [state, setState] = useState<DraftState>("empty");
   const [failure, setFailure] = useState<Failure | null>(null);
   // Only a stored draft id needs restoring; it is read once, in the browser.
-  const [restoring, setRestoring] = useState(() => typeof window !== "undefined" && Boolean(localStorage.getItem(STORAGE_KEY)));
+  const [restoring, setRestoring] = useState(() => typeof window !== "undefined" && Boolean(draftFromUrl() ?? localStorage.getItem(STORAGE_KEY)));
   const saleRef = useRef<Sale | null>(null), wantedRef = useRef<Wanted>(wantedOf([], null));
   const loop = useRef<Promise<Sale | null> | null>(null), timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const createKey = useRef(crypto.randomUUID()), patchKeys = useRef(new Map<string, string>());
@@ -48,7 +55,9 @@ export function useSellDraft() {
   // Restores the draft of an interrupted ticket (another tab, a reload) if it is still a DRAFT.
   useEffect(() => {
     let active = true;
-    const id = localStorage.getItem(STORAGE_KEY);
+    const fromUrl = draftFromUrl();
+    if (fromUrl) { localStorage.setItem(STORAGE_KEY, fromUrl); window.history.replaceState(window.history.state, "", window.location.pathname); }
+    const id = fromUrl ?? localStorage.getItem(STORAGE_KEY);
     if (!id) return;
     apiRequest<unknown>(`/sales/${encodeURIComponent(id)}`).then(reply).then(found => {
       if (!active) return;

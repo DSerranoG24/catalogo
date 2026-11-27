@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, CircleCheck, Clock, CreditCard, Minus, Plus, ShieldCheck, ShoppingCart, Store, Tag, Trash2, Zap } from "lucide-react";
+import { ArrowRight, CircleCheck, CreditCard, Minus, Plus, ShieldCheck, ShoppingCart, Tag, Trash2, Zap } from "lucide-react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useSafeCommand } from "@/components/common/useSafeCommand";
 import { Sheet, AmountInput } from "@/components/expenses/Sheet";
@@ -12,12 +12,11 @@ import { addPaymentRow, amountText, applySoldLines, formatPesos, parseAmountText
 import CustomerField, { focus } from "./CustomerField";
 import PaymentBox from "./PaymentBox";
 import ProductGrid, { ProductSearch, Thumb } from "./ProductGrid";
+import VenderHeader from "./VenderHeader";
 import { useSellDraft, type TicketLine } from "./useSellDraft";
 
 type Done = { kind: "delivered" | "confirmed"; saleId: string; total: string; change: bigint; paid: string | null; balance: string | null };
 const ZERO = BigInt(0);
-const TABS = [{ href: "/dashboard/ventas", label: "Nueva venta", Icon: ShoppingCart, current: true }, { href: "/dashboard/catalogos", label: "Pedidos", Icon: Store, current: false },
-  { href: "/dashboard/ventas/historial", label: "Historial", Icon: Clock, current: false }];
 
 /**
  * Vender › Nueva venta (docs/diseno/vender-escritorio.png, F2a-3a). The ticket is a server draft; its totals are the
@@ -219,17 +218,7 @@ export default function SellPanel() {
   </div>;
 
   return <main className="vy-theme mx-auto w-full max-w-7xl space-y-5 px-4 pb-44 pt-5 sm:px-8 lg:pb-8 lg:pt-4">
-    <div className="flex flex-wrap items-center justify-between gap-4">
-      <div className="flex min-w-0 items-center gap-4">
-        <span aria-hidden="true" className="grid size-14 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(135deg,#EEF3FF,#DCE6FF)] text-[var(--vy-blue-600)] shadow-[0_12px_24px_-16px_rgba(4,80,229,0.7)]"><ShoppingCart className="size-7" /></span>
-        <div className="min-w-0"><h1 className="text-3xl font-bold tracking-tight text-[var(--vy-text)] sm:text-4xl">Vender</h1><p className="text-base text-[var(--vy-text-muted)]">Selecciona productos y arma tu venta</p></div>
-      </div>
-      <nav aria-label="Vender" className="flex w-full gap-1 rounded-2xl bg-white p-1 shadow-[0_12px_30px_-24px_rgba(1,28,79,0.6)] sm:w-auto">
-        {TABS.map(({ href, label, Icon, current }) => <Link key={href} href={href} aria-current={current ? "page" : undefined}
-          className={`flex min-h-12 min-w-0 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-1.5 text-[13px] font-semibold sm:flex-none sm:px-4 sm:text-sm ${current ? "bg-[var(--vy-blue-600)] text-white" : "text-[var(--vy-text)] hover:bg-[var(--vy-surface-soft)]"} ${focus}`}>
-          <Icon aria-hidden="true" className="hidden size-5 sm:block" />{label}</Link>)}
-      </nav>
-    </div>
+    <VenderHeader current="new" title="Vender" subtitle="Selecciona productos y arma tu venta" />
     <p role="status" className="text-sm font-medium text-[var(--vy-blue-700)] empty:hidden">{message}</p>
 
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_27rem] lg:items-start">

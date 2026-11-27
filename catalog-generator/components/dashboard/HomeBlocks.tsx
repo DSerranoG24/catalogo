@@ -6,7 +6,7 @@ import { isEnabled } from "@/lib/panel-navigation";
 
 const card = "rounded-2xl border border-[var(--vy-border)] bg-white p-5 shadow-[0_10px_30px_-24px_rgba(1,28,79,0.5)]";
 
-/** Latest sales. Ventas has no direct link to one sale, so rows are not links; the header links to Vender. */
+/** Latest sales. Each row opens that sale in Vender › Historial (?venta=<id>, F2a-3b); the header links to the whole list. */
 export function RecentSales({ recent, today }: { recent: DashboardSummary["recent"]; today: string }) {
   return <section aria-labelledby="recent-title" className={card}>
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -14,12 +14,17 @@ export function RecentSales({ recent, today }: { recent: DashboardSummary["recen
       {isEnabled("vender") && <Link href="/dashboard/ventas/historial" className="inline-flex min-h-11 items-center text-sm font-semibold text-[var(--vy-blue-600)] underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--vy-blue-600)]">Ver ventas</Link>}
     </div>
     {recent.length ? <ul className="mt-2 divide-y divide-[var(--vy-border)]">
-      {recent.map(sale => <li key={sale.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">
-        <span className={`inline-flex min-h-7 items-center rounded-full border px-2.5 text-xs font-semibold ${STATUS_TONES[sale.status]}`}>{STATUS_LABELS[sale.status]}</span>
-        <span className="min-w-0 flex-1 truncate font-medium text-[var(--vy-text)]">{sale.customerName ?? "Sin cliente"}</span>
-        <span className="text-sm text-[var(--vy-text-muted)]">{movementTime(sale.at, today)}</span>
-        <span className={`w-full text-right font-semibold sm:w-auto ${sale.status === "CANCELLED" ? "text-[var(--vy-text-muted)] line-through" : "text-[var(--vy-text)]"}`}>{formatCop(sale.total)}</span>
-      </li>)}
+      {recent.map(sale => {
+        const content = <>
+          <span className={`inline-flex min-h-7 items-center rounded-full border px-2.5 text-xs font-semibold ${STATUS_TONES[sale.status]}`}>{STATUS_LABELS[sale.status]}</span>
+          <span className="min-w-0 flex-1 truncate font-medium text-[var(--vy-text)]">{sale.customerName ?? "Sin cliente"}</span>
+          <span className="text-sm text-[var(--vy-text-muted)]">{movementTime(sale.at, today)}</span>
+          <span className={`w-full text-right font-semibold sm:w-auto ${sale.status === "CANCELLED" ? "text-[var(--vy-text-muted)] line-through" : "text-[var(--vy-text)]"}`}>{formatCop(sale.total)}</span>
+        </>;
+        return <li key={sale.id}>{isEnabled("vender")
+          ? <Link href={`/dashboard/ventas/historial?venta=${encodeURIComponent(sale.id)}`} data-recent-sale={sale.id} className="-mx-2 flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 rounded-xl px-2 py-3 hover:bg-[var(--vy-surface-soft)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--vy-blue-600)]">{content}</Link>
+          : <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">{content}</div>}</li>;
+      })}
     </ul> : <p className="mt-3 text-[var(--vy-text-muted)]">Todavía no hay ventas confirmadas.</p>}
   </section>;
 }

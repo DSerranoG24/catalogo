@@ -10,6 +10,8 @@ export type Sale = {
   customerName?: string | null; customerPhone?: string | null; sourceOrderId?: string | null;
   customer?: { id?: string; fullName: string; phone?: string; archivedAt: string | null } | null;
   lines: SaleLine[]; returns: SaleReturn[];
+  /** F2a-2b block, validated with salePayments (lib/sale-detail-ui.mjs). */
+  paymentMode?: "TRACKED" | "LEGACY"; payments?: unknown;
 };
 export type DraftLine = { inventoryItemId: string; itemName: string; sku: string; unitPrice: string | null; stock: number | null; quantity: string; unitDiscount: string };
 export type Failure = { title: string; detail: string; action: "reload" | "refreshPrices" | "retry" | "login" | null };
