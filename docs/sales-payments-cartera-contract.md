@@ -1,6 +1,6 @@
 # Contrato de Pagos de la venta (F2a) y Cartera por cobrar (F2)
 
-**Estado:** aprobado por el dueño el 26/11/2026. F2a-1 (esquema), F2a-2a (bloqueo único) y F2a-2b (API de pagos, [sección 17](#17-api-f2a-2b-implementada)) están implementados. Incluye sus decisiones ([sección 14](#14-decisiones-del-dueño)) y las correcciones del planificador A a E ([sección 15](#15-correcciones-del-planificador)), que prevalecen sobre cualquier texto anterior. El esquema de F2a-1 está implementado y ensayado en local, **sin aplicar en producción** ([sección 16](#16-esquema-f2a-1-implementado)). Este documento no autoriza despliegues.
+**Estado:** aprobado por el dueño el 26/11/2026. F2a-1 (esquema), F2a-2a (bloqueo único) y F2a-2b (API de pagos, [sección 17](#17-api-f2a-2b-implementada)) están implementados; las reglas de F2a-3c (pagos obligatorios, conversión sin entrega y «anular y reemplazar») están en la [sección 18](#18-reglas-de-f2a-3c-decisiones-del-27112026). Incluye sus decisiones ([sección 14](#14-decisiones-del-dueño)) y las correcciones del planificador A a E ([sección 15](#15-correcciones-del-planificador)), que prevalecen sobre cualquier texto anterior. El esquema de F2a-1 está implementado y ensayado en local, **sin aplicar en producción** ([sección 16](#16-esquema-f2a-1-implementado)). Este documento no autoriza despliegues.
 
 Se apoya en el código desplegado de Ventas ([contrato v2.1](sales-contract.md)), Clientes ([historial](customer-sales-history.md)), Inicio ([resumen](dashboard-summary.md)) y el cierre de cuenta (`catalog-api/src/services/account-closure.service.ts`). Sigue el formato de [Gastos F1b](expenses-f1b-contract.md). Si el código y este documento chocan, manda el código: los choques encontrados y cómo se resolvieron están en la [sección 13](#13-choques-con-el-código-y-cómo-se-resuelven).
 
@@ -214,6 +214,7 @@ La devolución primero se come la deuda (200.000 → 50.000) y solo lo que sobra
 ### 5.5 Anulaciones
 
 - **Anular un pago, un uso de saldo, una parte de abono o una devolución directa** crea su `REVERSAL` con motivo.
+- **Venta entregada (F2a-3c):** un pago o un uso de saldo solo se anula con **«anular y reemplazar»**: en la misma operación se anula con su motivo y se registra el pago correcto por el **mismo monto** (puede cambiar el medio). La anulación simple responde `VOID_REQUIRES_REPLACEMENT`. Una venta entregada nunca queda con saldo por una anulación. En ventas `CONFIRMED` la anulación simple sigue igual ([sección 18](#18-reglas-de-f2a-3c-decisiones-del-27112026)).
 - Si la venta ya había pasado excedente al saldo a favor, la anulación **revierte primero ese excedente** hasta el importe anulado (`REVERSAL` del `EXCESS_TO_CREDIT` y del `FROM_SALE`). Si el cliente ya usó o le devolvieron ese saldo y no le queda suficiente, `409 CREDIT_ALREADY_USED`: primero hay que anular ese uso o esa devolución.
 - **Anular un abono** anula todas sus partes en una transacción. Si una falla, no se anula nada.
 - **Anular un uso de saldo** devuelve el saldo al cliente (`REVERSAL` del `USED`, emparejada con la `REVERSAL` de la venta).
@@ -589,3 +590,20 @@ Las operaciones nuevas responden `{ result: { result, idempotent } }` y guardan 
 - La API de F2a-2b necesita F2a-1 aplicada (lee las tablas y columnas nuevas). Orden: migración F2a-1 → API → frontend F2a-3.
 - **Cambio para la interfaz actual:** cerrar una cuenta con ventas confirmadas sin entregar, o con saldos a favor, ahora responde 409 hasta que la interfaz envíe `confirmOpenBalances` (F2a-3). La pantalla actual muestra el mensaje, pero no puede confirmar. Antes, esas cuentas se cerraban sin aviso.
 - El resto de la interfaz actual sigue igual: crea ventas `LEGACY` y las lecturas solo añaden el campo `payments`, que el validador del frontend ignora.
+
+## 18. Reglas de F2a-3c (decisiones del 27/11/2026)
+
+Decisiones del dueño, implementadas en F2a-3c sin cambios de esquema. Prevalecen sobre la interpretación 1 de la sección 17 y sobre la corrección D en lo que toca a entregar.
+
+| Regla | Comportamiento | API |
+| --- | --- | --- |
+| **Pagos obligatorios al confirmar** | Toda confirmación nueva queda `TRACKED`. Sin `payments` ni `customerCreditAmount` responde `400 PAYMENTS_REQUIRED` y no escribe nada. Un anticipo de 0 es `payments: []` («Confirmar, entregar después»). Los recibos de confirmaciones anteriores se siguen repitiendo igual, y las ventas `LEGACY` ya confirmadas se entregan como antes. | `POST /sales/:id/confirm` |
+| **Conversión de pedidos** | `mode: CONFIRMED` crea una venta `TRACKED` (sin pagos, con anticipo de 0) que se cobra y entrega desde su detalle en Historial. `mode: DELIVERED` responde `409 ORDER_CONVERSION_DELIVERY_REMOVED` sin crear nada. El borrador no cambia. | `POST /orders/:orderId/convert-to-sale` |
+| **Anular y reemplazar** | Una operación idempotente, en una transacción y con el bloqueo de la cuenta: `REVERSAL` del pago o uso de saldo con su motivo y un `PAYMENT` nuevo por el mismo monto (otro monto: `409 REPLACEMENT_AMOUNT_MISMATCH`). El recibo es de `sale_money_operations` (`SALE_PAYMENT_REPLACE`, hash sin `requestId`). En efectivo, `cashReceived` y el cambio siguen siendo informativos. | `POST /sales/:id/payments/:entryId/replace` con `{operationId, requestId, expectedVersion, reason, payment}` |
+| **Anulación simple en una venta entregada** | Un `PAYMENT` o `CREDIT_USE` de una venta `DELIVERED` responde `409 VOID_REQUIRES_REPLACEMENT`. Las devoluciones de dinero (`SALE_REFUND`) se siguen anulando solas: no crean saldo. | `POST /sales/:id/payments/:entryId/void` |
+| **Reparación de saldos anteriores** | Una venta `DELIVERED` que ya tiene saldo (anulaciones simples anteriores a esta regla) admite `payments`, nunca por encima del saldo. Con saldo 0, `INVALID_PAYMENT_STATE`: no se puede crear un saldo nuevo. | `POST /sales/:id/payments` |
+
+**Puntos que confirman ventas** (revisados el 27/11/2026): `POST /sales/:id/confirm` (Vender, siempre con pagos) y `POST /orders/:orderId/convert-to-sale` (Pedidos, con `payments: []`). No hay otros.
+
+**Ensayo:** `test:sale-payments-api-postgres` (etapas `VOID_AND_REPLACE`, `PAYMENTS_REQUIRED_AND_LEGACY` y `ORDER_CONVERSION_WITH_PAYMENTS`), con `test:sales-postgres`, `test:sale-payments-postgres` y `test:account-lock-postgres` adaptados a la regla.
+

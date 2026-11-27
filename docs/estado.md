@@ -145,6 +145,14 @@ Vender › Historial y detalle F2a-3b (27/11/2026, en `main` desde `19cf72c`; [d
 - **Navegador:** `test:sale-detail-browser` (nueva, 16 bloques), `test:sell-browser` (12), `test:sales-browser` y `test:customer-sales-browser` (adaptadas a la pantalla nueva), `test:dashboard-browser`, `test:panel-browser`, `test:order-customers-browser` y `verify-order-privacy-browser`, correctas.
 - **API:** `npm.cmd run build` correcto y `npm.cmd test` 394/394; no existe script `lint`.
 
+Cierre de F2a-3 con F2a-3c (27/11/2026, rama `f2a-3c`, sin publicar; [reglas en el contrato, sección 18](sales-payments-cartera-contract.md#18-reglas-de-f2a-3c-decisiones-del-27112026)):
+- **Commits:** `887c859` (A: anular y reemplazar, API), `f218a1d` (B: pagos obligatorios al confirmar y conversión sin entrega, API), `f5d8c0b` (C: interfaz) y el de documentación.
+- **API:** `POST /sales/:id/payments/:entryId/replace`; anulación simple de pagos de ventas entregadas rechazada (`VOID_REQUIRES_REPLACEMENT`); reparación de saldos anteriores con `POST /sales/:id/payments`; `confirm` sin pagos → `PAYMENTS_REQUIRED`; conversión en `CONFIRMED` siempre `TRACKED` y `DELIVERED` → `ORDER_CONVERSION_DELIVERY_REMOVED`. Sin cambios de esquema. `openapi.json` actualizado en esas rutas.
+- **Interfaz:** «Anular y reemplazar» en ventas entregadas, «Registrar pago» solo para reparar saldos anteriores, la conversión de pedidos abre el detalle de la venta nueva, «No encontramos esa venta» para `?venta=` incompleto o inexistente.
+- **API, comprobaciones:** `npm.cmd run build` correcto y `npm.cmd test` 397/397; no existe script `lint`. En dos ejecuciones previas falló una vez por tiempo «owned movement locks row…» (inventario, límite de 5 s, ajeno a este cambio); en las siguientes pasó.
+- **PostgreSQL real** (clúster PostgreSQL 17 local desechable en el puerto 55497, eliminado al terminar; 42 migraciones): `test:sale-payments-api-postgres`, `test:sales-postgres` (24 etapas), `test:sale-payments-postgres`, `test:account-lock-postgres`, `test:dashboard-postgres`, `test:expenses-postgres` (15), `test:scheduled-postgres` y `test:inventory-batches-postgres` (10), correctos.
+- **Frontend:** lint sin errores (las 4 advertencias de siempre), `tsc --noEmit`, `npm.cmd test` y `npm.cmd run build`, correctos. Navegador: `test:sale-detail-browser` (con los bloques de F2a-3c), `test:sell-browser`, `test:sales-browser`, `test:customer-sales-browser`, `test:dashboard-browser`, `test:panel-browser`, `test:order-customers-browser`, `verify-order-privacy-browser` y `test:expenses-browser`, correctos.
+
 ## Pendientes vigentes
 
 - **Ventas F0d (reglas e interfaz):** publicadas en `main` (`b177f12`) con su migración aplicada, según el responsable. No se verificó desde esta sesión.
@@ -158,7 +166,7 @@ Vender › Historial y detalle F2a-3b (27/11/2026, en `main` desde `19cf72c`; [d
 - **F2a-2b, API de pagos:** en `main` (`e03630d`). Necesita F2a-1 aplicada. La confirmación del cierre de cuenta la envía la pantalla de F2a-3b.
 - **F2a-3a, Nueva venta:** en `main` (`e28655d`). Necesita F2a-1 y F2a-2b desplegadas antes (envía `payments`). Las tarjetas siguen sin fotos: la lista de inventario no trae URL de imagen y hace falta un cambio de API.
 - **F2a-3b, Historial y detalle:** en `main` (`19cf72c`, subido a `origin/main` el 27/11/2026). Necesita F2a-1 y F2a-2b en producción, igual que F2a-3a; el resultado del despliegue en Vercel no se verificó desde esta sesión. Resuelve el cobro del resto de una venta con anticipo y la confirmación del cierre de cuenta. Pendiente:
-  - **pagos obligatorios al confirmar (E):** bloqueado por la conversión de pedidos, que no puede enviar pagos (sobre todo en «Confirmar y entregar»). Decide el dueño: añadir el cobro a la conversión (toca Pedidos) o limitarla a borrador/confirmada sin entrega;
+  - pagos obligatorios al confirmar: resuelto en F2a-3c (rama `f2a-3c`) con la decisión del dueño del 27/11/2026: la conversión crea una venta confirmada con anticipo de 0 y ya no entrega;
   - la lista general muestra las 50 ventas más recientes (límite de la API); el filtro de cliente sí pagina.
 - **Posible traba de la publicación de inventario contra el cierre de cuenta** (anterior y fuera de F2a-2a): ver el [contrato de pagos, 15.A](sales-payments-cartera-contract.md#15-correcciones-del-planificador).
 - **`test:inventory-postgres`** falla en su etapa inicial por el cliente de Prisma sobre la cadena parcial (anterior a F2a-2a).

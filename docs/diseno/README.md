@@ -304,8 +304,14 @@ Sustituye a la vista anterior de Ventas. Usa `.vy-theme`, los tokens `--vy-*` y 
 | Con dinero por devolver (sin cliente) | «Devolver dinero» (importe, medio y **motivo obligatorio**) |
 | Cliente con saldo a favor | «Devolver saldo a favor» (`POST /customers/:id/credit/refunds`, motivo obligatorio) |
 | Pagos, usos de saldo y devoluciones vigentes | «Anular» con **motivo obligatorio**; nada se borra |
+| `DELIVERED`: pagos y usos de saldo (F2a-3c) | Solo «**Anular y reemplazar**» (`POST /sales/:id/payments/:entryId/replace`): motivo, medio del pago correcto (Efectivo, Transferencia con Nequi / Daviplata / Banco, Tarjeta) y monto fijo igual al anulado; en efectivo, «Recibido (opcional)» y el cambio. El anulado queda tachado con su motivo y el nuevo debajo; el saldo no cambia |
+| `DELIVERED` con saldo de anulaciones anteriores (F2a-3c) | «Registrar pago», limitado al saldo, solo para reparar; con saldo 0 no aparece |
 
 Cada acción conserva su `operationId`: «Reintentar» reenvía la misma operación con otra `requestId` y el recibo responde sin repetirla. Tras cada acción la venta se vuelve a leer: todas las cifras son del servidor. Un pago mayor que el saldo no se puede enviar («Los pagos superan…») y se ofrece «Pagar el total». Si al recargar la acción ya no aplica (por ejemplo, la venta se entregó en otro dispositivo), su formulario se cierra.
+
+**Pedidos (F2a-3c):** «Convertir a venta» ofrece «Crear borrador» y «Crear y confirmar (cobrar y entregar en Historial)»; ya no «Confirmar y entregar». Confirmar envía `payments: []` (anticipo de 0) y abre `/dashboard/ventas/historial?venta=<id>` con «Cobrar y entregar» a la vista.
+
+**Venta no encontrada (F2a-3c):** `?venta=` con un id incompleto, o de una venta que no existe en la cuenta, muestra «No encontramos esa venta» en el panel.
 
 **Móvil (< `lg`):** el detalle es una hoja (el `Sheet` de Gastos: anclada abajo por debajo de 640 px, centrada entre 640 y 1023 px). En escritorio es un panel a la derecha de 24 rem (28 rem desde `xl`), fijo al desplazarse, como el ticket.
 
@@ -318,7 +324,7 @@ Cada acción conserva su `operationId`: «Reintentar» reenvía la misma operaci
 
 **Pruebas:**
 - `scripts/verify-sale-detail-ui.mjs` (en `npm test`).
-- `npm.cmd run test:sale-detail-browser` (nueva; `DETAIL_SCREENSHOTS=<carpeta>` guarda capturas a 375, 1132 y 1440 px): anticipo → cobrar el resto y entregar, reintento sin duplicar, pago mayor que el saldo, anular con motivo, cancelar con y sin cliente, devolver dinero, devolución, `LEGACY`, filtros, enlace directo, hoja móvil, 320–1440 px sin desbordes con formularios abiertos, sin verde antiguo y el aviso de cierre (también tras un 409).
+- `npm.cmd run test:sale-detail-browser` (`DETAIL_SCREENSHOTS=<carpeta>` guarda capturas a 375, 1132 y 1440 px; desde F2a-3c también «Anular y reemplazar», la reparación de saldos, la conversión de un pedido a 375 y 1440 px y «No encontramos esa venta»): anticipo → cobrar el resto y entregar, reintento sin duplicar, pago mayor que el saldo, anular con motivo, cancelar con y sin cliente, devolver dinero, devolución, `LEGACY`, filtros, enlace directo, hoja móvil, 320–1440 px sin desbordes con formularios abiertos, sin verde antiguo y el aviso de cierre (también tras un 409).
 - `test:sales-browser` (ventas `LEGACY`: entregar, cancelar, devoluciones, conflictos) y `test:customer-sales-browser` (filtro de cliente) adaptadas a la pantalla nueva.
 
 ## R8 · Cartera (maqueta, F2)
