@@ -108,7 +108,8 @@ export default function HistoryPanel() {
   const visible = source ? filterSales(source, filter) : null;
   const listLoading = customer ? pagesLoading && !pages : recentLoading && !lastSales;
   const listError = customer ? pagesError : recentError ? `${recentError.title}. ${recentError.detail}` : "";
-  const detail = selectedId ? <SaleDetailPanel key={selectedId} saleId={selectedId} onClose={close} onChanged={changed} /> : null;
+  // The sheet (mobile) has its own close button; the side panel shows the detail's.
+  const detail = selectedId ? <SaleDetailPanel key={selectedId} saleId={selectedId} onClose={close} onChanged={changed} inSheet={!desktop} /> : null;
 
   return <main className="vy-theme mx-auto w-full max-w-7xl space-y-5 px-4 pb-28 pt-5 sm:px-8 lg:pb-8 lg:pt-4">
     <VenderHeader current="history" title="Historial" subtitle="Tus ventas, sus pagos y lo que falta por cobrar o entregar" />

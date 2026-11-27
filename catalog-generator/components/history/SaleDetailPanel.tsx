@@ -28,7 +28,7 @@ const field = `min-h-11 w-full min-w-0 rounded-xl border border-[var(--vy-field-
  * «Reintentar» (useSafeCommand), so a lost answer never charges, delivers or refunds twice. After each success the
  * sale is read again: every figure on screen is the server's.
  */
-export default function SaleDetailPanel({ saleId, onClose, onChanged }: { saleId: string; onClose: () => void; onChanged: (saleId: string) => void }) {
+export default function SaleDetailPanel({ saleId, onClose, onChanged, inSheet = false }: { saleId: string; onClose: () => void; onChanged: (saleId: string) => void; inSheet?: boolean }) {
   const [revision, setRevision] = useState(0);
   const [state, setState] = useState<{ revision: number; loaded: Loaded | null; error: ReturnType<typeof describeFailure> | null } | null>(null);
   const [modeState, setModeState] = useState<Mode>(null);
@@ -172,7 +172,7 @@ export default function SaleDetailPanel({ saleId, onClose, onChanged }: { saleId
         </div>
         <p className="break-words text-sm text-[var(--vy-text-muted)]">{buyer ?? "Sin cliente"} · {formatDate(sale.createdAt) ?? "Sin fecha"}</p>
       </div>
-      <button type="button" onClick={onClose} aria-label="Cerrar detalle" className={`grid size-11 shrink-0 place-items-center rounded-xl hover:bg-[var(--vy-surface-soft)] ${focus}`}><X aria-hidden="true" className="size-5" /></button>
+      {!inSheet && <button type="button" onClick={onClose} aria-label="Cerrar detalle" className={`grid size-11 shrink-0 place-items-center rounded-xl hover:bg-[var(--vy-surface-soft)] ${focus}`}><X aria-hidden="true" className="size-5" /></button>}
     </div>
 
     <p role="status" data-detail-message className="text-sm font-semibold text-[#067647] empty:hidden">{message}</p>
