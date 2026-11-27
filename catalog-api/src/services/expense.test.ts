@@ -106,7 +106,7 @@ function fixture() {
       if (/FOR UPDATE/.test(sql)) { assert.equal(typeof values[1], "string", "row lock scoped by owner"); return []; }
       throw new Error(`Unexpected SQL: ${sql}`);
     },
-    async $executeRaw(strings: TemplateStringsArray) { assert.match(strings.join("?"), /pg_advisory_xact_lock\(hashtext\('expenses-v1'\)/); return 1; },
+    async $executeRaw(strings: TemplateStringsArray) { assert.match(strings.join("?"), /pg_advisory_xact_lock\(hashtext\('account-money-v1'\)/); return 1; },
     expenseCategory: delegate("expenseCategory"), expense: delegate("expense"), expenseOperation: delegate("expenseOperation"), expenseEvent: delegate("expenseEvent"),
   };
   const service = makeExpenseService(makeExpenseRepository(db as unknown as typeof prisma, () => NOW));

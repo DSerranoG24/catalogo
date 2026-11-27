@@ -4,18 +4,16 @@ import type { z } from "zod";
 import { inventoryItemSchema, type InventoryMovementInput } from "../schemas/inventory.schema";
 import { inventoryBalance } from "../services/inventory-calculation";
 import { randomUUID } from "node:crypto";
+import { lockAccountForMoney, lockInventoryOwner } from "./account-lock";
+
+// Kept here for its existing importers; the implementation lives with the account lock order.
+export { lockInventoryOwner };
 
 type BatchMovement = { id: string; rowId: string; operationId: string };
 function movementData(userId: string, itemId: string, previousStock: number, input: InventoryMovementInput, batch?: BatchMovement) {
   const resultingStock = inventoryBalance(previousStock, input);
   return { ...input, itemId, previousStock, resultingStock, delta: resultingStock - previousStock, actorUserId: userId,
     origin: batch ? "INVENTORY_BATCH" : "MANUAL", batchId: batch?.id ?? null, batchRowId: batch?.rowId ?? null, batchOperationId: batch?.operationId ?? null };
-}
-
-export async function lockInventoryOwner(tx: Prisma.TransactionClient, userId: string) {
-  // Account closure takes an exclusive user lock; stale authenticated requests must wait.
-  const owners = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM users WHERE id = ${userId} AND "closedAt" IS NULL FOR SHARE`;
-  if (!owners.length) throw new Error("ACCOUNT_CLOSED");
 }
 
 export async function lockInventoryIdentity(tx: Prisma.TransactionClient, userId: string) {
@@ -93,7 +91,8 @@ export async function createInventory(userId: string, input: z.infer<typeof inve
 
 export async function moveInventory(userId: string, itemId: string, input: InventoryMovementInput, database = prisma) {
   return database.$transaction(async tx => {
-    await lockInventoryOwner(tx, userId);
+    // Moves stock: account money lock, then users FOR SHARE, then the item (Agents.md, lock order).
+    await lockAccountForMoney(tx, userId);
     return applyInventoryMovement(tx, userId, itemId, input);
   });
 }

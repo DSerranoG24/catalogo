@@ -142,20 +142,20 @@ El registro de la operación se crea dentro de la misma transacción que sus efe
 
 ## 8. Transacciones y bloqueos
 
-Orden de bloqueo para `confirm`, `deliver`, `cancel` y `returns`:
+Orden de bloqueo para `confirm`, `deliver`, `cancel` y `returns` (desde F2a-2a es el orden único de dinero y existencias de [Agents.md](../Agents.md) y del [contrato de pagos, 15.A](sales-payments-cartera-contract.md#15-correcciones-del-planificador)):
 
-1. `users` `FOR SHARE` del propietario, comprobando que la cuenta no esté cerrada (`lockInventoryOwner`).
+1. Bloqueo por cuenta y `users` `FOR SHARE` con `lockAccountForMoney`: `pg_advisory_xact_lock(hashtext('account-money-v1'), hashtext(ownerId))` y después la fila del propietario, comprobando que la cuenta no esté cerrada.
 2. Fila de `"Sale"` `FOR UPDATE`. Dos llamadas sobre la misma venta se serializan, incluidas dos devoluciones: la segunda ve el estado y la versión ya cambiados.
 3. Recibo previo (sección 7).
 4. Estado, versión y, en devoluciones, cantidades ya devueltas por línea.
 5. Artículos implicados con `SELECT … FROM inventory_items … ORDER BY id FOR UPDATE`, y después lectura de su saldo. Es el mismo orden que usan los lotes de inventario.
 6. Validación de todas las líneas antes de escribir; luego saldos, movimientos, estado y recibo en el mismo commit. En devoluciones, el trigger `sale_return_line_guard` vuelve a comprobar cada línea bajo bloqueo de la línea vendida.
 
-**Conversión de pedidos:** `users` `FOR SHARE` → pedido `FOR UPDATE` → (venta nueva) → artículos `ORDER BY id FOR UPDATE`, solo en `CONFIRMED`/`DELIVERED`. El saldo, la ficha comercial y el costo se leen después de bloquear. Un borrador no bloquea artículos.
+**Conversión de pedidos:** bloqueo por cuenta → `users` `FOR SHARE` → pedido `FOR UPDATE` → (venta nueva) → artículos `ORDER BY id FOR UPDATE`, solo en `CONFIRMED`/`DELIVERED`. El saldo, la ficha comercial y el costo se leen después de bloquear. Un borrador no bloquea artículos.
 
 Con dos confirmaciones o conversiones por la última unidad, una confirma y la otra recibe `STOCK_INSUFFICIENT` sin dejar escrituras. Cada movimiento parte del saldo dejado por el anterior. `inventory_items` conserva `CHECK (stock >= 0)` como defensa adicional.
 
-Otros flujos: `POST /sales` usa un advisory lock por propietario (`sale-create-v1`) y `PATCH /sales/:id` bloquea la venta `FOR UPDATE`. Ninguna operación de ventas toma locks de catálogo. El cierre de cuenta usa `Order → Catalog → User FOR UPDATE`, mientras la conversión toma `User FOR SHARE → Order FOR UPDATE`: si coinciden, PostgreSQL aborta una de las dos por interbloqueo (sección 13).
+Otros flujos: `POST /sales` usa un advisory lock por propietario (`sale-create-v1`) y `PATCH /sales/:id` bloquea la venta `FOR UPDATE`. Los borradores no toman el bloqueo por cuenta. Ninguna operación de ventas toma locks de catálogo. El cierre de cuenta toma primero el mismo bloqueo por cuenta y después `Order → Catalog → User FOR UPDATE`, así que la conversión y el cierre se serializan y ya no se traban (antes de F2a-2a, PostgreSQL abortaba una de las dos con `40P01`).
 
 ## 9. Conversión de pedidos
 
@@ -216,7 +216,7 @@ Otros flujos: `POST /sales` usa un advisory lock por propietario (`sale-create-v
 
 - **Venta de prueba entregada y después cancelada (`29b2435…`).** Existe en producción por la regla anterior. No se corrige: la consulta previa la muestra como `DIAGNÓSTICO` (`Sale_cancelled_after_delivery`) y los triggers nuevos no la tocan porque solo actúan sobre cambios futuros. Su cancelación reingresó todo el stock sin recepción física.
 - **Interfaz:** la conversión de pedidos sigue en el panel de pedidos del catálogo. El panel de Ventas no muestra el recibo original de una operación repetida, sino la venta actual tras recargar.
-- **Cierre de cuenta frente a conversión:** orden de bloqueo inverso (sección 8). Es anterior a este cambio; PostgreSQL resuelve el interbloqueo abortando una transacción, que falla con 500 y puede reintentarse.
+- **Cierre de cuenta frente a conversión:** resuelto en F2a-2a con el bloqueo único por cuenta (sección 8). Antes, el orden de bloqueo era inverso y PostgreSQL abortaba una de las dos transacciones (500, reintentable).
 - **Recibos anteriores a la v2.1:** no incluyen líneas, y su hash incluía `requestId`. Un reintento de una operación antigua con una `requestId` distinta responde `IDEMPOTENCY_CONFLICT`.
 - **Sin respaldo en base de datos:** las sumas de líneas frente a totales de la venta y la inmutabilidad de líneas confirmadas.
 

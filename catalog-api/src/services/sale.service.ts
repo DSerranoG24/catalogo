@@ -2,6 +2,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma";
 import { lockInventoryOwner } from "../repositories/inventory.repository";
+import { lockAccountForMoney } from "../repositories/account-lock";
 import { z } from "zod";
 import { createInternalSale, updateInternalSaleDraft, saleCustomerInclude, findActiveSaleCustomer, orderBuyerSnapshots } from "./sale-customer";
 import { isSameSaleCommand, saleCommandHash } from "./sale-operation-hash";
@@ -18,11 +19,12 @@ export function makeSaleService(database = prisma) {
   async function operation(tx: any, userId: string, saleId: string, input: { operationId: string; requestId?: string; expectedVersion?: number | null }, type: string) {
     return tx.saleOperation.create({ data: { id: input.operationId, saleId, userId, type, requestId: input.requestId ?? input.operationId, expectedSaleVersion: input.expectedVersion ?? null, requestHash: saleCommandHash(input), status: "PREPARED" } });
   }
-  // Lock order shared by confirm/deliver/cancel/return: owner FOR SHARE -> Sale FOR UPDATE -> items ORDER BY id FOR UPDATE.
+  // Lock order shared by confirm/deliver/cancel/return (Agents.md): account money lock -> users FOR SHARE ->
+  // Sale FOR UPDATE -> items ORDER BY id FOR UPDATE.
   // The receipt is looked up by operationId only, before status/version checks: same key and same
   // content (any requestId) replays it; same key with other content is a conflict.
   async function begin(tx: any, userId: string, saleId: string, input: { operationId: string; requestId?: string }, type: string) {
-    await lockInventoryOwner(tx, userId);
+    await lockAccountForMoney(tx, userId);
     await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${saleId} AND "userId" = ${userId} FOR UPDATE`;
     const sale = await own(tx, userId, saleId);
     const previous = await tx.saleOperation.findFirst({ where: { userId, id: input.operationId } });
@@ -43,9 +45,10 @@ export function makeSaleService(database = prisma) {
     await tx.saleOperation.update({ where: { id: op.id }, data: { status: "SUCCEEDED", completedAt: new Date(), responseSnapshot: jsonSafe(updated) } });
   }
   return {
-    // Lock order: owner FOR SHARE -> order FOR UPDATE -> (new sale) -> items ORDER BY id FOR UPDATE.
+    // Lock order: account money lock -> users FOR SHARE -> order FOR UPDATE -> (new sale) -> items ORDER BY id FOR UPDATE.
+    // The money lock comes first so account closure (money lock -> orders -> catalogs -> users) cannot interleave.
     async convertOrderToSale(userId: string, orderId: string, input: z.infer<typeof convertOrderToSaleSchema>) { input = convertOrderToSaleSchema.parse(input); return database.$transaction(async tx => {
-      await lockInventoryOwner(tx, userId);
+      await lockAccountForMoney(tx, userId);
       await tx.$queryRaw`SELECT o.id FROM orders o JOIN catalogs c ON c.id=o."catalogId" WHERE o.id=${orderId} AND c."userId"=${userId} FOR UPDATE`;
       const existingOperation = await tx.saleOperation.findFirst({ where: { userId, id: input.operationId }, include: { sale: { include: saleResultInclude } } });
       if (existingOperation) { if (existingOperation.type !== "ORDER_CONVERSION" || existingOperation.sale?.userId !== userId || existingOperation.sale?.sourceOrderId !== orderId || !isSameSaleCommand(existingOperation.requestHash, input)) throw new Error("IDEMPOTENCY_CONFLICT"); return { sale: existingOperation.sale, idempotent: true }; }

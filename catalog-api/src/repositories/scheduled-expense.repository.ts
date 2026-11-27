@@ -1,6 +1,6 @@
 import { Prisma, type ExpenseCategory, type RecurringExpenseTemplate, type ScheduledExpensePayment } from "@prisma/client";
 import { prisma } from "../config/prisma";
-import { lockInventoryOwner } from "./inventory.repository";
+import { lockAccountForMoney } from "./account-lock";
 import { activeCategory, ExpenseError, expenseView, insertExpense, makeExpenseMutation, type EventDraft, type Tx } from "./expense.repository";
 import { bogotaToday, fromDbDate, minExpenseDate, toDbDate } from "../services/expense-dates";
 import { addDays, nextOccurrence, syncPlan, type ScheduleRule } from "../services/schedule-dates";
@@ -94,8 +94,8 @@ export function makeScheduledExpenseRepository(database: typeof prisma = prisma,
     /** POST /expenses/scheduled/sync: explicit generation (correction A); idempotent and safe in parallel (B). */
     async sync(ownerId: string) {
       return database.$transaction(async tx => {
-        await lockInventoryOwner(tx, ownerId);
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('expenses-v1'), hashtext(${ownerId}))`;
+        // Same per-account lock as every expense mutation (replaces 'expenses-v1').
+        await lockAccountForMoney(tx, ownerId);
         const today = bogotaToday(clock());
         const templates = await tx.recurringExpenseTemplate.findMany({ where: { ownerId, status: "ACTIVE" }, orderBy: { id: "asc" } });
         let generated = 0;

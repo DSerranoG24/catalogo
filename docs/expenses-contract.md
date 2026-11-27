@@ -251,9 +251,9 @@ Los mensajes se presentan legibles en español en la interfaz.
 
 ## 10. Transacciones y bloqueos
 
-Orden: `users` `FOR SHARE` comprobando `closedAt IS NULL` (mismo criterio que `lockInventoryOwner`) → `pg_advisory_xact_lock(hashtext('expenses-v1'), hashtext(ownerId))` → recibo → filas afectadas `FOR UPDATE` (gasto, plantilla o categoría) en orden por ID.
+Orden (desde F2a-2a, el orden único de dinero y existencias de [Agents.md](../Agents.md)): `pg_advisory_xact_lock(hashtext('account-money-v1'), hashtext(ownerId))` → `users` `FOR SHARE` comprobando `closedAt IS NULL`, los dos con `lockAccountForMoney` → recibo → filas afectadas `FOR UPDATE` (gasto, plantilla o categoría) en orden por ID.
 
-- El advisory lock por cuenta serializa las mutaciones de gastos: unicidad de nombres de categoría, siembra, materialización y cuotas. Es conservador; medir antes de granularizar. No reutiliza los locks de inventario, ventas ni catálogos.
+- El advisory lock por cuenta serializa las mutaciones de gastos: unicidad de nombres de categoría, siembra, materialización y cuotas. Es conservador; medir antes de granularizar. Desde F2a-2a es el mismo bloqueo por cuenta que ventas e inventario (sustituye a `expenses-v1`), así que un gasto también espera a una venta de la misma cuenta.
 - Gastos no toma locks de pedidos, catálogos, inventario ni ventas. El cierre de cuenta usa `Order → Catalog → User FOR UPDATE`; gastos solo toma `User FOR SHARE` y su propio namespace, así que no hay ciclo.
 - Las lecturas de listado y totales usan una transacción `REPEATABLE READ` para que el listado y su resumen sean coherentes en la misma pantalla cuando se piden juntos.
 - Timeout o deadlock: rollback y reintento explícito con la misma clave.

@@ -45,6 +45,22 @@ Este proyecto está en producción.
 - Los datos personales no deben aparecer en logs.
 - Las pruebas nunca deben usar producción.
 
+## Orden de bloqueo (dinero y existencias)
+
+Toda operación nueva o modificada que mueva dinero o existencias (ventas, pagos, abonos, saldos a favor, gastos, movimientos y lotes de inventario, conversión de pedidos) sigue este orden dentro de **una sola transacción**:
+
+1. `lockAccountForMoney(tx, ownerId)` (`catalog-api/src/repositories/account-lock.ts`), siempre lo primero. Toma `pg_advisory_xact_lock(hashtext('account-money-v1'), hashtext(ownerId))` y después `users` `FOR SHARE` de una cuenta abierta.
+2. Otros bloqueos de asesoría por cuenta, si hacen falta (`inventory-identity-v1`…).
+3. Recibo de idempotencia.
+4. Filas `FOR UPDATE`, por tipo y después por `id`: pedido → cliente → venta o deuda inicial → filas de gastos → lote → artículos de inventario.
+
+Reglas:
+- El cierre de cuenta toma `accountClosureMoneyLock` y después pedidos → catálogos → `users` `FOR UPDATE`. No muevas `users` al principio del cierre: el trigger `guard_closed_catalog_write` toma `users` después del pedido o del catálogo.
+- No crees bloqueos de asesoría nuevos para dinero o existencias (como el antiguo `expenses-v1`): usa el de la cuenta.
+- No bloquees un pedido, un catálogo ni otra fila antes del paso 1 en una operación de dinero o existencias.
+- Las lecturas no toman este bloqueo.
+- Detalle y pruebas: [contrato de pagos, 15.A](docs/sales-payments-cartera-contract.md#15-correcciones-del-planificador) y `npm.cmd run test:account-lock-postgres`.
+
 ## Validación obligatoria
 
 Después de cada modificación ejecuta las comprobaciones específicas del módulo afectado y, antes de cerrar una tarea, los scripts disponibles de:

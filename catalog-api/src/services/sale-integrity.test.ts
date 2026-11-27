@@ -28,6 +28,11 @@ function fixture() {
     const view = (sale: Row) => ({ ...structuredClone(sale), lines: structuredClone(state.lines.filter(line => line.saleId === sale.id)), customer: null });
     const result = (sale: Row) => ({ ...view(sale), returns: structuredClone(state.returns.filter(r => r.saleId === sale.id).map(r => ({ ...r, lines: state.returnLines.filter(l => l.returnId === r.id) }))) });
     return {
+      // Account money lock: a real per-owner lock in this double, taken before users (Agents.md).
+      async $executeRaw(first: any, ...rest: unknown[]) {
+        const sql: string = Array.isArray(first) ? first.join("?") : first.sql; const values: unknown[] = Array.isArray(first) ? rest : first.values;
+        assert.match(sql, /pg_advisory_xact_lock\(hashtext\('account-money-v1'\)/); await acquire(`money:${values[0]}`, tx); return 1;
+      },
       async $queryRaw(first: any, ...rest: unknown[]) {
         const sql: string = Array.isArray(first) ? first.join("?") : first.sql; const values: unknown[] = Array.isArray(first) ? rest : first.values;
         if (sql.includes("FROM users")) { assert.match(sql, /FOR SHARE/); return [{ id: values[0] }]; }
@@ -308,4 +313,22 @@ test("confirm, deliver, cancel and return responses (and their replays) include 
   const d: any = await f.service.transition(owner, s, { ...keys(), expectedVersion: c.version }); assert.equal(d.lines.length, 1);
   const s2 = f.draft([{ itemId: a, quantity: 1 }]); const c2: any = await f.service.confirm(owner, s2, confirmInput());
   const x: any = await f.service.cancel(owner, s2, { ...keys(), expectedVersion: c2.version, reason: "Prueba" }); assert.equal(x.lines.length, 1);
+});
+
+test("confirm, deliver, cancel and returns take the account money lock first; two sales of one account serialize on it", { timeout: 5000 }, async () => {
+  const f = fixture(); const id = randomUUID(); f.item(10, id);
+  const a = f.draft([{ itemId: id, quantity: 1 }]), b = f.draft([{ itemId: id, quantity: 1 }]);
+  const [confirmedA] = await Promise.all([f.service.confirm(owner, a, confirmInput()), f.service.confirm(owner, b, confirmInput())]) as any[];
+  const delivered = await f.service.transition(owner, a, { operationId: randomUUID(), requestId: randomUUID(), expectedVersion: confirmedA.version }) as any;
+  await f.service.returnSale(owner, a, { operationId: randomUUID(), requestId: randomUUID(), expectedVersion: delivered.version, reason: "Parcial",
+    lines: [{ saleLineId: delivered.lines[0].id, receivedQuantity: 1, resellableQuantity: 1, damagedQuantity: 0 }] });
+  const saleB = f.state.sales.find(sale => sale.id === b)!;
+  await f.service.cancel(owner, b, { operationId: randomUUID(), requestId: randomUUID(), expectedVersion: saleB.version as number, reason: "Desistió" });
+  const mutations = [...new Set(f.events.filter(event => event.includes(":sale:")).map(event => event.split(":")[0]))];
+  assert.equal(mutations.length, 5, "two confirmations, a delivery, a return and a cancellation");
+  for (const tx of mutations) {
+    const mine = f.events.filter(event => event.startsWith(`${tx}:`)).map(event => event.slice(tx.length + 1));
+    assert.equal(mine[0], `money:${owner}`, "the account money lock is the first lock of every sale mutation");
+  }
+  assert.equal(f.state.items[0]!.stock, 10, "10 − 2 confirmed + 1 returned + 1 cancelled");
 });

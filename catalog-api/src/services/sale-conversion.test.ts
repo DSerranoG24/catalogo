@@ -14,6 +14,8 @@ function setup(options: Setup = {}) {
   const locks: string[] = [];
   const tx: any = {
     $queryRaw: async (first: any) => { locks.push(Array.isArray(first) ? first.join("?") : first.sql); return [{ id: "owner" }]; },
+    // Account money lock (Agents.md): recorded with the row locks so the order can be asserted.
+    $executeRaw: async (first: any) => { const sql = Array.isArray(first) ? first.join("?") : first.sql; assert.match(sql, /pg_advisory_xact_lock\(hashtext\('account-money-v1'\)/); locks.push(sql); return 1; },
     customer: { findFirst: async (args: Prisma.CustomerFindFirstArgs) => {
       assert.equal(args.where?.ownerId, "owner");
       return state.customer.id === args.where?.id && state.customer.ownerId === args.where?.ownerId ? state.customer : null;

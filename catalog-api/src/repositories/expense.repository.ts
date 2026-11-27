@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
 import { Prisma, type Expense, type ExpenseCategory } from "@prisma/client";
 import { prisma } from "../config/prisma";
-import { lockInventoryOwner } from "./inventory.repository";
+import { lockAccountForMoney } from "./account-lock";
 import { isAllowedExpenseDate, toDbDate, fromDbDate } from "../services/expense-dates";
 import { normalizeCategoryName, type CreateExpenseInput, type ExpenseInput, type ExpenseListQuery, type ExpenseSummaryQuery,
   type ReclassifyExpenseInput, type VoidExpenseInput } from "../schemas/expense.schema";
 
 // Gastos F1a (docs/expenses-contract.md v1.2). Lock order per mutation:
-// users FOR SHARE (open account) -> advisory lock 'expenses-v1' per owner -> receipt -> rows FOR UPDATE.
+// account money lock 'account-money-v1' -> users FOR SHARE (open account) -> receipt -> rows FOR UPDATE (Agents.md).
 export class ExpenseError extends Error {
   constructor(public readonly code: string, public readonly details?: Record<string, unknown>) { super(code); }
 }
@@ -57,15 +57,14 @@ function decodeCursor(cursor: string) {
 }
 
 /**
- * Idempotent mutation (contract §9–10): users FOR SHARE (open account) -> advisory lock 'expenses-v1' per owner ->
+ * Idempotent mutation (contract §9–10): account money lock 'account-money-v1' (replaces 'expenses-v1') -> users FOR SHARE ->
  * receipt by (owner, operationId) whose hash excludes requestId -> work -> receipt and events. Shared by F1a and F1b.
  */
 export function makeExpenseMutation(database: typeof prisma = prisma, clock: () => Date = () => new Date()) {
   return async function mutation<T extends object>(ownerId: string, input: Keys, kind: string, resourceId: string, work: (tx: Tx, now: Date) => Promise<{ result: T; events: EventDraft[] }>) {
     const requestHash = expenseCommandHash(kind, resourceId, input);
     return database.$transaction(async tx => {
-      await lockInventoryOwner(tx, ownerId);
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('expenses-v1'), hashtext(${ownerId}))`;
+      await lockAccountForMoney(tx, ownerId);
       const prior = await tx.expenseOperation.findUnique({ where: { ownerId_operationId: { ownerId, operationId: input.operationId } } });
       if (prior) {
         if (prior.kind !== kind || prior.resourceId !== resourceId || prior.requestHash !== requestHash) throw new ExpenseError("IDEMPOTENCY_CONFLICT");

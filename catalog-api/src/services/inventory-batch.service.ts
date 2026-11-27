@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../config/prisma";
 import { applyInventoryBatchMovements, inventoryItemView, lockInventoryIdentity, lockInventoryOwner } from "../repositories/inventory.repository";
+import { lockAccountForMoney } from "../repositories/account-lock";
 import { batchApplySchema, batchChunkSchema, batchCreateSchema, inventoryEditSchema, inventoryPlanSchema, inventoryTermsSchema, inventoryValuesSchema } from "../schemas/inventory-batch.schema";
 import { buildInventoryPlan, canonical, inventoryHash, inventoryJson } from "./inventory-batch-plan";
 
@@ -83,7 +84,8 @@ export function makeInventoryBatchService(database = prisma) {
   async function apply(userId: string, id: string, input: z.infer<typeof batchApplySchema>) {
     try {
       return await database.$transaction(async tx => {
-        await lockInventoryOwner(tx, userId); await lockInventoryIdentity(tx, userId);
+        // Moves stock: account money lock -> users FOR SHARE -> identity advisory -> batch -> items by id.
+        await lockAccountForMoney(tx, userId); await lockInventoryIdentity(tx, userId);
         const batch = await batchLock(tx, userId, id);
         if (batch.revision !== input.expectedRevision || batch.previewRevision !== input.previewRevision || batch.planHash !== input.planHash || batch.applyOperationId !== input.operationId) throw new Error("KEY_CONFLICT");
         if (batch.status === "APPLIED") return summary(batch);

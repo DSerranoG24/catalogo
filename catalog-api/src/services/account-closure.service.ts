@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt";
 import { OAuth2Client, type TokenPayload } from "google-auth-library";
 import { prisma } from "../config/prisma";
+import { accountClosureMoneyLock } from "../repositories/account-lock";
 
 export type ClosureCredentials = { password?: string; idToken?: string };
 const google = new OAuth2Client();
@@ -29,7 +30,9 @@ export async function requestAccountClosure(userId: string, input: ClosureCreden
   if (!user) throw new Error("REAUTH_REQUIRED");
   await reauthenticate(user, input);
   return database.$transaction(async tx => {
-    // Order -> catalog -> user: do not invert quotation issuance's lock order.
+    // Account money lock first (Agents.md): closure and every money/stock operation, order conversion included,
+    // serialize here. Then order -> catalog -> user: do not invert quotation issuance's lock order.
+    await accountClosureMoneyLock(tx, userId);
     await tx.$queryRaw`SELECT o.id FROM orders o JOIN catalogs c ON c.id = o."catalogId" WHERE c."userId" = ${userId} ORDER BY o.id FOR UPDATE OF o`;
     await tx.$queryRaw`SELECT id FROM catalogs WHERE "userId" = ${userId} ORDER BY id FOR UPDATE`;
     await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;

@@ -212,7 +212,7 @@ Todos los endpoints son privados, con `Cache-Control: private, no-store`, valida
 
 - **Orden de bloqueos (como F1a):**
   1. `users` `FOR SHARE`, comprobando que la cuenta no está cerrada;
-  2. `pg_advisory_xact_lock(hashtext('expenses-v1'), hashtext(ownerId))`;
+  2. `pg_advisory_xact_lock(hashtext('expenses-v1'), hashtext(ownerId))` (desde F2a-2a, el bloqueo por cuenta `account-money-v1`, que va **antes** de `users`; ver [Agents.md](../Agents.md));
   3. recibo;
   4. filas `FOR UPDATE` en orden de ID: gasto fijo, programado, gasto y categoría.
 

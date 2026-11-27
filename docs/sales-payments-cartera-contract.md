@@ -325,24 +325,20 @@ refund  = { method, methodNote?, reference? }
 
 ### Orden de bloqueo único (corrección A)
 
-Toda operación con dinero de una cuenta toma **primero** el mismo bloqueo por cuenta: pagos, anticipos, anulaciones, abonos, cruces, devoluciones de dinero, cambios de cliente, plazo o vencimiento, confirmar, entregar, cancelar, devolver, la conversión de pedidos y **el cierre de cuenta**.
+Implementado en F2a-2a (26/11/2026); el detalle, el inventario anterior y las pruebas están en la [sección 15.A](#15-correcciones-del-planificador). Toda operación que **mueva dinero o existencias** toma **primero** el bloqueo por cuenta con `lockAccountForMoney(tx, ownerId)` (`catalog-api/src/repositories/account-lock.ts`):
 
-| Paso | Operaciones de dinero y de venta | Cierre de cuenta |
+| Paso | Operaciones de dinero y existencias | Cierre de cuenta |
 | --- | --- | --- |
-| 1 | `pg_advisory_xact_lock(hashtext('sale-money-v1'), hashtext(ownerId))` | El mismo bloqueo |
-| 2 | `users` `FOR SHARE`, comprobando que la cuenta no esté cerrada | Pedidos `FOR UPDATE` en orden de `id` |
-| 3 | Recibo previo | Catálogos `FOR UPDATE` en orden de `id` |
-| 4 | Cliente `FOR UPDATE` (si interviene) | `users` `FOR UPDATE` |
-| 5 | Pedido `FOR UPDATE` (solo la conversión) | Lectura de la vista previa y cierre |
-| 6 | Documentos (ventas, deudas iniciales) `FOR UPDATE` en orden de `id` | — |
-| 7 | Artículos de inventario `ORDER BY id FOR UPDATE` (como hoy) | — |
+| 1 | `pg_advisory_xact_lock(hashtext('account-money-v1'), hashtext(ownerId))` | El mismo (`accountClosureMoneyLock`) |
+| 2 | `users` `FOR SHARE`, rechazando una cuenta cerrada (`ACCOUNT_CLOSED`) | Pedidos `FOR UPDATE` en orden de `id` |
+| 3 | Otros bloqueos de asesoría por cuenta (`inventory-identity-v1`…) | Catálogos `FOR UPDATE` en orden de `id` |
+| 4 | Filas `FOR UPDATE`, por tipo y después por `id`: pedido → cliente → venta o deuda inicial → filas de gastos (plantilla, pago programado, gasto, categoría) → lote → artículos de inventario | `users` `FOR UPDATE` |
 
-- Como el paso 1 es común, la conversión de pedidos y el cierre de cuenta ya no pueden interbloquearse: hoy toman `User FOR SHARE → Order` y `Order → Catalog → User FOR UPDATE`, en orden inverso ([Ventas, sección 13](sales-contract.md#13-limitaciones-y-riesgos-conocidos)). Con F2a-2 se serializan en el paso 1.
-- Una operación que espera el bloqueo mientras se cierra la cuenta lo obtiene después y falla en el paso 2 con la cuenta cerrada (`AUTH_REQUIRED`).
-- Abono (cliente → varias ventas) y cancelación (venta → cliente) tampoco se cruzan: los dos pasan antes por el paso 1.
-- Los borradores (`POST /sales`, `PATCH /sales/:id`) no mueven dinero y siguen como hoy. Gastos sigue con su propio bloqueo (`expenses-v1`); ninguna operación toma los dos.
-- La emisión de cotizaciones (`Order → Catalog → User`) no toma este bloqueo y su relación con el cierre no cambia.
-- Va en F2a-2, con pruebas de concurrencia en PostgreSQL real: pago frente a cancelación, dos anticipos, cancelación frente a devolución de dinero y conversión frente a cierre de cuenta.
+- **Por qué el bloqueo de asesoría va antes que `users`:** el cierre de cuenta no puede tomar `users` primero. El trigger `guard_closed_catalog_write` toma `users FOR SHARE` *después* de bloquear el pedido o el catálogo en la emisión de cotizaciones, los cambios de estado del pedido, la anonimización, los pedidos públicos y las ediciones de catálogo. Con `users FOR UPDATE` al principio del cierre, cualquiera de ellas lo trabaría. El bloqueo de asesoría es un punto común anterior a cualquier fila y no lo toma ningún trigger.
+- **Qué resuelve:** la conversión de pedidos (`users` → pedido) y el cierre (pedidos → catálogos → `users`) se serializan en el paso 1 y ya no se traban. Una operación que espera mientras se cierra la cuenta obtiene el bloqueo después y falla en el paso 2 con `ACCOUNT_CLOSED`, como antes.
+- **Sustituye a `expenses-v1`:** Gastos (todas sus mutaciones y `sync`) usa el mismo bloqueo; su idempotencia no cambia, porque el recibo se sigue buscando bajo un bloqueo exclusivo por cuenta.
+- Abono (cliente → varias ventas) y cancelación (venta → cliente) tampoco se cruzarán en F2a-2b: los dos pasan antes por el paso 1.
+- **No lo toman**, porque no mueven dinero ni existencias: las lecturas, los borradores (`POST /sales`, `PATCH /sales/:id`), clientes, compatibilidades, fichas comerciales, publicación en catálogos, la hoja de inventario y las cotizaciones.
 
 Las lecturas (`GET`) no escriben y se calculan en una transacción `READ ONLY`.
 
@@ -409,7 +405,8 @@ Las lecturas (`GET`) no escriben y se calculan en una transacción `READ ONLY`.
 | Fase | Contenido | Migración |
 | --- | --- | --- |
 | **F2a-1 Esquema** (hecho, [sección 16](#16-esquema-f2a-1-implementado)) | Enums, columnas de `"Sale"` con `LEGACY` por defecto, `UNIQUE ("id","userId")`, `sale_payment_entries`, `customer_credit_entries`, `sale_money_operations`, `receivable_settings`, CHECK, FKs compuestas, índices y triggers. Consulta previa, ensayo y [runbook](despliegue-f2a-1.md). | **Sí** |
-| **F2a-2 API de pagos** | Pagos en `confirm`, `deliver` y la conversión (D); anticipos; vincular o cambiar el cliente en `CONFIRMED` y en la entrega (B); anulación; excedente en `cancel` y `returns` con «Devolver ahora» o por devolver; saldo a favor como medio y «Devolver dinero»; plazo y ajustes; bloque `payments` en las lecturas; **bloqueo único por cuenta en todas las operaciones con dinero y en el cierre de cuenta (A), con pruebas de concurrencia**; vista previa y confirmación del cierre (C) con saldos a favor, por devolver y ventas sin entregar. **El fiado queda apagado** (`CREDIT_NOT_ENABLED`): sin abonos, una deuda no se podría cobrar. | No |
+| **F2a-2a Bloqueo único** (hecho, [15.A](#15-correcciones-del-planificador)) | `lockAccountForMoney` en ventas, conversión, gastos e inventario y `accountClosureMoneyLock` en el cierre; sustituye a `expenses-v1`; ensayo de concurrencia `test:account-lock-postgres`. Sin cambios visibles. | No |
+| **F2a-2b API de pagos** | Pagos en `confirm`, `deliver` y la conversión (D); anticipos; vincular o cambiar el cliente en `CONFIRMED` y en la entrega (B); anulación; excedente en `cancel` y `returns` con «Devolver ahora» o por devolver; saldo a favor como medio y «Devolver dinero»; plazo y ajustes; bloque `payments` en las lecturas (toda operación nueva usa el bloqueo único de F2a-2a); vista previa y confirmación del cierre (C) con saldos a favor, por devolver y ventas sin entregar. **El fiado queda apagado** (`CREDIT_NOT_ENABLED`): sin abonos, una deuda no se podría cobrar. | No |
 | **F2a-3 Interfaz de cobro** | «Cómo pagó» en Vender, anticipo, cambio de cliente, cobro y cliente al entregar, «Devolver ahora», pagos en el detalle, anular, «Devolver dinero», aviso de por devolver en Inicio y diálogo de cierre. | No |
 | **F2a-4 Pruebas y despliegue** | Ensayos PostgreSQL y de navegador, runbook de F2a-2/3 y `estado.md`. | Requiere F2a-1 aplicada |
 | **F2-1 Esquema de cartera** | `customer_receipts`; valor `RECEIPT_ALLOCATION` y `receiptId`; `customer_opening_debts`, con `saleId` nulo y `openingDebtId` en el libro (CHECK de un documento); `receivable_due_date_changes`; `customers."creditLimit"`; invariantes nuevas en los triggers diferidos. | **Sí** |
@@ -456,7 +453,40 @@ Tomadas el 26/11/2026 sobre las preguntas de la propuesta. Sustituyen a las preg
 
 Incorporadas el 26/11/2026. Prevalecen sobre cualquier texto anterior.
 
-**A. Bloqueo único por cuenta para toda operación con dinero** (pagos, abonos, cancelaciones, devoluciones, conversión de pedidos y cierre de cuenta), con el orden de la [sección 8](#orden-de-bloqueo-único-corrección-a). Resuelve también el interbloqueo entre cierre de cuenta y conversión de pedidos. Va en F2a-2, con pruebas de concurrencia.
+**A. Bloqueo único por cuenta para toda operación con dinero o existencias** (pagos, abonos, cancelaciones, devoluciones, movimientos de inventario, conversión de pedidos y cierre de cuenta), con el orden de la [sección 8](#orden-de-bloqueo-único-corrección-a). Resuelve también el interbloqueo entre cierre de cuenta y conversión de pedidos. **Implementado en F2a-2a** (26/11/2026), sin cambios visibles ni de esquema.
+
+**Inventario de bloqueos antes de F2a-2a** (código del 26/11/2026):
+
+| Operación | Bloqueos, en orden |
+| --- | --- |
+| Confirmar, entregar, cancelar y devolver una venta | `users` `FOR SHARE` → `"Sale"` `FOR UPDATE` → artículos por `id` `FOR UPDATE` |
+| Convertir un pedido en venta | `users` `FOR SHARE` → pedido `FOR UPDATE` → artículos por `id` (en `CONFIRMED`/`DELIVERED`) |
+| Crear o editar un borrador | `users` `FOR SHARE` → asesoría `sale-create-v1` (crear) o `"Sale"` `FOR UPDATE` (editar) |
+| Gastos: crear, anular, reclasificar, categorías, gastos fijos, pagos programados y `sync` | `users` `FOR SHARE` → asesoría `expenses-v1` → recibo → filas `FOR UPDATE` |
+| Movimiento manual de inventario | `users` `FOR SHARE` → artículo `FOR UPDATE` |
+| Aplicar un lote de inventario | `users` `FOR SHARE` → asesoría `inventory-identity-v1` → lote → artículos por `id` |
+| Confirmar el cliente de un pedido (`customer-confirm`) | pedido `FOR UPDATE` → `users` `FOR SHARE` → asesorías → venta del pedido `FOR UPDATE` |
+| Cotización, cambio de estado, anulación o borrado de un pedido | pedido `FOR UPDATE` → (catálogo) → `users` `FOR SHARE` dentro del trigger `guard_closed_catalog_write` |
+| Pedido público del catálogo | catálogo `FOR UPDATE`/`FOR SHARE` → productos → artículos `FOR UPDATE` → `users` `FOR SHARE` (trigger) |
+| Cierre de cuenta | pedidos `FOR UPDATE` → catálogos `FOR UPDATE` → `users` `FOR UPDATE` |
+
+**Pares que podían trabarse:**
+- **Cierre de cuenta contra conversión de pedido** (el único entre operaciones de dinero o existencias): la conversión tenía `users` y esperaba el pedido; el cierre tenía el pedido y esperaba `users` `FOR UPDATE`. El ensayo lo reproduce: con el orden anterior, PostgreSQL aborta una con `40P01` en la primera vuelta forzada.
+- Ventas, gastos e inventario entre sí no se trababan: no comparten tipos de fila salvo los artículos, que siempre se bloquean en orden de `id`.
+
+**Después de F2a-2a:** los mismos pasos de la [sección 8](#orden-de-bloqueo-único-corrección-a). Las operaciones de la tabla anterior que mueven dinero o existencias (ventas salvo borradores, conversión, gastos, movimientos y lotes de inventario) empiezan por `lockAccountForMoney`. El cierre empieza por `accountClosureMoneyLock` y después sigue igual. Las demás no cambian.
+
+**Más lento:** dentro de **una misma cuenta**, las operaciones de dinero y existencias ya no corren en paralelo entre sí. Una venta y un gasto, dos ventas de artículos distintos, o una venta y un movimiento de inventario esperan su turno. Antes solo se serializaban los gastos entre sí y las ventas que compartían artículo. Cada operación dura milisegundos, así que la espera es del mismo orden. Las cuentas distintas no se esperan entre sí, y las lecturas y los borradores no esperan.
+
+**Pendiente, fuera de este alcance** (no mueve dinero ni existencias): la publicación de inventario en catálogos toma `users` `FOR SHARE` y después escribe productos, cuyo trigger pide el catálogo `FOR SHARE`. Contra el cierre (catálogos `FOR UPDATE` → `users` `FOR UPDATE`) podría trabarse. Se resuelve igual, tomando `accountClosureMoneyLock` al empezar, si se decide incluirla.
+
+**Pruebas:** `npm.cmd run test:account-lock-postgres`, ocho vueltas de cada par, sin `40P01`:
+- control con el orden anterior (se traba);
+- cierre contra conversión, forzando las dos órdenes de llegada con una tercera transacción que retiene el pedido, y también en paralelo simple;
+- cierre contra confirmar una venta, crear un gasto y mover inventario;
+- confirmar contra cancelar la misma venta;
+- anular el gasto de un pago programado contra volver a pagarlo;
+- dos ventas de la última unidad con una reposición a la vez.
 
 **B. Vincular o cambiar el cliente de una venta `CONFIRMED` antes de entregar**, copiando los datos del cliente al vincular. Tras entregar, el cliente no se cambia. La base de datos (F2a-1) congela el cliente de una venta `TRACKED` entregada, tenga o no deuda: es más estricto que «tras entregar con deuda», y una venta entregada y pagada tampoco necesita cambiar de cliente.
 

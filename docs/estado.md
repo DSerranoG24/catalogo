@@ -98,11 +98,18 @@ Gastos F1b (rama `f1b-scheduled`, 26/11/2026):
 
 Cierre de F1b (26/11/2026, sin commit): API 386/386 y build correctos (sin script `lint`); `test:scheduled-postgres` con las etapas `FUTURE_*` correcto; frontend `test`, `lint` y `build` correctos; `test:expenses-browser` con meses futuros, «Terminados» y la cabecera a 320–1440 px (incluidos 1132 y 1280), correcto.
 
-Pagos de la venta F2a-1 (26/11/2026, sin commit), en Windows con un clúster PostgreSQL 17 local desechable (puerto 55494, eliminado al terminar):
+Pagos de la venta F2a-1 (26/11/2026, en `main` desde `b2cbacf`), en Windows con un clúster PostgreSQL 17 local desechable (puerto 55494, eliminado al terminar):
 - API: `npm.cmd run build` correcto y `npm.cmd test` 386/386. No existe script `lint`. `prisma validate` correcto.
 - PostgreSQL: `test:sale-payments-postgres` (nuevo) con 21 comprobaciones correctas. Cubre las ventas existentes que quedan `LEGACY`, la deriva nula, los CHECK, las FKs entre cuentas, la solo inserción, la idempotencia, las invariantes con el ejemplo de $300.000 y la compatibilidad del servicio de Ventas actual. Con 42 migraciones también pasaron `test:sales-postgres` (24 etapas), `test:expenses-postgres` (15), `test:scheduled-postgres` y `test:dashboard-postgres`. Con 200 000 ventas, la migración tarda menos de 1 s (la sentencia más lenta, 105 ms).
 - `test:sales-postgres` fallaba desde F1a porque exigía que las migraciones de Ventas fueran las últimas; `test:scheduled-postgres` exigía que F1b fuera la última. Se corrigieron para buscar sus migraciones por nombre.
 - Frontend (sin cambios): `npm.cmd run lint` sin errores (las 4 advertencias de siempre), `npm.cmd test` (37 grupos `PASS`) y `npm.cmd run build`, correctos.
+
+Bloqueo único por cuenta F2a-2a (26/11/2026, sin commit), con un clúster PostgreSQL 17 local desechable (puerto 55495, eliminado al terminar):
+- Cambio: `lockAccountForMoney` (`catalog-api/src/repositories/account-lock.ts`) en confirmar, entregar, cancelar y devolver ventas, la conversión de pedidos, todas las mutaciones y el `sync` de Gastos (sustituye a `expenses-v1`), el movimiento manual y la aplicación de lotes de inventario. El cierre de cuenta toma el mismo bloqueo primero. Sin cambios de esquema, de respuestas ni de códigos de error. Regla para código nuevo en [Agents.md](../Agents.md).
+- API: `npm.cmd run build` correcto y `npm.cmd test` 387/387 (una prueba nueva del orden de bloqueo). No existe script `lint`.
+- PostgreSQL: `test:account-lock-postgres` (nuevo), ocho vueltas por par y dos ejecuciones completas, sin `40P01`. Con el orden anterior (servicios de Ventas y cierre sin el cambio), el mismo ensayo se traba en la primera vuelta. También pasaron `test:sales-postgres` (24), `test:expenses-postgres` (15), `test:scheduled-postgres`, `test:dashboard-postgres`, `test:sale-payments-postgres` y `test:inventory-batches-postgres` (10).
+- `test:inventory-postgres` falla en `BASELINE_MIGRATIONS` también sin este cambio: crea usuarios y productos con el cliente de Prisma actual sobre una cadena de migraciones parcial. Pendiente de corregir aparte, como se hizo con el de Ventas.
+- Frontend (sin cambios): lint sin errores (las 4 advertencias de siempre), `npm.cmd test` (37 grupos) y build, correctos.
 
 ## Pendientes vigentes
 
@@ -112,7 +119,10 @@ Pagos de la venta F2a-1 (26/11/2026, sin commit), en Windows con un clúster Pos
 - **Integridad de ventas:** siguen sin respaldo en base de datos las sumas de líneas frente a totales y la inmutabilidad de líneas confirmadas.
 - **Compatibilidades:** su migración se instala sin errores dentro de la cadena completa (ensayo de ventas del 24/11/2026), pero falta probar en PostgreSQL aislado sus restricciones, triggers diferidos y concurrencia. Los incrementos 2 a 5 del diseño no están aprobados. La API todavía no devuelve el ID de la relación existente cuando detecta un duplicado.
 - **Ventas:** el listado devuelve como máximo 50 ventas, sin paginación ni filtros. No existe acción para descartar un borrador. Sigue sin retirarse la venta sintética `fb13793c` desplegada ([detalle](customer-sales-history.md)).
-- **Pagos de la venta F2a-1:** migración creada y ensayada, pendiente de commit, autorización y aplicación con el [runbook](despliegue-f2a-1.md). Siguiente fase: F2a-2 (API de pagos, bloqueo único por cuenta, vista previa del cierre de cuenta).
+- **Pagos de la venta F2a-1:** en `main` (`b2cbacf`), migración pendiente de aplicar con el [runbook](despliegue-f2a-1.md).
+- **F2a-2a, bloqueo único por cuenta:** hecho en el árbol de trabajo, sin commit. No necesita migración y es compatible con el esquema actual. Siguiente: F2a-2b (API de pagos, cliente en ventas confirmadas, vista previa del cierre).
+- **Posible traba de la publicación de inventario contra el cierre de cuenta** (anterior y fuera de F2a-2a): ver el [contrato de pagos, 15.A](sales-payments-cartera-contract.md#15-correcciones-del-planificador).
+- **`test:inventory-postgres`** falla en su etapa inicial por el cliente de Prisma sobre la cadena parcial (anterior a F2a-2a).
 - **Cierre de cuenta:** bloquea si hay pedidos sin resolver. Decidido (contrato de pagos, corrección C): las ventas `CONFIRMED` sin entregar, los saldos a favor y el dinero por devolver solo avisan en una vista previa y el dueño confirma. Se implementa en F2a-2.
 - **Validación con PostgreSQL real** de ventas, clientes y compatibilidades, con volumen representativo y EXPLAIN.
 - **OpenAPI:** `catalog-api/openapi.json` está desfasado respecto al generador en campos de cotización (`nit`, `quotationTerms`).

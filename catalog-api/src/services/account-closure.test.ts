@@ -35,6 +35,7 @@ test("repeated account closure returns the persisted job without changing its da
   const database = new Proxy(prisma, { get(_target, key) {
     if (key === "$transaction") return async (fn: (tx: Prisma.TransactionClient) => Promise<unknown>) => fn(database);
     if (key === "$queryRaw") return async () => [];
+    if (key === "$executeRaw") return async (sql: TemplateStringsArray) => { assert.match(sql.join(""), /pg_advisory_xact_lock\(hashtext\('account-money-v1'\)/); return 1; };
     if (key === "user") return { findUnique: async () => user, findUniqueOrThrow: async () => user };
     if (key === "accountClosureJob") return { findUnique: async () => ({ id: "existing-job", phase: "CLEANING" }) };
     throw new Error("An idempotent closure must not perform writes");
@@ -48,6 +49,7 @@ test("unresolved or unreviewed orders block closure before any data is changed",
   const database = new Proxy(prisma, { get(_target, key) {
     if (key === "$transaction") return async (fn: (tx: Prisma.TransactionClient) => Promise<unknown>) => fn(database);
     if (key === "$queryRaw") return async () => [];
+    if (key === "$executeRaw") return async (sql: TemplateStringsArray) => { assert.match(sql.join(""), /pg_advisory_xact_lock\(hashtext\('account-money-v1'\)/); return 1; };
     if (key === "user") return { findUnique: async () => user, findUniqueOrThrow: async () => user };
     if (key === "accountClosureJob") return { findUnique: async () => null };
     if (key === "catalog") return { findMany: async () => [{ id: "catalog" }] };
