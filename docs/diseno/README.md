@@ -107,7 +107,7 @@ Las cifras vienen de `GET /api/dashboard/summary` ([contrato y definiciones](../
 | Te deben | Nunca | Cartera no existe. |
 | Requiere tu atención | Siempre | Filas de pagos vencidos («n pagos vencidos») y por vencer en 7 días («n pagos vencen esta semana»), ambas con «Ver» → Gastos, solo con `modules.scheduledExpenses` y la entrada Gastos habilitada (F1b). Después, stock bajo y agotados (→ Inventario) y pedidos nuevos («Revisar»: al único catálogo, o a la lista si hay varios). Las filas en 0 se ocultan; si todas son 0, «Todo en orden». Fiados y equipos no existen. «Ver todos» no se implementa. |
 | Ventas de la semana | Siempre | `salesSeries`. Selector de 7/30/90 días que vuelve a pedir el resumen con `?days=`. Etiquetas por barra solo con 7 días; el valor de cada día aparece al pasar el cursor o con las flechas; hay una tabla oculta como alternativa. |
-| Últimos movimientos | Siempre | `recent` (hasta 5), con insignia de estado, cliente o «Sin cliente», hora o fecha y total. Las filas no son enlaces porque Ventas no tiene enlace directo a una venta; la cabecera lleva «Ver ventas». |
+| Últimos movimientos | Siempre | `recent` (hasta 5), con insignia de estado, cliente o «Sin cliente», hora o fecha y total. Desde F2a-3b cada fila abre su venta en Historial (`/dashboard/ventas/historial?venta=<id>`); la cabecera lleva «Ver ventas» a la lista. |
 | Pie | Siempre | «Conectado» o «Sin conexión» según la última petición, y «Última actualización» con la hora de `generatedAt` en Bogotá. |
 
 **Generación de pagos programados (F1b, corrección A):** con la entrada Gastos habilitada, Inicio llama a `POST /api/expenses/scheduled/sync` antes de leer el resumen, que sigue siendo de solo lectura. Si `sync` falla, el resumen se carga igual con un aviso discreto (`role="status"`): «No pudimos actualizar los gastos fijos; los avisos de pagos pueden estar incompletos» (corrección C).
@@ -194,8 +194,7 @@ Los pagos programados nunca suman en «Gastos del mes», «Variables» ni en la 
 **Siguen con el verde (sin rediseñar):**
 - Catálogos (lista, crear y espacio de trabajo: productos, pedidos, reseñas, banners y ajustes del catálogo);
 - Inventario (incluidas hoja y lotes);
-- Vender › Historial (`/dashboard/ventas/historial`: la vista de ventas anterior, el historial por cliente y su detalle);
-- Ajustes/Cuenta (cierre de cuenta) y el enlace «Volver a catálogos»;
+- Ajustes/Cuenta (cierre de cuenta, con el aviso de dinero abierto de F2a-3b) y el enlace «Volver a catálogos»;
 - el aviso de verificación de correo, común a todo el panel, también encima de Gastos;
 - Admin;
 - las páginas públicas (inicio y catálogo).
@@ -223,7 +222,7 @@ Referencia visual: [`vender-escritorio.png`](vender-escritorio.png). El cobro us
 
 | Bloque | Qué muestra | Depende de |
 | --- | --- | --- |
-| Cabecera | Mosaico azul con carrito, «Vender», «Selecciona productos y arma tu venta» y las pestañas **Nueva venta**, **Pedidos** (→ `/dashboard/catalogos`, donde están los pedidos de cada catálogo) e **Historial** (→ `/dashboard/ventas/historial`, la vista anterior sin cambios). Con el menú lateral común | — |
+| Cabecera | Mosaico azul con carrito, «Vender», «Selecciona productos y arma tu venta» y las pestañas **Nueva venta**, **Pedidos** (→ `/dashboard/catalogos`, donde están los pedidos de cada catálogo) e **Historial** (→ `/dashboard/ventas/historial`, [diseño nuevo desde F2a-3b](#vender--historial-y-detalle-de-la-venta-dashboardventashistorial-f2a-3b)). Con el menú lateral común | — |
 | Buscador | «Buscar por nombre o SKU», atajo **F1** | `GET /inventory/items?q=` (primeros 24) |
 | Productos | Tarjetas con miniatura, nombre, SKU, precio y **un solo dato de disponibilidad**: «n disponibles» (azul), «Quedan n» (naranja; ≤ 3 o ≤ el mínimo) o «Agotado» (rojo). Botón +; en el ticket: borde azul, check, «En el ticket: n» y − n +. Si el ticket pide más de lo que hay, la tarjeta vuelve a mostrar «Agotado» o «Quedan n». Sin precio o agotado: + desactivado con el motivo en su nombre accesible. Tarjeta punteada «Producto nuevo · Agregar al inventario» → Inventario | Inventario y ficha comercial |
 | Ticket | «Borrador guardado» y el cliente opcional («Buscar o crear»: busca con Enter; + crea con nombre y teléfono). Líneas con miniatura, precio c/u, descuento por unidad (plegable), − n + (hasta la existencia), subtotal y papelera. **Total grande del servidor**: mientras el borrador se guarda dice «Calculando…» y no se puede cobrar | Borrador: `POST /sales` y `PATCH /sales/:id`; clientes: `GET`/`POST /customers` |
@@ -270,3 +269,61 @@ Si se pierde la respuesta, «Reintentar» reenvía la misma `operationId` con un
   - F1, Tab y Escape;
   - sin verde antiguo (con control positivo);
   - sin desbordes de 320 a 1440 px, y la hoja móvil.
+
+**Correcciones de F2a-3b (bloque A):**
+- «Crear cliente» pone Nombre y Teléfono uno debajo del otro, a todo el ancho de la columna del ticket; antes, a 1110 px, Teléfono se salía del panel.
+- La rejilla de medios de pago y las filas de `PaymentBox` dependen del ancho de su propia columna (consultas de contenedor `@container`), no del de la ventana.
+- «Pagar el total» aparece cuando los pagos superan lo que se debe y los recorta a ese importe.
+- Tras cobrar, las tarjetas («Quedan n», «Agotado») y «Ventas hoy» cambian al momento con las líneas que confirmó el servidor, y después se vuelven a leer; gana la respuesta más reciente.
+- «Venta confirmada» enlaza a su detalle en Historial para cobrar el resto.
+
+## Vender › Historial y detalle de la venta (`/dashboard/ventas/historial`, F2a-3b)
+
+Sustituye a la vista anterior de Ventas. Usa `.vy-theme`, los tokens `--vy-*` y la cabecera de Vender (`components/sell/VenderHeader.tsx`) con la pestaña **Historial** activa. Código:
+- `components/history/HistoryPanel.tsx` (lista y filtros) y `SaleDetailPanel.tsx` (detalle y acciones);
+- `lib/sale-detail-ui.mjs`: validación del bloque `payments`, acciones por estado, libro de pagos, filtros y motivos, sin red;
+- `lib/account-closure-ui.mjs`: aviso del cierre de cuenta.
+
+| Bloque | Qué muestra | Depende de |
+| --- | --- | --- |
+| Lista | Por venta: cliente (la copia guardada en la venta) o «Sin cliente», fecha, artículos, total, **pagado** y **saldo** (o «Por devolver»), y estado. Las ventas `LEGACY` llevan la etiqueta discreta «sin registro de pagos» y no muestran cifras de pago | `GET /sales` (las 50 más recientes, con `payments`) |
+| Filtro de estado | Todos, Borrador, Confirmada, Entregada, **Devuelta parcialmente**, Devuelta y Cancelada | Estado mostrado (`displayStatus`) |
+| Filtro de cliente | Sustituye a «Ventas vinculadas a un cliente». Busca clientes activos y archivados; al elegir uno, lista sus ventas con «Más ventas de este cliente» y completa cada fila con su detalle si no está entre las recientes | `GET /customers?status=all`, `GET /customers/:id/sales`, `GET /sales/:id` |
+| Detalle (panel lateral) | Líneas guardadas, estado y etapa de cobro, total, valor devuelto y total vigente, pagado, saldo o por devolver, cambio entregado, **libro de pagos** (medio, monto, fecha; los anulados tachados con «Anulado · Motivo: …»), devoluciones con su motivo y el saldo a favor del cliente | `GET /sales/:id` |
+| Enlace directo | `/dashboard/ventas/historial?venta=<id>` abre el detalle con el foco en su título; cerrarlo quita el parámetro. Lo usan Inicio, «Abrir Ventas» de un pedido convertido y «Venta confirmada» de Nueva venta | — |
+
+**Acciones según el estado** (solo lo que ofrece la API de F2a-2b; el servidor vuelve a comprobarlo):
+
+| Estado | Acciones |
+| --- | --- |
+| Borrador | «Continuar en Vender» (`/dashboard/ventas?borrador=<id>`): los borradores se editan y confirman en Nueva venta |
+| `CONFIRMED` con saldo | «Cobrar y entregar · $ saldo» (`POST /sales/:id/deliver` con los pagos: cobra el resto y entrega en una operación) y «Registrar pago» (`POST /sales/:id/payments`, anticipo sin entregar) |
+| `CONFIRMED` pagada, o `LEGACY` | «Entregar» (`deliver`, sin pagos en las `LEGACY`) |
+| `CONFIRMED` | «Cancelar venta» con motivo. Con pagos: con cliente, lo pagado pasa a su **saldo a favor**; sin cliente, «Devolver ahora» (medio de pago) o «Dejarlo por devolver» |
+| `DELIVERED` con unidades pendientes | «Registrar devolución» (revendibles, dañadas y motivo); sin cliente, el sobrante se devuelve ahora o queda por devolver; con cliente, pasa a saldo a favor |
+| Con dinero por devolver (sin cliente) | «Devolver dinero» (importe, medio y **motivo obligatorio**) |
+| Cliente con saldo a favor | «Devolver saldo a favor» (`POST /customers/:id/credit/refunds`, motivo obligatorio) |
+| Pagos, usos de saldo y devoluciones vigentes | «Anular» con **motivo obligatorio**; nada se borra |
+
+Cada acción conserva su `operationId`: «Reintentar» reenvía la misma operación con otra `requestId` y el recibo responde sin repetirla. Tras cada acción la venta se vuelve a leer: todas las cifras son del servidor. Un pago mayor que el saldo no se puede enviar («Los pagos superan…») y se ofrece «Pagar el total». Si al recargar la acción ya no aplica (por ejemplo, la venta se entregó en otro dispositivo), su formulario se cierra.
+
+**Móvil (< `lg`):** el detalle es una hoja (el `Sheet` de Gastos: anclada abajo por debajo de 640 px, centrada entre 640 y 1023 px). En escritorio es un panel a la derecha de 24 rem (28 rem desde `xl`), fijo al desplazarse, como el ticket.
+
+**Cierre de cuenta (`/dashboard/cuenta`):** lee `GET /auth/close/preview` y, si hay algo abierto, muestra «Tu cuenta tiene dinero o entregas abiertas» con lo que te deben, lo por cobrar de ventas confirmadas, los saldos a favor, el dinero por devolver y las ventas sin entregar. «Cerrar cuenta» exige marcar «Revisé lo que queda abierto…» y envía `confirmOpenBalances: true`. Si el servidor responde 409 con cifras nuevas, se muestran y se pide confirmar otra vez. No se ofrece exportación (llega con F5). Esta pantalla conserva su estilo actual.
+
+**Diferencias con lo pedido:**
+- La lista general son las 50 ventas más recientes (límite de la API, sin paginación); para ver más de un cliente se usa su filtro, que sí pagina.
+- El filtro de cliente completa cada fila con `GET /sales/:id` (como mucho 4 a la vez) porque `GET /customers/:id/sales` no trae líneas ni pagos.
+- Cambiar el cliente de una venta confirmada (`POST /sales/:id/customer`) no se ofrece: no estaba en el alcance.
+
+**Pruebas:**
+- `scripts/verify-sale-detail-ui.mjs` (en `npm test`).
+- `npm.cmd run test:sale-detail-browser` (nueva; `DETAIL_SCREENSHOTS=<carpeta>` guarda capturas a 375, 1132 y 1440 px): anticipo → cobrar el resto y entregar, reintento sin duplicar, pago mayor que el saldo, anular con motivo, cancelar con y sin cliente, devolver dinero, devolución, `LEGACY`, filtros, enlace directo, hoja móvil, 320–1440 px sin desbordes con formularios abiertos, sin verde antiguo y el aviso de cierre (también tras un 409).
+- `test:sales-browser` (ventas `LEGACY`: entregar, cancelar, devoluciones, conflictos) y `test:customer-sales-browser` (filtro de cliente) adaptadas a la pantalla nueva.
+
+## R8 · Cartera (maqueta, F2)
+
+Referencia visual aprobada por el dueño: [`cartera.png`](cartera.png). **Todavía no se implementa**: Cartera es F2 (`CREDIT_SALES_ENABLED` sigue en `false`) y su contrato es [el de pagos y cartera](../sales-payments-cartera-contract.md#f2-2-cartera).
+
+La maqueta muestra la página Cartera del menú «Dinero»: tarjetas «Por cobrar», «Vencido», «Cobrado este mes» y «Saldo a favor»; chips «Vencidos», «Vencen pronto», «Al día» y «Saldo a favor» con buscador; la lista «Clientes que te deben» (deuda inicial, «Supera cupo», «Abono» y WhatsApp); y, a la derecha, la ficha del cliente con su cupo, el extracto y «Registrar abono» / «Recordar por WhatsApp». Al implementarla habrá que contrastarla con el contrato: la pestaña «Debo» (cuentas por pagar) y los recordatorios por WhatsApp (F3) no forman parte de F2.
+
